@@ -1,0 +1,81 @@
+Act as a Principal Python Backend & Game Systems Architect. I want you to design, scaffold, and implement a complete, production-grade Telegram RPG Game Bot in Python, inspired by viral group-oriented economy bots (like Meowie), but centered around a dynamic visual character system.
+
+CRITICAL PROJECT CONSTRAINTS:
+1. No Telegram WebApps/MiniApps: The bot must run entirely inside native Telegram chat and group environments using text messages, inline buttons, and dynamically rendered composite images.
+2. Art & Theme Style: "Urban Fantasy" (a sharp aesthetic blending modern streetwear—cargo pants, trench coats, tactical hoodies, leather jackets—with subtle dark fantasy elements like glowing auras, shadow daggers, and arcane accessories, similar to Solo Leveling and Jujutsu Kaisen).
+
+---
+
+### CORE ARCHITECTURAL MODULES TO BUILD:
+
+#### 1. Dynamic Character Image Compositor (`services/compositor.py`)
+- Use Python's `Pillow` (PIL) to dynamically layer transparent PNG asset layers onto a 512x512 canvas in under 50ms.
+- Layering hierarchy (from bottom to top):
+  - Layer 0: Background scene (dark city alley, neon rooftop, arcane sanctum)
+  - Layer 1: Base Character Body (athletic male posture)
+  - Layer 2: Pants & Footwear (combat boots, techwear cargo pants)
+  - Layer 3: Upper Body (fitted shirts, tactical hoodies, long hunter trench coats)
+  - Layer 4: Head & Hair (hair variations, facial expressions)
+  - Layer 5: Face Accessories (half-masks, tactical goggles, glowing eye markings)
+  - Layer 6: Hand Weapon (tactical combat knives, shadow katanas, arcane gauntlets)
+  - Layer 7: Visual FX / Aura (ethereal smoke, lightning crackle, dark flame)
+- Render an overlaid cyberpunk/HUD stat bar at the bottom displaying: Level, Player Name, Power (ATK), Defense (DEF), and Drip/Charisma.
+- Include a fast image-caching layer (hash-based) so re-rendering identical outfits does not re-read disk files. Include placeholder SVG-to-PNG or procedural geometric dummy asset generators for development testing.
+
+#### 2. RPG Progression & Gear Mechanics (`models/` & `services/game.py`)
+- Core Stats:
+  - Level & EXP: Gained via daily activities, working, heists, and winning duels.
+  - Power (ATK): Determined by equipped weapons and gloves.
+  - Defense (DEF): Determined by coat, body armor, and boots.
+  - Drip / Charisma: Unlocked through high-tier cosmetics; increases luck and success in street heists and grants shop discounts.
+  - Energy (Stamina): Consumed by actions, passively regenerates over time.
+- Equipment System: Inventory slots for [Head, Body, Legs, Weapon, Accessory, Aura]. Equipping an item modifies base stats and updates the character's visual layer.
+
+#### 3. Group Chat Engagement & Economy (`handlers/` & `services/economy.py`)
+- `/me` or `/profile`: Generates and posts the player's updated visual character card directly into the group chat, sparking competition and flexing.
+- Duel System (`/duel`): Target another player in a group with an inline bet; calculate outcome using Power, Defense, and a randomized critical roll with an interactive 2-round combat log.
+- Chat Activity Spawns (Raids): Maintain an in-memory/database message counter per group. After every 60-100 messages, spawn a random "Rogue Shadow" or urban boss with an inline button: `[⚔️ Strike Boss]`. Active chat members collaborate to defeat it and split the loot.
+- Economy & Sinks:
+  - Currencies: Credits (soft currency) and Soul Shards (rare currency).
+  - Boutique & Black Market: Timed rotating shop with rarity tiers (Common, Rare, Epic, Legendary).
+  - Risk/Reward Activities: Street heists with failure/arrest probabilities, and a mini casino (Dice, Coinflip) with a slight mathematical house edge.
+
+#### 4. Technology Stack & Directory Layout:
+- Framework: Python 3.11+, `aiogram` v3 (latest asynchronous Telegram bot framework).
+- Database: `aiosqlite` with SQLite (or `asyncpg` with PostgreSQL), implementing atomic transactions and row locking on all wallet/inventory mutations to prevent double-spending race conditions.
+- Concurrency & Rate Limiting: Atomic Redis/memory cooldowns (`cooldown:{user_id}:{action}`) with instant `answerCallbackQuery` responses to prevent UI freezing.
+
+Project Structure:
+- Framework: Python 3.11+, `aiogram` v3 (latest asynchronous Telegram bot framework).
+- Database: `aiosqlite` with SQLite (or `asyncpg` with PostgreSQL), implementing atomic transactions and row locking on all wallet/inventory mutations to prevent double-spending race conditions.
+- Concurrency & Rate Limiting: Atomic Redis/memory cooldowns (`cooldown:{user_id}:{action}`) with instant `answerCallbackQuery` responses to prevent UI freezing.
+
+Project Structure:
+text
+├── assets/
+│   └── layers/ (backgrounds, body, pants, tops, hair, weapons, auras)
+├── config.py
+├── database/
+│   ├── connection.py
+│   └── schema.sql
+├── handlers/
+│   ├── profile.py
+│   ├── duels.py
+│   ├── shop.py
+│   └── raids.py
+├── services/
+│   ├── compositor.py
+│   ├── economy.py
+│   └── battle.py
+├── main.py
+└── requirements.txt
+
+---
+
+### INSTRUCTIONS FOR EXECUTION:
+1. Provide the complete code for `requirements.txt` and `database/schema.sql`.
+2. Implement the full, production-ready `services/compositor.py` with dynamic layer compositing, text drawing, and error fallbacks.
+3. Write the core Telegram handlers (`handlers/profile.py` and `handlers/duels.py`) using `aiogram` v3 with full inline keyboard support.
+4. Provide a runnable `main.py` entrypoint.
+Write robust, modular, and cleanly commented Python code.
+We were working on the project when I hit a limit. Please continue from where we left off
