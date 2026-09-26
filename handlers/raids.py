@@ -59,13 +59,13 @@ def _raid_markup(raid_id: int) -> InlineKeyboardMarkup:
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text=f"⚔️ Strike Boss (-{settings.raid_dps_energy_cost}⚡)",
+                    text=f"⚔️ حمله به باس (-{settings.raid_dps_energy_cost}⚡)",
                     callback_data=f"raid:hit:{raid_id}",
                 )
             ],
             [
                 InlineKeyboardButton(
-                    text="📊 Leaderboard", callback_data=f"raid:top:{raid_id}"
+                    text="📊 لیدربورد آسیب", callback_data=f"raid:top:{raid_id}"
                 )
             ],
         ]
@@ -91,11 +91,11 @@ async def _boss_card(spawn: raids.SpawnResult) -> bytes:
 async def _send_spawn(bot, chat_id: int, spawn: raids.SpawnResult) -> None:
     photo = await _boss_card(spawn)
     caption = (
-        f"🚨 <b>BOSS SPAWNED</b> — <b>{esc(spawn.boss_name)}</b>\n"
+        f"🚨 <b>باس خیابانی ظاهر شد!</b> — <b>{esc(spawn.boss_name)}</b>\n"
         f"<i>{esc(spawn.taunt)}</i>\n\n"
         f"{_hp_bar(spawn.hp, spawn.max_hp)} "
         f"<code>{spawn.hp}/{spawn.max_hp}</code> HP\n"
-        f"Everyone in this chat can hit it. Split the loot by damage."
+        f"همه اعضای این گروه می‌توانند حمله کنند! غنایم بر اساس دمیج تقسیم می‌شود."
     )
     await bot.send_photo(
         chat_id,
@@ -158,23 +158,23 @@ async def _safe_spawn(bot, chat_id: int, spawn: raids.SpawnResult) -> None:
 
 
 def _fight_caption(raid: dict, strike: raids.StrikeResult, hitter: str) -> str:
-    head = "💀 <b>BOSS DEFEATED</b>" if strike.cleared else "⚔️ Hit landed"
-    crit = " 💥CRIT" if strike.critical else ""
+    head = "💀 <b>باس خیابانی شکست خورد!</b>" if strike.cleared else "⚔️ ضربه با موفقیت نشست!"
+    crit = " 💥 کریتیکال!" if strike.critical else ""
     body = (
         f"{head} — <b>{esc(raid['boss_name'])}</b>{crit}\n"
-        f"Damage: <b>{strike.damage:,}</b> by {esc(hitter)}\n"
+        f"آسیب: <b>{strike.damage:,}</b> توسط {esc(hitter)}\n"
         f"{_hp_bar(strike.hp_left, strike.max_hp)} "
         f"<code>{strike.hp_left}/{strike.max_hp}</code> HP"
     )
     if strike.cleared:
-        lines = ["", "🏆 <b>Loot split by damage:</b>"]
+        lines = ["", "🏆 <b>تقسیم غنائم بر اساس میزان آسیب:</b>"]
         ranked = sorted(
             strike.shares.items(), key=lambda kv: kv[1].credits, reverse=True
         )
         for user_id, share in ranked[:8]:
             lines.append(
-                f"• <code>{user_id}</code>: +{share.credits:,}cr "
-                f"+{share.shards}◆ +{share.exp}xp"
+                f"• <code>{user_id}</code>: +{share.credits:,} سکه "
+                f"+{share.shards} شارد +{share.exp} EXP"
             )
         body += "\n".join(lines)
     return body
@@ -194,7 +194,7 @@ async def cb_strike(call: CallbackQuery) -> None:
 
         # Always ack exactly once — the client un-freezes the button here.
         await call.answer(
-            f"{'💥 Crit! ' if result.critical else ''}-{result.damage:,} HP"
+            f"{'💥 کریتیکال! ' if result.critical else ''}-{result.damage:,} HP"
         )
 
         message = editable_message(call)
@@ -230,14 +230,14 @@ async def cb_raid_top(call: CallbackQuery) -> None:
     raid_id = int(call.data.rsplit(":", 1)[1])
     rows = await raids.leaderboard_damage(raid_id, limit=10)
     if not rows:
-        await call.answer("No hits yet.", show_alert=True)
+        await call.answer("هنوز ضربه‌ای ثبت نشده است.", show_alert=True)
         return
-    lines = ["<b>📊 Damage leaderboard</b>"]
+    lines = ["<b>📊 جدول آسیب به باس</b>"]
     for index, row in enumerate(rows, start=1):
         medal = {1: "🥇", 2: "🥈", 3: "🥉"}.get(index, f"{index}.")
         lines.append(
             f"{medal} <code>{row['user_id']}</code> — "
-            f"{row['damage']:,} dmg ({row['hits']} hits)"
+            f"{row['damage']:,} دمیج ({row['hits']} ضربه)"
         )
     await call.answer()  # ack, then swap the message content
     await render_panel(
@@ -247,7 +247,7 @@ async def cb_raid_top(call: CallbackQuery) -> None:
             inline_keyboard=[
                 [
                     InlineKeyboardButton(
-                        text="◀️ Back to fight",
+                        text="◀️ بازگشت به مبارزه",
                         callback_data=f"raid:view:{raid_id}",
                     )
                 ]
@@ -266,10 +266,10 @@ async def cb_raid_view(call: CallbackQuery) -> None:
     raid_id = int(call.data.rsplit(":", 1)[1])
     raid = await _raid_row(raid_id)
     if raid is None:
-        await call.answer("That fight is over.", show_alert=True)
+        await call.answer("این نبرد تمام شده است.", show_alert=True)
         return
     text = (
-        f"🚨 <b>BOSS</b> — <b>{esc(raid['boss_name'])}</b>\n"
+        f"🚨 <b>باس</b> — <b>{esc(raid['boss_name'])}</b>\n"
         f"{_hp_bar(raid['hp'], raid['max_hp'])} "
         f"<code>{raid['hp']}/{raid['max_hp']}</code> HP"
     )
@@ -288,18 +288,23 @@ async def _raid_row(raid_id: int) -> dict | None:
 # /boss — manual view of the active fight
 # ---------------------------------------------------------------------------
 
+BOSS_WORDS = {"باس", "حمله", "غول", "راید", "boss", "raid"}
 
-@router.message(Command("boss", "raid"))
+
+@router.message(
+    Command("boss", "raid")
+    | (F.text.func(lambda t: bool(t and t.strip().lower() in BOSS_WORDS)))
+)
 async def cmd_boss(message: Message) -> None:
     if message.chat.type not in ("group", "supergroup"):
-        await message.reply("Raids only happen in groups.")
+        await message.reply("باس‌ها و رایدها فقط داخل گروه‌ها فعال هستند.")
         return
     raid = await raids.active_raid(message.chat.id)
     if raid is None:
         await message.reply(
-            "No boss active. Keep chatting — one shows up every "
-            f"{settings.raid_spawn_min_messages}-{settings.raid_spawn_max_messages} "
-            "messages."
+            "در حال حاضر باسی در چت نیست! با ادامه چت کردن، "
+            f"هر {settings.raid_spawn_min_messages} تا {settings.raid_spawn_max_messages} "
+            "پیام یک باس جدید ظاهر می‌شود."
         )
         return
     await message.reply(

@@ -63,11 +63,9 @@ def photo_bytes(data: bytes, filename: str = _CARD_FILENAME) -> BufferedInputFil
 
 
 def is_transient(exc: Exception) -> bool:
-    """True when Telegram's refusal is an expected race, not a real bug."""
+    """True when Telegram's refusal is an expected race (e.g. content unmodified)."""
     message = str(exc).lower()
-    if any(token in message for token in _TRANSIENT):
-        return True
-    return isinstance(exc, TelegramBadRequest) and "there is no text" in message
+    return any(token in message for token in _TRANSIENT)
 
 
 def _is_media_gone(exc: Exception) -> bool:
@@ -87,11 +85,7 @@ def _same_content(message: Message, *, text: str | None, photo: bytes | None) ->
 async def _fallback_message(message: Message, *, text: str | None,
                             photo: bytes | None,
                             reply_markup: InlineKeyboardMarkup | None) -> None:
-    """Post the panel as a new message when the in-place edit is impossible.
-
-    Uses ``message.answer*`` rather than the chat shortcuts: those resolve
-    ``bot`` from a context var that a background callback may not carry.
-    """
+    """Post the panel as a new message when the in-place edit is impossible."""
     try:
         if photo is not None:
             await message.answer_photo(
@@ -99,7 +93,7 @@ async def _fallback_message(message: Message, *, text: str | None,
                 caption=text,
                 reply_markup=reply_markup,
             )
-            logger.info("panel: media swap failed, sent new photo message")
+            logger.info("panel: in-place photo edit failed, sent new photo message")
         else:
             await message.answer(
                 text or "",
@@ -114,51 +108,67 @@ async def _fallback_message(message: Message, *, text: str | None,
 async def _try_edit(message: Message, text: str | None, photo: bytes | None,
                     reply_markup: InlineKeyboardMarkup | None) -> bool:
     """Attempt the type-correct in-place edit. Returns True on success."""
-    is_photo_message = bool(message.photo)
+    is_photo_msg = bool(message.photo or message.caption is not None)
 
-    if photo is None:
-        # Text panel: a photo message can only be re-titled via its caption.
+    if photo is not None:
+        # If it's already a photo message, retitle via caption first
+        if message.photo:
+            try:
+                await message.edit_caption(caption=text, reply_markup=reply_markup)
+                return True
+            except Exception:
+                pass
+        # Otherwise swap to photo media
+        media = InputMediaPhoto(
+            media=photo_bytes(photo),
+            caption=text,
+        )
         try:
-            if is_photo_message:
-                await message.edit_caption(caption=text, reply_markup=reply_markup)
-            else:
-                await message.edit_text(text or "", reply_markup=reply_markup)
+            await message.edit_media(media=media, reply_markup=reply_markup)
             return True
-        except Exception as exc:  # noqa: BLE001
-            if _is_media_gone(exc):
-                return False
+        except TelegramBadRequest as exc:
+            err = str(exc).lower()
             if is_transient(exc):
-                logger.debug("panel: transient edit refusal", exc_info=True)
-                return True  # effectively fine — content already matches
-            raise
-    else:
-        # Photo panel.
-        if is_photo_message:
-            # Same media type: only the caption (and buttons) change.
-            try:
-                await message.edit_caption(caption=text, reply_markup=reply_markup)
                 return True
-            except Exception as exc:  # noqa: BLE001
-                if _is_media_gone(exc):
-                    return False
-                if is_transient(exc):
-                    logger.debug("panel: transient edit refusal", exc_info=True)
-                    return True
-                raise
-        else:
-            # Type switch: text message must become a photo.
-            media = InputMediaPhoto(
-                media=photo_bytes(photo), caption=text
-            )
+            logger.warning("panel: edit_media rejected: %s", exc)
+            return False
+        except Exception as exc:
+            logger.warning("panel: edit_media error: %s", exc)
+            return False
+
+    # Text / Caption panel (photo is None)
+    # If it is a photo/caption message, edit_caption; else edit_text.
+    # If Telegram rejects with "no text" or "no caption", swap and retry immediately!
+    first_fn = message.edit_caption if is_photo_msg else message.edit_text
+    second_fn = message.edit_text if is_photo_msg else message.edit_caption
+    first_kw = {"caption": text, "reply_markup": reply_markup} if is_photo_msg else {"text": text or "", "reply_markup": reply_markup}
+    second_kw = {"text": text or "", "reply_markup": reply_markup} if is_photo_msg else {"caption": text, "reply_markup": reply_markup}
+
+    try:
+        await first_fn(**first_kw)
+        return True
+    except TelegramBadRequest as exc:
+        err = str(exc).lower()
+        if "message is not modified" in err:
             try:
-                await message.edit_media(media=media, reply_markup=reply_markup)
+                await message.edit_reply_markup(reply_markup=reply_markup)
+            except Exception:
+                pass
+            return True
+        if "there is no text" in err or "there is no caption" in err:
+            try:
+                await second_fn(**second_kw)
                 return True
-            except Exception as exc:  # noqa: BLE001
-                if _is_media_gone(exc):
-                    return False
-                if is_transient(exc):
-                    return True
-                raise
+            except Exception as second_exc:
+                logger.warning("panel: fallback edit attempt failed: %s", second_exc)
+                return False
+        if is_transient(exc):
+            return True
+        logger.warning("panel: edit rejected by Telegram: %s", exc)
+        return False
+    except Exception as exc:
+        logger.warning("panel: unexpected edit exception: %s", exc)
+        return False
 
 
 async def render_panel(

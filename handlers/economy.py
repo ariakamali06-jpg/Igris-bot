@@ -31,15 +31,30 @@ def _activity_card(result: economy.ActivityResult) -> str:
     bits = []
     if result.credits_delta:
         sign = "+" if result.credits_delta > 0 else ""
-        bits.append(f"{sign}{result.credits_delta:,}cr")
+        bits.append(f"{sign}{result.credits_delta:,} سکه")
     if result.shards_delta:
         sign = "+" if result.shards_delta > 0 else ""
-        bits.append(f"{sign}{result.shards_delta}◆")
+        bits.append(f"{sign}{result.shards_delta} شارد")
     if result.exp_gained:
-        bits.append(f"+{result.exp_gained}xp")
+        bits.append(f"+{result.exp_gained} EXP")
     if bits:
         lines.append(" · ".join(bits))
     return "\n".join(lines)
+
+
+def _extract_args(message: Message, command: CommandObject | None = None) -> list[str]:
+    if command and command.args:
+        return list(command.args.split())
+    text = (message.text or "").strip()
+    parts = text.split()
+    return list(parts[1:]) if len(parts) > 1 else []
+
+
+DAILY_WORDS = {"روزانه", "جایزه", "پاداش", "حقوق", "daily", "claim"}
+WORK_WORDS = {"کار", "شغل", "شیفت", "work", "shift"}
+BAL_WORDS = {"موجودی", "پول", "سکه", "کیف", "کیف پول", "حساب", "balance", "bal", "wallet", "money"}
+STATS_WORDS = {"آمار", "استاتس", "لول", "وضعیت", "stats", "level"}
+HELP_WORDS = {"راهنما", "کمک", "آموزش", "اموزش", "دستورات", "help", "start"}
 
 
 # ---------------------------------------------------------------------------
@@ -47,7 +62,10 @@ def _activity_card(result: economy.ActivityResult) -> str:
 # ---------------------------------------------------------------------------
 
 
-@router.message(Command("daily", "claim"))
+@router.message(
+    Command("daily", "claim")
+    | (F.text.func(lambda t: bool(t and t.strip().lower() in DAILY_WORDS)))
+)
 async def cmd_daily(message: Message) -> None:
     user = message.from_user
     if user is None:
@@ -70,7 +88,10 @@ async def cmd_daily(message: Message) -> None:
 # ---------------------------------------------------------------------------
 
 
-@router.message(Command("work", "shift"))
+@router.message(
+    Command("work", "shift")
+    | (F.text.func(lambda t: bool(t and t.strip().lower() in WORK_WORDS)))
+)
 async def cmd_work(message: Message) -> None:
     user = message.from_user
     if user is None:
@@ -91,8 +112,11 @@ async def cmd_work(message: Message) -> None:
 # ---------------------------------------------------------------------------
 
 
-@router.message(Command("heist", "rob"))
-async def cmd_heist(message: Message, command: CommandObject) -> None:
+@router.message(
+    Command("heist", "rob")
+    | (F.text.func(lambda t: bool(t and t.strip().lower().startswith(("سرقت", "دزدی", "heist")))))
+)
+async def cmd_heist(message: Message, command: CommandObject | None = None) -> None:
     user = message.from_user
     if user is None:
         return
@@ -100,13 +124,12 @@ async def cmd_heist(message: Message, command: CommandObject) -> None:
         economy.require_ready(user.id, "heist", settings.cooldown_heist)
         player = await hydrate(user.id, user.full_name, user.username)
 
-        args = (command.args or "").split()
+        args = _extract_args(message, command)
         if not args or not args[0].isdigit():
             raise GameError(
-                f"usage: /heist <stake> — "
-                f"{settings.heist_stake_min:,}-"
-                f"{settings.heist_stake_max:,} credits "
-                f"(success odds improve with DRIP)"
+                f"نحوه استفاده: <code>سرقت [مبلغ]</code> یا <code>/heist [مبلغ]</code>\n"
+                f"حداقل {settings.heist_stake_min:,} و حداکثر {settings.heist_stake_max:,} سکه.\n"
+                f"استایل (DRIP) شانس موفقیت را افزایش می‌دهد!"
             )
         stake = int(args[0])
         result = await economy.do_heist(player.user_id, stake, player.drip)
@@ -120,17 +143,23 @@ async def cmd_heist(message: Message, command: CommandObject) -> None:
 # ---------------------------------------------------------------------------
 
 
-@router.message(Command("dice"))
-async def cmd_dice(message: Message, command: CommandObject) -> None:
+@router.message(
+    Command("dice")
+    | (F.text.func(lambda t: bool(t and t.strip().lower().startswith(("تاس", "dice")))))
+)
+async def cmd_dice(message: Message, command: CommandObject | None = None) -> None:
     await _casino_command(message, command, game="dice")
 
 
-@router.message(Command("coinflip", "flip"))
-async def cmd_coinflip(message: Message, command: CommandObject) -> None:
+@router.message(
+    Command("coinflip", "flip")
+    | (F.text.func(lambda t: bool(t and t.strip().lower().startswith(("سکه", "شیرخط", "شیر یا خط", "coinflip")))))
+)
+async def cmd_coinflip(message: Message, command: CommandObject | None = None) -> None:
     await _casino_command(message, command, game="coinflip")
 
 
-async def _casino_command(message: Message, command: CommandObject, game: str) -> None:
+async def _casino_command(message: Message, command: CommandObject | None, game: str) -> None:
     user = message.from_user
     if user is None:
         return
@@ -138,24 +167,28 @@ async def _casino_command(message: Message, command: CommandObject, game: str) -
         economy.require_ready(user.id, "casino", settings.cooldown_casino)
         player = await hydrate(user.id, user.full_name, user.username)
 
-        args = (command.args or "").split()
+        args = _extract_args(message, command)
         if game == "dice":
-            if len(args) < 2 or not args[0].isdigit() or args[1] not in ("high", "low"):
+            pick_raw = args[1].lower() if len(args) > 1 else ""
+            pick = "high" if pick_raw in ("high", "بالا", "بزرگ") else ("low" if pick_raw in ("low", "پایین", "کوچک") else pick_raw)
+            if len(args) < 2 or not args[0].isdigit() or pick not in ("high", "low"):
                 raise GameError(
-                    f"usage: /dice <bet> <high|low> — "
-                    f"high = 8+, low = 6- (7 loses both ways). "
-                    f"Bet {settings.casino_min_bet:,}-{settings.casino_max_bet:,}."
+                    f"نحوه استفاده: <code>تاس [شرط] بالا|پایین</code> یا <code>/dice [bet] high|low</code>\n"
+                    f"بالا (۸ به بالا) · پایین (۶ به پایین) — مجموع ۷ همیشه بازنده است.\n"
+                    f"مبلغ شرط: {settings.casino_min_bet:,} تا {settings.casino_max_bet:,} سکه."
                 )
             bet = economy.validate_bet(int(args[0]))
-            result = await economy.casino_dice(player.user_id, bet, args[1])
+            result = await economy.casino_dice(player.user_id, bet, pick)
         else:
-            if len(args) < 2 or not args[0].isdigit() or args[1] not in ("heads", "tails"):
+            pick_raw = args[1].lower() if len(args) > 1 else ""
+            pick = "heads" if pick_raw in ("heads", "شیر") else ("tails" if pick_raw in ("tails", "خط") else pick_raw)
+            if len(args) < 2 or not args[0].isdigit() or pick not in ("heads", "tails"):
                 raise GameError(
-                    f"usage: /coinflip <bet> <heads|tails> — "
-                    f"Bet {settings.casino_min_bet:,}-{settings.casino_max_bet:,}."
+                    f"نحوه استفاده: <code>سکه [شرط] شیر|خط</code> یا <code>/coinflip [bet] heads|tails</code>\n"
+                    f"مبلغ شرط: {settings.casino_min_bet:,} تا {settings.casino_max_bet:,} سکه."
                 )
             bet = economy.validate_bet(int(args[0]))
-            result = await economy.casino_coinflip(player.user_id, bet, args[1])
+            result = await economy.casino_coinflip(player.user_id, bet, pick)
 
         await message.reply(_activity_card(result))
     except Exception as exc:  # noqa: BLE001
@@ -167,7 +200,10 @@ async def _casino_command(message: Message, command: CommandObject, game: str) -
 # ---------------------------------------------------------------------------
 
 
-@router.message(Command("balance", "bal", "wallet", "money"))
+@router.message(
+    Command("balance", "bal", "wallet", "money")
+    | (F.text.func(lambda t: bool(t and t.strip().lower() in BAL_WORDS)))
+)
 async def cmd_balance(message: Message) -> None:
     user = message.from_user
     if user is None:
@@ -177,16 +213,19 @@ async def cmd_balance(message: Message) -> None:
         credits, shards = await economy.balances(player.user_id)
         discount = economy.drip_discount(player.drip)
         await message.reply(
-            f"💰 <b>{esc(player.display_tag)}</b>\n"
-            f"Credits: <b>{credits:,}</b>\n"
-            f"Soul shards: <b>{shards}</b>\n"
-            f"Shop discount from DRIP: <b>{discount:.0%}</b>"
+            f"💰 <b>کیف پول {esc(player.display_tag)}</b>\n"
+            f"سکه: <b>{credits:,}</b>\n"
+            f"شارد روح: <b>{shards}</b> 💎\n"
+            f"تخفیف استایل در فروشگاه: <b>{discount:.0%}</b>"
         )
     except Exception as exc:  # noqa: BLE001
         await answer_error(exc, message=message)
 
 
-@router.message(Command("stats", "level"))
+@router.message(
+    Command("stats", "level")
+    | (F.text.func(lambda t: bool(t and t.strip().lower() in STATS_WORDS)))
+)
 async def cmd_stats(message: Message) -> None:
     user = message.from_user
     if user is None:
@@ -195,12 +234,12 @@ async def cmd_stats(message: Message) -> None:
         player = await hydrate(user.id, user.full_name, user.username)
         stats = player.stats
         await message.reply(
-            f"📊 <b>{esc(player.display_tag)}</b> — Level {player.level}\n"
+            f"📊 <b>مشخصات {esc(player.display_tag)}</b> — لول <b>{player.level}</b>\n"
             f"⚡ {energy_bar(player.energy, stats.max_energy)} "
             f"{player.energy}/{stats.max_energy} "
-            f"(+{settings.energy_regen_per_minute:g}/min)\n"
-            f"⚔️ ATK {player.atk} · 🛡 DEF {player.defense} · 💎 DRIP {player.drip}\n"
-            f"✨ {player.exp}/{exp_to_next(player.level)} EXP to next level"
+            f"(+{settings.energy_regen_per_minute:g}/دقیقه)\n"
+            f"⚔️ قدرت: <b>{player.atk}</b> · 🛡 دفاع: <b>{player.defense}</b> · 💎 استایل: <b>{player.drip}</b>\n"
+            f"✨ پیشرفت: <b>{player.exp}/{exp_to_next(player.level)}</b> EXP تا لول بعدی"
         )
     except Exception as exc:  # noqa: BLE001
         await answer_error(exc, message=message)
@@ -249,35 +288,123 @@ def _help_markup() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(text="🎴 My card", callback_data="act:me"),
-                InlineKeyboardButton(text="🏪 Shop", callback_data="shop:0"),
+                InlineKeyboardButton(text="🎴 کارت من", callback_data="act:me"),
+                InlineKeyboardButton(text="🏪 فروشگاه", callback_data="shop:0"),
             ],
             [
-                InlineKeyboardButton(text="📅 Daily", callback_data="act:daily"),
-                InlineKeyboardButton(text="💼 Work", callback_data="act:work"),
+                InlineKeyboardButton(text="💼 کار کردن", callback_data="act:work"),
+                InlineKeyboardButton(text="📅 جایزه روزانه", callback_data="act:daily"),
+            ],
+            [
+                InlineKeyboardButton(text="📜 لیست تمام دستورات", callback_data="help:cmds"),
+                InlineKeyboardButton(text="⚔️ راهنمای مبارزات", callback_data="help:combat"),
             ],
         ]
     )
 
 
-@router.message(Command("help", "start"))
+_HELP_MAIN_TEXT = (
+    "🎮 <b>به دنیای بازی شهری فانتزی (Urban Fantasy RPG) خوش اومدی!</b>\n\n"
+    "توی این بازی می‌تونی کاراکتر خودت رو بسازی، کار کنی، لول‌آپ بشی، تجهیزات و لباس‌های خفن بخری، "
+    "توی چت با بقیه اعضا دوئل کنی و به باس‌های غول‌پیکر گروهی حمله کنی!\n\n"
+    "⚡ <b>انرژی:</b> منبع اصلی فعالیت‌ها و مبارزات که در طول زمان بازسازی میشه.\n"
+    "⚔️ <b>قدرت (ATK):</b> افزایش دمیج شما توی دوئل‌ها و باس‌ها.\n"
+    "🛡 <b>دفاع (DEF):</b> کاهش آسیب دریافتی از حریف.\n"
+    "💎 <b>استایل (DRIP):</b> جذابیت ظاهری! شانس موفقیت سرقت رو می‌بره بالا و توی فروشگاه تخفیف میده.\n\n"
+    "👇 از دکمه‌های زیر برای دسترسی سریع یا مشاهده لیست دستورات استفاده کن:"
+)
+
+
+_HELP_CMDS_TEXT = (
+    "📜 <b>لیست تمام دستورات بازی (متنی ساده و اسلش)</b>\n\n"
+    "👤 <b>کاراکتر و مشخصات:</b>\n"
+    "• <code>پروفایل</code> یا <code>کارت</code> یا <code>/me</code> — نمایش کارت گرافیکی\n"
+    "• <code>کوله</code> یا <code>کیف</code> یا <code>/inventory</code> — مشاهده و مدیریت تجهیزات\n"
+    "• <code>آمار</code> یا <code>/stats</code> — اطلاعات ارقام و لول\n"
+    "• <code>موجودی</code> یا <code>/balance</code> — سکه‌ها و شاردهای روح\n\n"
+    "💰 <b>اقتصاد و درآمد:</b>\n"
+    "• <code>کار</code> یا <code>/work</code> — شیفت کاری و دریافت سکه\n"
+    "• <code>روزانه</code> یا <code>/daily</code> — دریافت حقوق و جایزه ۲۴ ساعته\n"
+    "• <code>سرقت [مبلغ]</code> یا <code>/heist [مبلغ]</code> — سرقت خیابانی پرریسک\n"
+    "• <code>فروشگاه</code> یا <code>شاپ</code> یا <code>/shop</code> — بوتیک روزانه\n\n"
+    "🎲 <b>کازینو و شانس:</b>\n"
+    "• <code>تاس [شرط] بالا|پایین</code> یا <code>/dice [bet] high|low</code>\n"
+    "• <code>سکه [شرط] شیر|خط</code> یا <code>/coinflip [bet] heads|tails</code>\n\n"
+    "⚔️ <b>مبارزات:</b>\n"
+    "• <code>دوئل [مبلغ]</code> (در ریپلای به پیام دیگران) — چالش مبارزه\n"
+    "• <code>باس</code> یا <code>حمله</code> یا <code>/boss</code> — باس فعال گروه"
+)
+
+
+_HELP_COMBAT_TEXT = (
+    "⚔️ <b>راهنمای مبارزات، دوئل و باس‌های گروهی</b>\n\n"
+    "🔥 <b>دوئل خیابانی:</b>\n"
+    "روی پیام هر کاربری در گروه ریپلای بزن و بنویس:\n"
+    "<code>دوئل 100</code>\n"
+    "مبلغ شرط بلافاصله امانت نگه داشته میشه و حریف ۱۰ دقیقه وقت داره قبول یا رد کنه. "
+    "مبارزه در راندهای مهیج بر اساس قدرت و دفاع و تاس محاسبه میشه و کل پات به برنده می‌رسه!\n\n"
+    "🚨 <b>باس‌های گروهی (Raids):</b>\n"
+    "با چت کردن و فعالیت اعضای گروه، غول‌های خیابانی ظاهر میشن! "
+    "هر ضربه مقداری انرژی مصرف می‌کنه و به باس آسیب می‌زنه. وقتی باس از پا دربیاد، "
+    "سکه و شارد روح بر اساس درصد دمیج بین همه ضربه‌زننده‌ها تقسیم میشه!"
+)
+
+
+@router.message(
+    Command("help", "start")
+    | (F.text.func(lambda t: bool(t and t.strip().lower() in HELP_WORDS)))
+)
 async def cmd_help(message: Message) -> None:
-    await message.reply(
-        "<b>URBAN FANTASY RPG</b> — group street-crawler bot\n\n"
-        "<b>Character</b>\n"
-        "• /me — render your character card\n"
-        "• /inventory — gear up (updates the card)\n"
-        "• /stats — raw numbers without the art\n\n"
-        "<b>Combat</b>\n"
-        "• /duel [stake] — reply to someone to challenge them\n"
-        "• /boss — view the active group raid\n"
-        "• Raids spawn every "
-        f"{settings.raid_spawn_min_messages}-{settings.raid_spawn_max_messages} "
-        "group messages\n\n"
-        "<b>Economy</b>\n"
-        "• /balance · /daily · /work · /heist <stake>\n"
-        "• /dice &lt;bet&gt; &lt;high|low&gt; · /coinflip &lt;bet&gt; &lt;heads|tails&gt;\n"
-        "• /shop — daily rotating boutique\n\n"
-        "⚡ Energy regenerates over time; 💎 DRIP boosts luck and discounts.",
-        reply_markup=_help_markup(),
-    )
+    await message.reply(_HELP_MAIN_TEXT, reply_markup=_help_markup())
+
+
+@router.callback_query(F.data.in_(("act:help", "help:main")))
+async def cb_help_main(call: CallbackQuery) -> None:
+    await call.answer()
+    message = call.message
+    if isinstance(message, Message):
+        try:
+            if message.photo:
+                await message.edit_caption(caption=_HELP_MAIN_TEXT, reply_markup=_help_markup())
+            else:
+                await message.edit_text(_HELP_MAIN_TEXT, reply_markup=_help_markup())
+        except Exception:
+            await message.answer(_HELP_MAIN_TEXT, reply_markup=_help_markup())
+
+
+@router.callback_query(F.data == "help:cmds")
+async def cb_help_cmds(call: CallbackQuery) -> None:
+    await call.answer()
+    message = call.message
+    if isinstance(message, Message):
+        back_markup = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="🔙 بازگشت به راهنما", callback_data="help:main")]
+            ]
+        )
+        try:
+            if message.photo:
+                await message.edit_caption(caption=_HELP_CMDS_TEXT, reply_markup=back_markup)
+            else:
+                await message.edit_text(_HELP_CMDS_TEXT, reply_markup=back_markup)
+        except Exception:
+            await message.answer(_HELP_CMDS_TEXT, reply_markup=back_markup)
+
+
+@router.callback_query(F.data == "help:combat")
+async def cb_help_combat(call: CallbackQuery) -> None:
+    await call.answer()
+    message = call.message
+    if isinstance(message, Message):
+        back_markup = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="🔙 بازگشت به راهنما", callback_data="help:main")]
+            ]
+        )
+        try:
+            if message.photo:
+                await message.edit_caption(caption=_HELP_COMBAT_TEXT, reply_markup=back_markup)
+            else:
+                await message.edit_text(_HELP_COMBAT_TEXT, reply_markup=back_markup)
+        except Exception:
+            await message.answer(_HELP_COMBAT_TEXT, reply_markup=back_markup)

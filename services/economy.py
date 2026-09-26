@@ -231,8 +231,8 @@ async def claim_daily(user_id: int, drip: int) -> ActivityResult:
             hours, minutes = divmod(remaining // 60, 60)
             return ActivityResult(
                 False,
-                "Already claimed",
-                f"Next drop in {hours}h {minutes:02d}m.",
+                "قبلاً دریافت شده",
+                f"جایزه بعدی تا {hours} ساعت و {minutes:02d} دقیقه دیگر.",
             )
         await conn.execute(
             "UPDATE players SET last_daily = ? WHERE user_id = ?", (current, user_id)
@@ -248,8 +248,8 @@ async def claim_daily(user_id: int, drip: int) -> ActivityResult:
 
     return ActivityResult(
         True,
-        "Daily drop secured",
-        f"+{credits} credits, +{shards} soul shards.",
+        "حقوق روزانه دریافت شد! 🎁",
+        f"+{credits:,} سکه و +{shards} شارد روح به حسابت اضافه شد.",
         credits_delta=credits,
         shards_delta=shards,
         exp_gained=settings.daily_exp,
@@ -278,9 +278,8 @@ async def do_work(user_id: int, level: int, drip: int) -> ActivityResult:
 
     return ActivityResult(
         True,
-        "Shift done",
-        f"Corner shift paid {payout} credits "
-        f"(-{settings.work_energy_cost} energy).",
+        "شیفت کاری انجام شد! 💼",
+        f"بابت کار در شهر {payout:,} سکه بدست آوردی (-{settings.work_energy_cost}⚡ انرژی).",
         credits_delta=payout,
         exp_gained=settings.work_exp,
     )
@@ -304,8 +303,8 @@ async def do_heist(user_id: int, stake: int, drip: int) -> ActivityResult:
 
     if not settings.heist_stake_min <= stake <= settings.heist_stake_max:
         raise GameError(
-            f"stake must be {settings.heist_stake_min}-"
-            f"{settings.heist_stake_max} credits"
+            f"مبلغ سرقت باید بین {settings.heist_stake_min:,} تا "
+            f"{settings.heist_stake_max:,} سکه باشد."
         )
 
     chance = heist_success_chance(drip, stake)
@@ -333,9 +332,8 @@ async def do_heist(user_id: int, stake: int, drip: int) -> ActivityResult:
             await grant_exp_conn(conn, user_id, settings.work_exp + 5)
             return ActivityResult(
                 True,
-                "Score!",
-                f"You cleared {payout} credits "
-                f"(stake {stake}, net +{payout - stake}).",
+                "سرقت موفقیت‌آمیز! 🥷",
+                f"مبلغ {payout:,} سکه زدی به جیب! (سود خالص: +{payout - stake:,})",
                 credits_delta=payout - stake,
                 exp_gained=settings.work_exp + 5,
             )
@@ -356,14 +354,14 @@ async def do_heist(user_id: int, stake: int, drip: int) -> ActivityResult:
                 ref="heist:arrest",
             )
             detail = (
-                f"They caught you on the way out. Stake {stake} gone, "
-                f"-{settings.heist_arrest_energy_cost} energy overnight in holding."
+                f"موقع خروج گیر افتادی! مبلغ {stake:,} سکه پرید و "
+                f"{settings.heist_arrest_energy_cost}⚡ انرژی بابت بازداشتگاه کم شد."
             )
         else:
-            detail = f"The mark noticed you. Stake {stake} lost, but you walked."
+            detail = f"طرف متوجه شد! مبلغ {stake:,} سکه از دست رفت اما جان سالم به در بردی."
 
     return ActivityResult(
-        False, "Busted" if arrested else "Blank", detail, credits_delta=-stake
+        False, "دستگیر شدی! 🚨" if arrested else "سرقت ناموفق! 🏃‍♂️", detail, credits_delta=-stake
     )
 
 
@@ -379,13 +377,9 @@ def _payout(bet: int, edge: float, win_probability: float) -> int:
 
 
 async def casino_dice(user_id: int, bet: int, pick: str) -> ActivityResult:
-    """2d6 high/low: high = 8+ (15/36), low = 6- (15/36); a 7 loses either way.
-
-    Payout multiplier is derived from ``dice_house_edge`` so EV is exactly
-    ``-edge * bet`` regardless of the threshold.
-    """
+    """2d6 high/low: high = 8+ (15/36), low = 6- (15/36); a 7 loses either way."""
     if pick not in ("high", "low"):
-        raise GameError("pick must be high or low")
+        raise GameError("انتخاب باید بالا (high) یا پایین (low) باشد.")
     die1 = secrets.randbelow(6) + 1
     die2 = secrets.randbelow(6) + 1
     total = die1 + die2
@@ -407,23 +401,24 @@ async def casino_dice(user_id: int, bet: int, pick: str) -> ActivityResult:
             )
             return ActivityResult(
                 True,
-                f"🎲 {die1} + {die2} = {total} — you win!",
-                f"Paid {payout} on a {bet} bet.",
+                f"🎲 {die1} + {die2} = {total} — برنده شدی!",
+                f"مبلغ {payout:,} سکه دریافت کردی (شرط: {bet:,}).",
                 credits_delta=payout - bet,
             )
         return ActivityResult(
             False,
-            f"🎲 {die1} + {die2} = {total} — house takes it.",
-            f"-{bet} credits.",
+            f"🎲 {die1} + {die2} = {total} — باختی!",
+            f"مبلغ {bet:,} سکه به کازینو واگذار شد.",
             credits_delta=-bet,
         )
 
 
 async def casino_coinflip(user_id: int, bet: int, pick: str) -> ActivityResult:
     if pick not in ("heads", "tails"):
-        raise GameError("pick must be heads or tails")
+        raise GameError("انتخاب باید شیر (heads) یا خط (tails) باشد.")
     landed = "heads" if secrets.randbelow(2) == 0 else "tails"
     won = landed == pick
+    landed_fa = "شیر 🦁" if landed == "heads" else "خط 📜"
 
     async with db.write() as conn:
         await mutate(
@@ -444,14 +439,14 @@ async def casino_coinflip(user_id: int, bet: int, pick: str) -> ActivityResult:
             )
             return ActivityResult(
                 True,
-                f"🪙 {landed} — you win!",
-                f"Paid {payout} on a {bet} bet.",
+                f"🪙 سکه {landed_fa} آمد — برنده شدی!",
+                f"مبلغ {payout:,} سکه بردی (شرط: {bet:,}).",
                 credits_delta=payout - bet,
             )
         return ActivityResult(
             False,
-            f"🪙 {landed} — house takes it.",
-            f"-{bet} credits.",
+            f"🪙 سکه {landed_fa} آمد — باختی!",
+            f"مبلغ {bet:,} سکه از دست رفت.",
             credits_delta=-bet,
         )
 

@@ -184,10 +184,10 @@ async def test_inventory_button_works_from_photo_card(player) -> None:
 
     assert call.alerts == [], f"callback errored: {call.alerts}"
     assert card.sent == [], "must edit in place, not spam a new message"
-    assert "Inventory" in (card.caption or ""), (
+    assert "Inventory" in (card.caption or "") or "کوله‌پشتی" in (card.caption or ""), (
         f"caption was not updated: {card.caption!r}"
     )
-    assert _has_button(card.reply_markup, "Back to card")
+    assert _has_button(card.reply_markup, "Back to card") or _has_button(card.reply_markup, "کارت من")
 
 
 async def test_shop_button_works_from_photo_card(player) -> None:
@@ -198,10 +198,10 @@ async def test_shop_button_works_from_photo_card(player) -> None:
 
     assert call.alerts == [], f"callback errored: {call.alerts}"
     assert card.sent == []
-    assert "Boutique" in (card.caption or ""), (
+    assert "Boutique" in (card.caption or "") or "بوتیک" in (card.caption or ""), (
         f"caption was not updated: {card.caption!r}"
     )
-    assert _has_button(card.reply_markup, "Back to card")
+    assert _has_button(card.reply_markup, "Back to card") or _has_button(card.reply_markup, "کارت من")
 
 
 async def test_inventory_pagination_stays_on_caption(player) -> None:
@@ -210,7 +210,7 @@ async def test_inventory_pagination_stays_on_caption(player) -> None:
     call = FakeCall("inv:0", card)
     await profile.cb_inventory(call)
     assert call.alerts == []
-    assert "Inventory" in (card.caption or "")
+    assert "Inventory" in (card.caption or "") or "کوله‌پشتی" in (card.caption or "")
 
 
 # --------------------------------------------------------------------------
@@ -230,7 +230,7 @@ async def test_back_to_card_from_inventory_restores_photo(player) -> None:
     assert call.alerts == [], f"callback errored: {call.alerts}"
     assert card.photo is not None, "the card must come back as a photo"
     assert card.text is None
-    assert _has_button(card.reply_markup, "Inventory")
+    assert _has_button(card.reply_markup, "Inventory") or _has_button(card.reply_markup, "کوله‌پشتی")
 
 
 async def test_back_to_card_from_photo_panel_keeps_photo(player) -> None:
@@ -261,7 +261,7 @@ async def test_equip_refreshes_markup_without_touching_caption(player) -> None:
 
     assert call.alerts == [], f"equip errored: {call.alerts}"
     assert card.caption == before, "equip must not rewrite the caption"
-    assert _has_button(card.reply_markup, "Back to card")
+    assert _has_button(card.reply_markup, "Back to card") or _has_button(card.reply_markup, "کارت من")
 
 
 # --------------------------------------------------------------------------
@@ -289,16 +289,16 @@ async def test_duel_decline_on_photo_message_does_not_crash(player) -> None:
     await duels.cb_decline(call)
 
     assert call.alerts == [], f"decline errored: {call.alerts}"
-    assert "Duel" in (card.caption or "") or card.sent
+    assert "Duel" in (card.caption or "") or "دوئل" in (card.caption or "") or card.sent
 
 
 async def test_profile_markup_contains_all_four_buttons(player) -> None:
     markup = await profile._profile_markup(player)
     labels = [b.text for row in markup.inline_keyboard for b in row]
-    assert any("Inventory" in x for x in labels)
-    assert any("Shop" in x for x in labels)
-    assert any("Work" in x for x in labels)
-    assert any("Balance" in x for x in labels)
+    assert any("Inventory" in x or "کوله‌پشتی" in x for x in labels)
+    assert any("Shop" in x or "فروشگاه" in x for x in labels)
+    assert any("Work" in x or "کار" in x for x in labels)
+    assert any("Balance" in x or "موجودی" in x for x in labels)
 
 
 def test_card_is_posted_as_photo_not_text() -> None:  # noqa: D401

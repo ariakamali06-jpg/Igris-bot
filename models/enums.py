@@ -112,12 +112,12 @@ class ActivityKind(StrEnum):
 
 
 _SLOT_LABELS: dict[Slot, str] = {
-    Slot.HEAD: "Head",
-    Slot.BODY: "Body",
-    Slot.LEGS: "Legs",
-    Slot.WEAPON: "Weapon",
-    Slot.ACCESSORY: "Accessory",
-    Slot.AURA: "Aura",
+    Slot.HEAD: "سر / کلاه",
+    Slot.BODY: "تن‌پوش",
+    Slot.LEGS: "شلوار / کفش",
+    Slot.WEAPON: "سلاح",
+    Slot.ACCESSORY: "اکسسوری",
+    Slot.AURA: "هاله قدرت",
 }
 
 _SLOT_EMOJI: dict[Slot, str] = {
@@ -130,10 +130,10 @@ _SLOT_EMOJI: dict[Slot, str] = {
 }
 
 _RARITY_LABELS: dict[Rarity, str] = {
-    Rarity.COMMON: "Common",
-    Rarity.RARE: "Rare",
-    Rarity.EPIC: "Epic",
-    Rarity.LEGENDARY: "Legendary",
+    Rarity.COMMON: "معمولی",
+    Rarity.RARE: "کمیاب",
+    Rarity.EPIC: "حماسی",
+    Rarity.LEGENDARY: "افسانه‌ای",
 }
 
 _RARITY_COLORS: dict[Rarity, tuple[int, int, int]] = {

@@ -31,7 +31,43 @@ from services.assetgen import ensure_assets
 from services.compositor import compositor, load_library
 from services.economy import clear_cooldowns
 
+import os
+
 logger = logging.getLogger("main")
+
+
+async def _start_health_server() -> asyncio.Server | None:
+    """Tiny HTTP server so Railway / Cloud deployment health checks pass."""
+    port_str = os.environ.get("PORT")
+    if not port_str:
+        return None
+    try:
+        port = int(port_str)
+    except ValueError:
+        return None
+
+    async def _handle_http(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        try:
+            await reader.read(1024)
+            resp = b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 2\r\nConnection: close\r\n\r\nOK"
+            writer.write(resp)
+            await writer.drain()
+        except Exception:
+            pass
+        finally:
+            try:
+                writer.close()
+                await writer.wait_closed()
+            except Exception:
+                pass
+
+    try:
+        server = await asyncio.start_server(_handle_http, "0.0.0.0", port)
+        logger.info("Health check server listening on 0.0.0.0:%d", port)
+        return server
+    except Exception as exc:
+        logger.warning("Could not start health check server on port %d: %s", port, exc)
+        return None
 
 
 async def on_startup(bot: Bot) -> None:
@@ -96,6 +132,7 @@ async def run() -> None:
     # the event is a Message with .chat/.from_user already resolved.)
     dp.message.outer_middleware(GroupActivityMiddleware())
 
+    health_server = await _start_health_server()
     try:
         await on_startup(bot)
         await dp.start_polling(
@@ -104,6 +141,9 @@ async def run() -> None:
             handle_signals=False,
         )
     finally:
+        if health_server is not None:
+            health_server.close()
+            await health_server.wait_closed()
         await on_shutdown()
         await bot.session.close()
 

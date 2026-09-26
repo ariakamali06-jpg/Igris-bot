@@ -31,6 +31,9 @@ router = Router(name="shop")
 _PAGE_SIZE = 5
 
 
+SHOP_COMMANDS = {"شاپ", "فروشگاه", "خرید", "بازار", "shop", "store", "market"}
+
+
 async def _shop_page(player: Player, page: int) -> tuple[str, InlineKeyboardMarkup]:
     stock = await shop.today_stock()
     pages = max(1, (len(stock) + _PAGE_SIZE - 1) // _PAGE_SIZE)
@@ -44,9 +47,9 @@ async def _shop_page(player: Player, page: int) -> tuple[str, InlineKeyboardMark
     discount = int(economy.drip_discount(player.drip) * 100)
 
     lines = [
-        "🏪 <b>Boutique</b> — rotating stock, resets 00:00 UTC",
-        f"💰 {credits:,}cr · 💎 {shards}◆"
-        + (f" · ✂️ DRIP −{discount}% off" if discount else ""),
+        "🏪 <b>بوتیک خیابانی</b> — ویترین روزانه (تغییر هر ۲۴ ساعت)",
+        f"💰 <b>{credits:,}</b> سکه · 💎 <b>{shards}</b> شارد روح"
+        + (f" · ✂️ تخفیف جذابیت: <b>{discount}%</b>" if discount else ""),
         "",
     ]
     buttons: list[list[InlineKeyboardButton]] = []
@@ -56,18 +59,18 @@ async def _shop_page(player: Player, page: int) -> tuple[str, InlineKeyboardMark
             buttons.append(
                 [
                     InlineKeyboardButton(
-                        text=f"✅ {item.name} (owned)",
+                        text=f"✅ {item.name} (داریش)",
                         callback_data=f"shop:own:{item.id}",
                     )
                 ]
             )
         else:
             price, shard_price = await shop.price_for(item.id, player.drip)
-            label = "FREE"
+            label = "رایگان"
             if price:
-                label = f"{price:,}cr"
+                label = f"{price:,} سکه"
             if shard_price:
-                label += f" +{shard_price}◆"
+                label += f" + {shard_price} شارد"
             buttons.append(
                 [
                     InlineKeyboardButton(
@@ -88,7 +91,7 @@ async def _shop_page(player: Player, page: int) -> tuple[str, InlineKeyboardMark
     if nav:
         buttons.append(nav)
     buttons.append(
-        [InlineKeyboardButton(text="🏠 Back to card", callback_data="act:me")]
+        [InlineKeyboardButton(text="🏠 کارت من", callback_data="act:me")]
     )
     return "\n".join(lines), InlineKeyboardMarkup(inline_keyboard=buttons)
 
@@ -102,7 +105,10 @@ async def _owned_ids(user_id: int) -> list[str]:
     return [row["item_id"] for row in rows]
 
 
-@router.message(Command("shop", "store", "market"))
+@router.message(
+    Command("shop", "store", "market")
+    | (F.text.func(lambda t: bool(t and t.strip().lower() in SHOP_COMMANDS)))
+)
 async def cmd_shop(message: Message) -> None:
     user = message.from_user
     if user is None:
@@ -129,7 +135,7 @@ async def cb_shop(call: CallbackQuery) -> None:
             return
 
         if action == "own":
-            await call.answer("Already in your closet.", show_alert=True)
+            await call.answer("این آیتم رو قبلاً خریدی!", show_alert=True)
             return
 
         if action == "buy":
@@ -141,8 +147,8 @@ async def cb_shop(call: CallbackQuery) -> None:
                 player.user_id, item_id, player.drip
             )
             await call.answer(
-                f"Purchased! −{credits_paid:,}cr"
-                + (f" −{shards_paid}◆" if shards_paid else ""),
+                f"خریداری شد! ✅ −{credits_paid:,} سکه"
+                + (f" −{shards_paid} شارد" if shards_paid else ""),
                 show_alert=True,
             )
             # Re-render the page so the bought row flips to "owned".
@@ -164,6 +170,6 @@ async def cb_shop(call: CallbackQuery) -> None:
             editable_message(call), text=text, reply_markup=markup
         )
     except AlreadyOwned:
-        await call.answer("Already yours.", show_alert=True)
+        await call.answer("این آیتم رو قبلاً گرفتی!", show_alert=True)
     except Exception as exc:  # noqa: BLE001
         await answer_error(exc, callback=call)

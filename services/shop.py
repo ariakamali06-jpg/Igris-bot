@@ -175,20 +175,20 @@ def format_item_line(row: sqlite3.Row | ItemDef, drip: int = 0) -> str:
     stats = " ".join(
         part
         for part in (
-            f"ATK+{atk}" if atk else "",
-            f"DEF+{defense}" if defense else "",
-            f"DRIP+{drip_stats}" if drip_stats else "",
+            f"قدرت+{atk}" if atk else "",
+            f"دفاع+{defense}" if defense else "",
+            f"استایل+{drip_stats}" if drip_stats else "",
         )
         if part
-    ) or "cosmetic"
+    ) or "تزئینی"
 
     paid = economy.discounted_price(price_credits, drip)
     price_bits: list[str] = []
     if price_credits:
-        price_bits.append(f"{paid:,}cr" + (" ✂️" if paid < price_credits else ""))
+        price_bits.append(f"{paid:,} سکه" + (" ✂️" if paid < price_credits else ""))
     if price_shards:
-        price_bits.append(f"{price_shards}◆")
-    price = " · ".join(price_bits) if price_bits else "free"
+        price_bits.append(f"{price_shards} شارد")
+    price = " · ".join(price_bits) if price_bits else "رایگان"
 
     return f"{rarity_badge(rarity)} <b>{name}</b> — {stats} · {price}"
 

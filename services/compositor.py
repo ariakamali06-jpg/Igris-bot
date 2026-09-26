@@ -60,9 +60,12 @@ STEEL: RGBA = (132, 140, 156, 255)
 
 _STAT_ACCENT: dict[str, RGBA] = {"ATK": MAGENTA, "DEF": CYAN, "DRIP": AMBER}
 
+_ASSETS_FONT = str(Path(__file__).resolve().parent.parent / "assets" / "fonts" / "font.ttf")
+
 # Candidate font faces, most preferred first. A sensible default is always
 # available because ``ImageFont.load_default`` needs no files at all.
 _FONT_CANDIDATES = (
+    _ASSETS_FONT,
     "C:/Windows/Fonts/seguisb.ttf",
     "C:/Windows/Fonts/segoeuib.ttf",
     "C:/Windows/Fonts/arialbd.ttf",

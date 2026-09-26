@@ -80,29 +80,49 @@ async def _resolve_target(message: Message, token: str) -> Player | None:
     return None
 
 
-@router.message(Command("duel"))
-async def cmd_duel(message: Message, command: CommandObject) -> None:
+def _parse_stake_text(text: str) -> tuple[int | None, str]:
+    """Split duel args or raw text into (stake, target token)."""
+    parts = text.split()
+    # Strip the command itself if present
+    if parts and parts[0].lower().startswith(("/", "دوئل", "مبارزه", "چالش", "duel")):
+        parts = parts[1:]
+    stake: int | None = None
+    rest: list[str] = []
+    for part in parts:
+        if stake is None and part.isdigit():
+            stake = int(part)
+        else:
+            rest.append(part)
+    return stake, " ".join(rest)
+
+
+@router.message(
+    Command("duel")
+    | (F.text.func(lambda t: bool(t and t.strip().lower().startswith(("دوئل", "مبارزه", "چالش", "duel")))))
+)
+async def cmd_duel(message: Message, command: CommandObject | None = None) -> None:
     user = message.from_user
     if user is None:
         return
     try:
-        stake_arg, token = _parse_stake(command.args or "")
+        raw_args = command.args if command and command.args else (message.text or "")
+        stake_arg, token = _parse_stake_text(raw_args)
         stake = stake_arg if stake_arg is not None else settings.duel_min_bet
         if not settings.duel_min_bet <= stake <= settings.duel_max_bet:
             raise GameError(
-                f"stake must be {settings.duel_min_bet:,}-{settings.duel_max_bet:,}"
+                f"مبلغ شرط باید بین {settings.duel_min_bet:,} تا {settings.duel_max_bet:,} سکه باشد."
             )
 
         challenger = await hydrate(user.id, user.full_name, user.username)
         opponent = await _resolve_target(message, token)
         if opponent is None:
             await message.reply(
-                "Usage: reply to someone with <code>/duel [stake]</code>, "
-                "or <code>/duel @username [stake]</code>."
+                "نحوه استفاده: روی پیام حریف ریپلای بزن و بنویس:\n"
+                "<code>دوئل [شرط]</code> یا <code>/duel @username [stake]</code>"
             )
             return
         if opponent.user_id == challenger.user_id:
-            raise GameError("you cannot duel yourself")
+            raise GameError("نمی‌تونی با خودت دوئل کنی!")
 
         economy.require_ready(user.id, "duel", settings.cooldown_duel)
 
@@ -134,21 +154,20 @@ async def cmd_duel(message: Message, command: CommandObject) -> None:
             inline_keyboard=[
                 [
                     InlineKeyboardButton(
-                        text=f"⚔️ Accept ({stake:,}cr)",
+                        text=f"⚔️ قبول مبارزه ({stake:,} سکه)",
                         callback_data=f"duel:accept:{duel_id}",
                     ),
                     InlineKeyboardButton(
-                        text="🚫 Decline",
+                        text="🚫 رد چالش",
                         callback_data=f"duel:decline:{duel_id}",
                     ),
                 ]
             ]
         )
         await message.reply(
-            f"⚔️ <b>{esc(challenger.display_tag)}</b> challenges "
-            f"<b>{esc(opponent.display_tag)}</b>!\n"
-            f"Stake: <b>{stake:,}</b> credits each · pot {stake * 2:,}\n"
-            f"{esc(opponent.display_tag)}, accept within {_DUEL_TTL_SECONDS // 60} min.",
+            f"⚔️ <b>{esc(challenger.display_tag)}</b>، <b>{esc(opponent.display_tag)}</b> را به مبارزه طلبید!\n"
+            f"💰 مبلغ شرط: <b>{stake:,}</b> سکه هر نفر · مجموع پات: <b>{stake * 2:,}</b>\n"
+            f"{esc(opponent.display_tag)}، تا {_DUEL_TTL_SECONDS // 60} دقیقه فرصت داری قبول کنی.",
             reply_markup=markup,
         )
     except Exception as exc:  # noqa: BLE001
@@ -276,17 +295,17 @@ async def cb_accept(call: CallbackQuery) -> None:
     try:
         duel = await _load_duel(duel_id)
         if duel is None:
-            await call.answer("That duel is gone.", show_alert=True)
+            await call.answer("این دوئل وجود ندارد یا پاک شده است.", show_alert=True)
             return
         if duel["status"] != "pending":
-            await call.answer(f"Already {duel['status']}.", show_alert=True)
+            await call.answer("این دوئل قبلاً خاتمه یافته است.", show_alert=True)
             return
         if _is_expired(duel):
             await _refund(duel, ActivityKind.DUEL_REFUND, "expired")
-            await call.answer("Challenge expired — stake refunded.", show_alert=True)
+            await call.answer("مهلت چالش تمام شد — شرط برگشت داده شد.", show_alert=True)
             return
         if duel["opponent_id"] != user.id:
-            await call.answer("Only the challenged player can accept.", show_alert=True)
+            await call.answer("فقط بازیکنی که به چالش دعوت شده می‌تواند قبول کند!", show_alert=True)
             return
 
         challenger = await hydrate(duel["challenger_id"], "Challenger", None)
@@ -320,7 +339,7 @@ async def cb_accept(call: CallbackQuery) -> None:
         await _settle(duel, winner_id, log)
         await _render_round(call, duel_id, log, edit=True)
     except _RaceLost:
-        await call.answer("Too late — already resolved.", show_alert=True)
+        await call.answer("خیلی دیر شد — دوئل قبلاً پاسخ داده شده است.", show_alert=True)
     except InsufficientFunds as exc:
         await answer_error(exc, callback=call)
         # Opponent can't cover the stake: void the challenge cleanly.
@@ -340,17 +359,17 @@ async def cb_decline(call: CallbackQuery) -> None:
     try:
         duel = await _load_duel(duel_id)
         if duel is None or duel["status"] != "pending":
-            await call.answer("Nothing to decline.", show_alert=True)
+            await call.answer("چیزی برای رد کردن وجود ندارد.", show_alert=True)
             return
         if duel["opponent_id"] != user.id and duel["challenger_id"] != user.id:
-            await call.answer("Not your duel.", show_alert=True)
+            await call.answer("این دوئل متعلق به شما نیست.", show_alert=True)
             return
         status = "declined" if duel["opponent_id"] == user.id else "cancelled"
         await _refund(duel, ActivityKind.DUEL_REFUND, status)
-        await call.answer("Challenge refused — stake returned.")
+        await call.answer("چالش رد شد — مبلغ شرط بازگردانده شد.")
         await render_panel(
             editable_message(call),
-            text=f"🚫 Duel #{duel_id} {status}. Stake refunded.",
+            text=f"🚫 دوئل #{duel_id} لغو شد. مبلغ شرط مسترد گردید.",
         )
     except Exception as exc:  # noqa: BLE001
         await answer_error(exc, callback=call)
@@ -364,7 +383,7 @@ async def cb_decline(call: CallbackQuery) -> None:
 def _render_log_body(log: dict, revealed: int) -> str:
     """Only the first ``revealed`` strike lines are visible so far."""
     lines = log["lines"][: max(0, revealed)]
-    return "\n".join(lines) if lines else "Steel is drawn…"
+    return "\n".join(lines) if lines else "تیغه‌ها از نیام کشیده می‌شوند…"
 
 
 async def _render_round(
@@ -375,22 +394,22 @@ async def _render_round(
     winner = log["winner"]
     names = log["names"]
 
-    title = f"⚔️ <b>Duel #{duel_id}</b> — {log['stake']:,}cr stake"
+    title = f"⚔️ <b>دوئل #{duel_id}</b> — شرط: {log['stake']:,} سکه"
     body = _render_log_body(log, revealed)
 
     if revealed >= total:
         winner_name = names.get(str(winner), "???")
         payout = int(log["payout"])
         body += (
-            f"\n\n🏁 <b>{esc(winner_name)} wins!</b> "
-            f"Pot {log['stake'] * 2:,}cr → {payout:,}cr "
-            f"(rake {settings.duel_house_rake:.0%})"
+            f"\n\n🏁 <b>{esc(winner_name)} پیروز شد!</b> "
+            f"پات: {log['stake'] * 2:,} سکه → دریافت: {payout:,} سکه "
+            f"(کارمزد خانه {settings.duel_house_rake:.0%})"
         )
         markup = InlineKeyboardMarkup(
             inline_keyboard=[
                 [
                     InlineKeyboardButton(
-                        text="🏠 Card", callback_data="act:me"
+                        text="🏠 کارت من", callback_data="act:me"
                     )
                 ]
             ]
@@ -400,7 +419,7 @@ async def _render_round(
             inline_keyboard=[
                 [
                     InlineKeyboardButton(
-                        text="⚡ Next round",
+                        text="⚡ راند بعدی",
                         callback_data=f"duel:round:{duel_id}",
                     )
                 ]
@@ -425,20 +444,20 @@ async def cb_round(call: CallbackQuery) -> None:
     duel_id = int(call.data.rsplit(":", 1)[1])
     duel = await _load_duel(duel_id)
     if duel is None:
-        await call.answer("Gone.", show_alert=True)
+        await call.answer("دوئل یافت نشد.", show_alert=True)
         return
     if user.id not in (duel["challenger_id"], duel["opponent_id"]):
-        await call.answer("Not your fight.", show_alert=True)
+        await call.answer("شما جزو مبارزان این دوئل نیستید!", show_alert=True)
         return
 
     try:
         log = json.loads(duel["log_json"])
     except (TypeError, ValueError):
-        await call.answer("Log corrupted.", show_alert=True)
+        await call.answer("خطا در بارگذاری لاگ مبارزه.", show_alert=True)
         return
 
     if log.get("revealed", 0) >= len(log["lines"]):
-        await call.answer("Fight's over.", show_alert=True)
+        await call.answer("مبارزه تمام شده است.", show_alert=True)
         return
 
     log["revealed"] += 1

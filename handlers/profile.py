@@ -42,16 +42,22 @@ _INVENTORY_PAGE_SIZE = 6
 # /me & /profile
 # ---------------------------------------------------------------------------
 
+PROFILE_COMMANDS = {"پروفایل", "من", "کارت", "کاراکتر", "مشخصات", "profile", "me", "card"}
+INVENTORY_COMMANDS = {"کوله", "کیف", "اینونتوری", "وسایل", "inventory", "inv"}
+
 
 async def _profile_markup(player: Player) -> InlineKeyboardMarkup:
     rows = [
         [
-            InlineKeyboardButton(text="🎒 Inventory", callback_data="inv:0"),
-            InlineKeyboardButton(text="🏪 Shop", callback_data="shop:0"),
+            InlineKeyboardButton(text="🎒 کوله‌پشتی", callback_data="inv:0"),
+            InlineKeyboardButton(text="🏪 فروشگاه", callback_data="shop:0"),
         ],
         [
-            InlineKeyboardButton(text="⚡ Work", callback_data="act:work"),
-            InlineKeyboardButton(text="💰 Balance", callback_data="act:bal"),
+            InlineKeyboardButton(text="⚡ کار کردن", callback_data="act:work"),
+            InlineKeyboardButton(text="💰 موجودی", callback_data="act:bal"),
+        ],
+        [
+            InlineKeyboardButton(text="📖 راهنمای بازی", callback_data="act:help"),
         ],
     ]
     return InlineKeyboardMarkup(inline_keyboard=rows)
@@ -61,13 +67,13 @@ async def _profile_panel(player: Player) -> tuple[str, bytes]:
     """The card's caption + rendered bytes, shared by /me and the callback."""
     photo = await card_bytes(player)
     stats = player.stats
+    credits, shards = await economy.balances(player.user_id)
     caption = (
-        f"<b>{esc(player.username or player.display_name)}</b> "
-        f"— Level {player.level}\n"
-        f"⚡ {energy_bar(player.energy, stats.max_energy)} "
-        f"{player.energy}/{stats.max_energy}\n"
-        f"⚔️ ATK {player.atk} · 🛡 DEF {player.defense} · 💎 DRIP {player.drip}\n"
-        f"✨ EXP {player.exp}/{game.exp_to_next(player.level)}"
+        f"🎴 <b>{esc(player.username or player.display_name)}</b> — لول <b>{player.level}</b>\n"
+        f"⚡ {energy_bar(player.energy, stats.max_energy)} {player.energy}/{stats.max_energy}\n"
+        f"⚔️ قدرت: <b>{player.atk}</b> · 🛡 دفاع: <b>{player.defense}</b> · 💎 استایل: <b>{player.drip}</b>\n"
+        f"💰 موجودی: <b>{credits:,}</b> سکه · 💎 <b>{shards}</b> شارد روح\n"
+        f"✨ پیشرفت: <b>{player.exp}/{game.exp_to_next(player.level)}</b> EXP"
     )
     return caption, photo
 
@@ -94,7 +100,10 @@ async def _show_profile(message: Message | None, player: Player) -> None:
     )
 
 
-@router.message(Command("me", "profile", "card"))
+@router.message(
+    Command("me", "profile", "card")
+    | (F.text.func(lambda t: bool(t and t.strip().lower() in PROFILE_COMMANDS)))
+)
 async def cmd_profile(message: Message) -> None:
     user = message.from_user
     if user is None:
@@ -159,7 +168,7 @@ async def _inventory_markup(
         )
     buttons.append(nav)
     buttons.append(
-        [InlineKeyboardButton(text="🏠 Back to card", callback_data="act:me")]
+        [InlineKeyboardButton(text="🏠 کارت من", callback_data="act:me")]
     )
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
@@ -178,11 +187,9 @@ async def cb_inventory(call: CallbackQuery) -> None:
         player = await hydrate(user.id, user.full_name, user.username)
         markup = await _inventory_markup(player, page, 0)
         text = (
-            f"🎒 <b>Inventory</b> — {esc(player.display_tag)}\n"
-            f"ATK {player.atk} · DEF {player.defense} · DRIP {player.drip}"
+            f"🎒 <b>کوله‌پشتی</b> — {esc(player.display_tag)}\n"
+            f"⚔️ قدرت: <b>{player.atk}</b> · 🛡 دفاع: <b>{player.defense}</b> · 💎 استایل: <b>{player.drip}</b>"
         )
-        # NOTE: the card is a *photo* message — render_panel picks edit_caption
-        # vs edit_text for us.  A bare edit_text here used to kill the button.
         await render_panel(
             editable_message(call), text=text, reply_markup=markup
         )
@@ -207,7 +214,7 @@ async def cb_item_detail(call: CallbackQuery) -> None:
 
         item = ITEMS_BY_ID.get(item_id)
         if item is None:
-            await answer_error(game.GameError("unknown item"), callback=call)
+            await answer_error(game.GameError("آیتم یافت نشد"), callback=call)
             return
 
         equipped = player.loadout.get(item.slot.value) == item_id
@@ -217,18 +224,18 @@ async def cb_item_detail(call: CallbackQuery) -> None:
             "",
         ]
         if item.atk:
-            lines.append(f"⚔️ ATK +{item.atk}")
+            lines.append(f"⚔️ قدرت: +{item.atk}")
         if item.defense:
-            lines.append(f"🛡 DEF +{item.defense}")
+            lines.append(f"🛡 دفاع: +{item.defense}")
         if item.drip:
-            lines.append(f"💎 DRIP +{item.drip}")
+            lines.append(f"💎 استایل: +{item.drip}")
         if not (item.atk or item.defense or item.drip):
-            lines.append("Pure vibes (cosmetic only)")
+            lines.append("فقط تزئینی و ظاهری ✨")
 
         buttons = [
             [
                 InlineKeyboardButton(
-                    text="➖ Unequip" if equipped else "➕ Equip",
+                    text="➖ خلع سلاح / برداشتن" if equipped else "➕ تجهیز / استفاده",
                     callback_data=(
                         f"uneq:{item.slot.value}:{page}"
                         if equipped
@@ -238,9 +245,9 @@ async def cb_item_detail(call: CallbackQuery) -> None:
             ],
             [
                 InlineKeyboardButton(
-                    text="◀️ Inventory", callback_data=f"inv:{page}"
+                    text="◀️ کوله‌پشتی", callback_data=f"inv:{page}"
                 ),
-                InlineKeyboardButton(text="🏠 Card", callback_data="act:me"),
+                InlineKeyboardButton(text="🏠 کارت من", callback_data="act:me"),
             ],
         ]
         await render_panel(
@@ -261,7 +268,7 @@ async def cb_equip(call: CallbackQuery) -> None:
     item_id, page = parts[1], parts[2] if len(parts) > 2 else "0"
     try:
         await game.equip_item(user.id, item_id)
-        await call.answer("Equipped ✅")
+        await call.answer("تجهیز شد ✅")
         player = await hydrate(user.id, user.full_name, user.username)
         await refresh_markup(
             editable_message(call),
@@ -280,7 +287,7 @@ async def cb_unequip(call: CallbackQuery) -> None:
     slot_value, page = parts[1], parts[2] if len(parts) > 2 else "0"
     try:
         await game.unequip_item(user.id, Slot(slot_value))
-        await call.answer("Unequipped ➖")
+        await call.answer("خلع سلاح شد ➖")
         player = await hydrate(user.id, user.full_name, user.username)
         await refresh_markup(
             editable_message(call),
@@ -295,7 +302,10 @@ async def cb_unequip(call: CallbackQuery) -> None:
 # ---------------------------------------------------------------------------
 
 
-@router.message(Command("inventory", "inv"))
+@router.message(
+    Command("inventory", "inv")
+    | (F.text.func(lambda t: bool(t and t.strip().lower() in INVENTORY_COMMANDS)))
+)
 async def cmd_inventory(message: Message) -> None:
     user = message.from_user
     if user is None:
@@ -304,7 +314,7 @@ async def cmd_inventory(message: Message) -> None:
         player = await hydrate(user.id, user.full_name, user.username)
         markup = await _inventory_markup(player, 0, 0)
         await message.reply(
-            f"🎒 <b>Inventory</b> — {esc(player.display_tag)}",
+            f"🎒 <b>کوله‌پشتی</b> — {esc(player.display_tag)}",
             reply_markup=markup,
         )
     except Exception as exc:  # noqa: BLE001
@@ -324,7 +334,7 @@ async def cb_balance(call: CallbackQuery) -> None:
     try:
         credits, shards = await economy.balances(user.id)
         await call.answer(
-            f"💰 {credits:,} credits · 💎 {shards} soul shards", show_alert=True
+            f"💰 {credits:,} سکه · 💎 {shards} شارد روح", show_alert=True
         )
     except Exception as exc:  # noqa: BLE001
         await answer_error(exc, callback=call)
