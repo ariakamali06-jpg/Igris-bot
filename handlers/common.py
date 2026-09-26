@@ -37,6 +37,10 @@ def editable_message(call: CallbackQuery) -> Message | None:
     ``CallbackQuery.message`` is typed ``Message | InaccessibleMessage``;
     inaccessible messages have no text/caption to edit, so handlers must
     skip UI swaps for them instead of crashing.
+
+    Content type is the caller's problem to solve through
+    :mod:`handlers.panel` — a photo message is re-titled with ``edit_caption``,
+    never ``edit_text``.
     """
     message = call.message
     return message if isinstance(message, Message) else None
