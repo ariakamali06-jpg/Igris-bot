@@ -32,6 +32,7 @@ from aiogram.types import (
 from config import settings
 from database.connection import db
 from handlers.common import answer_error, editable_message, esc, hydrate
+from handlers.panel import render_panel
 from models import ActivityKind, Player
 from services import battle, economy
 from services.game import GameError, InsufficientFunds, now
@@ -347,11 +348,10 @@ async def cb_decline(call: CallbackQuery) -> None:
         status = "declined" if duel["opponent_id"] == user.id else "cancelled"
         await _refund(duel, ActivityKind.DUEL_REFUND, status)
         await call.answer("Challenge refused — stake returned.")
-        message = editable_message(call)
-        if message is not None:
-            await message.edit_text(
-                f"🚫 Duel #{duel_id} {status}. Stake refunded."
-            )
+        await render_panel(
+            editable_message(call),
+            text=f"🚫 Duel #{duel_id} {status}. Stake refunded.",
+        )
     except Exception as exc:  # noqa: BLE001
         await answer_error(exc, callback=call)
 
@@ -412,7 +412,7 @@ async def _render_round(
     if message is None:
         return
     if edit:
-        await message.edit_text(text, reply_markup=markup)
+        await render_panel(message, text=text, reply_markup=markup)
     else:
         await message.answer(text, reply_markup=markup)
 

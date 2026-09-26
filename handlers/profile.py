@@ -28,6 +28,7 @@ from handlers.common import (
     esc,
     hydrate,
 )
+from handlers.panel import refresh_markup, render_panel
 from models import Player, Slot
 from services import economy, game
 
@@ -56,7 +57,8 @@ async def _profile_markup(player: Player) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-async def _send_profile(target: Message, player: Player) -> None:
+async def _profile_panel(player: Player) -> tuple[str, bytes]:
+    """The card's caption + rendered bytes, shared by /me and the callback."""
     photo = await card_bytes(player)
     stats = player.stats
     caption = (
@@ -67,9 +69,27 @@ async def _send_profile(target: Message, player: Player) -> None:
         f"⚔️ ATK {player.atk} · 🛡 DEF {player.defense} · 💎 DRIP {player.drip}\n"
         f"✨ EXP {player.exp}/{game.exp_to_next(player.level)}"
     )
+    return caption, photo
+
+
+async def _send_profile(target: Message, player: Player) -> None:
+    caption, photo = await _profile_panel(player)
     await target.reply_photo(
         photo=BufferedInputFile(photo, filename="character.jpg"),
         caption=caption,
+        reply_markup=await _profile_markup(player),
+    )
+
+
+async def _show_profile(message: Message | None, player: Player) -> None:
+    """Render the card into an existing panel (photo-aware, never dead)."""
+    if message is None:
+        return
+    caption, photo = await _profile_panel(player)
+    await render_panel(
+        message,
+        text=caption,
+        photo=photo,
         reply_markup=await _profile_markup(player),
     )
 
@@ -95,7 +115,7 @@ async def cb_profile(call: CallbackQuery) -> None:
         return
     try:
         player = await hydrate(user.id, user.full_name, user.username)
-        await _send_profile(message, player)
+        await _show_profile(message, player)
     except Exception as exc:  # noqa: BLE001
         await answer_error(exc, callback=call)
 
@@ -161,9 +181,11 @@ async def cb_inventory(call: CallbackQuery) -> None:
             f"🎒 <b>Inventory</b> — {player.display_tag}\n"
             f"ATK {player.atk} · DEF {player.defense} · DRIP {player.drip}"
         )
-        message = editable_message(call)
-        if message is not None:
-            await message.edit_text(text, reply_markup=markup)
+        # NOTE: the card is a *photo* message — render_panel picks edit_caption
+        # vs edit_text for us.  A bare edit_text here used to kill the button.
+        await render_panel(
+            editable_message(call), text=text, reply_markup=markup
+        )
     except Exception as exc:  # noqa: BLE001
         await answer_error(exc, callback=call)
 
@@ -221,12 +243,11 @@ async def cb_item_detail(call: CallbackQuery) -> None:
                 InlineKeyboardButton(text="🏠 Card", callback_data="act:me"),
             ],
         ]
-        message = editable_message(call)
-        if message is not None:
-            await message.edit_text(
-                "\n".join(lines),
-                reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons),
-            )
+        await render_panel(
+            editable_message(call),
+            text="\n".join(lines),
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons),
+        )
     except Exception as exc:  # noqa: BLE001
         await answer_error(exc, callback=call)
 
@@ -242,11 +263,10 @@ async def cb_equip(call: CallbackQuery) -> None:
         await game.equip_item(user.id, item_id)
         await call.answer("Equipped ✅")
         player = await hydrate(user.id, user.full_name, user.username)
-        message = editable_message(call)
-        if message is not None:
-            await message.edit_reply_markup(
-                reply_markup=await _inventory_markup(player, int(page or 0), 0)
-            )
+        await refresh_markup(
+            editable_message(call),
+            await _inventory_markup(player, int(page or 0), 0),
+        )
     except Exception as exc:  # noqa: BLE001
         await answer_error(exc, callback=call)
 
@@ -262,11 +282,10 @@ async def cb_unequip(call: CallbackQuery) -> None:
         await game.unequip_item(user.id, Slot(slot_value))
         await call.answer("Unequipped ➖")
         player = await hydrate(user.id, user.full_name, user.username)
-        message = editable_message(call)
-        if message is not None:
-            await message.edit_reply_markup(
-                reply_markup=await _inventory_markup(player, int(page or 0), 0)
-            )
+        await refresh_markup(
+            editable_message(call),
+            await _inventory_markup(player, int(page or 0), 0),
+        )
     except Exception as exc:  # noqa: BLE001
         await answer_error(exc, callback=call)
 

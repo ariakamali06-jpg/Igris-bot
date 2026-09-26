@@ -20,6 +20,7 @@ from aiogram.types import (
 
 from config import settings
 from handlers.common import answer_error, editable_message, hydrate
+from handlers.panel import render_panel
 from models import Player
 from services import economy, shop
 from services.shop import AlreadyOwned
@@ -147,9 +148,11 @@ async def cb_shop(call: CallbackQuery) -> None:
             # Re-render the page so the bought row flips to "owned".
             fresh = await hydrate(user.id, user.full_name, user.username)
             text, markup = await _shop_page(fresh, page)
-            message = editable_message(call)
-            if message is not None:
-                await message.edit_text(text, reply_markup=markup)
+            # The card this hangs off is a photo message: render_panel picks
+            # edit_caption vs edit_text, a bare edit_text broke the button.
+            await render_panel(
+                editable_message(call), text=text, reply_markup=markup
+            )
             return
 
         # Plain pagination (payload[0] is a page number).
@@ -157,9 +160,9 @@ async def cb_shop(call: CallbackQuery) -> None:
         player = await hydrate(user.id, user.full_name, user.username)
         await call.answer()  # instant ack before the stock queries
         text, markup = await _shop_page(player, page)
-        message = editable_message(call)
-        if message is not None:
-            await message.edit_text(text, reply_markup=markup)
+        await render_panel(
+            editable_message(call), text=text, reply_markup=markup
+        )
     except AlreadyOwned:
         await call.answer("Already yours.", show_alert=True)
     except Exception as exc:  # noqa: BLE001

@@ -29,6 +29,7 @@ from aiogram.types import (
 
 from config import settings
 from handlers.common import answer_error, editable_message, esc, hydrate
+from handlers.panel import render_panel
 from services import economy, raids
 from services.compositor import RenderRequest, render_card
 
@@ -208,13 +209,7 @@ async def cb_strike(call: CallbackQuery) -> None:
                 {"boss_name": boss_name}, result, player.display_tag
             )
             markup = None if result.cleared else _raid_markup(raid_id)
-            try:
-                if message.photo:
-                    await message.edit_caption(caption=text, reply_markup=markup)
-                else:
-                    await message.edit_text(text, reply_markup=markup)
-            except Exception:  # noqa: BLE001 - "message is not modified" etc.
-                logger.debug("raid message edit skipped", exc_info=True)
+            await render_panel(message, text=text, reply_markup=markup)
     except Exception as exc:  # noqa: BLE001
         await answer_error(exc, callback=call)
 
@@ -245,24 +240,20 @@ async def cb_raid_top(call: CallbackQuery) -> None:
             f"{row['damage']:,} dmg ({row['hits']} hits)"
         )
     await call.answer()  # ack, then swap the message content
-    message = editable_message(call)
-    if message is not None:
-        try:
-            await message.edit_text(
-                "\n".join(lines),
-                reply_markup=InlineKeyboardMarkup(
-                    inline_keyboard=[
-                        [
-                            InlineKeyboardButton(
-                                text="◀️ Back to fight",
-                                callback_data=f"raid:view:{raid_id}",
-                            )
-                        ]
-                    ]
-                ),
-            )
-        except Exception:  # noqa: BLE001
-            logger.debug("leaderboard edit failed", exc_info=True)
+    await render_panel(
+        editable_message(call),
+        text="\n".join(lines),
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="◀️ Back to fight",
+                        callback_data=f"raid:view:{raid_id}",
+                    )
+                ]
+            ]
+        ),
+    )
 
 
 @router.callback_query(F.data.startswith("raid:view:"))
@@ -283,13 +274,7 @@ async def cb_raid_view(call: CallbackQuery) -> None:
         f"<code>{raid['hp']}/{raid['max_hp']}</code> HP"
     )
     markup = None if raid["status"] != "active" else _raid_markup(raid_id)
-    try:
-        if message.photo:
-            await message.edit_caption(caption=text, reply_markup=markup)
-        else:
-            await message.edit_text(text, reply_markup=markup)
-    except Exception:  # noqa: BLE001
-        logger.debug("raid view edit skipped", exc_info=True)
+    await render_panel(message, text=text, reply_markup=markup)
 
 
 async def _raid_row(raid_id: int) -> dict | None:
