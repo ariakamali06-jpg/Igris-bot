@@ -187,12 +187,28 @@ async def render_panel(
     except Exception:  # noqa: BLE001
         logger.debug("panel: content compare failed", exc_info=True)
 
+    message_type = "photo" if message.photo else "text"
+    target = "caption" if message.photo else "text"
     try:
         ok = await _try_edit(message, text, photo, reply_markup)
         if ok:
+            logger.debug(
+                "panel: rendered %s panel on a %s message via edit_%s",
+                "photo" if photo is not None else target,
+                message_type,
+                target if photo is None else (
+                    "caption" if message.photo else "media"
+                ),
+            )
             return
-    except Exception:  # noqa: BLE001
-        logger.exception("panel: edit failed, falling back to a new message")
+    except Exception as exc:  # noqa: BLE001
+        # This is the line that was previously invisible: Telegram refusing an
+        # edit looks exactly like a dead button to the user, so log it loudly.
+        logger.error(
+            "panel: Telegram rejected the edit (%s message, %d chars): %s: %s",
+            message_type, len(text or ""), type(exc).__name__, exc,
+            exc_info=True,
+        )
         ok = False
 
     await _fallback_message(

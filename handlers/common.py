@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import html
+import logging
 
 from aiogram.types import CallbackQuery, Message
 
@@ -17,6 +18,8 @@ from models import Player
 from services import economy
 from services.compositor import render_card
 from services.game import GameError, ensure_player, render_request
+
+logger = logging.getLogger(__name__)
 
 __all__ = [
     "esc",
@@ -77,13 +80,33 @@ async def answer_error(
     callback: CallbackQuery | None = None,
     message: Message | None = None,
 ) -> None:
-    """Ack a callback instantly and surface the domain error text."""
+    """Surface a domain error to the player.
+
+    Telegram accepts **only the first** ``answerCallbackQuery`` for a given
+    callback id; every later one is dropped with ``query id is invalid``.
+    Handlers ack instantly to clear the button spinner, so an error raised
+    after that ack cannot be reported through the callback — the user would
+    see nothing at all and conclude the button is dead.
+
+    Therefore, when the callback was already acked we write the error into the
+    chat (and, if the message is an editable panel, into the panel itself), and
+    always log the traceback so the failure is debuggable.
+    """
     text = _error_text(exc)
-    if callback is not None:
-        # Always ack first: Telegram clients freeze buttons otherwise.
-        await callback.answer(text, show_alert=True)
-    elif message is not None:
+    if message is not None:
         await message.reply(text)
+    elif callback is not None:
+        message = editable_message(callback)
+        if message is not None:
+            await message.reply(text)
+        else:
+            # Nothing editable — an alert is the only channel left, and it
+            # only lands if this is the very first answer.
+            try:
+                await callback.answer(text, show_alert=True)
+            except Exception:  # noqa: BLE001 - already acked; nothing to do
+                logger.debug("callback alert dropped (already answered)", exc_info=True)
+    logger.warning("surfaced domain error to chat: %s", exc, exc_info=exc)
 
 
 def _error_text(exc: Exception) -> str:

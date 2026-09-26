@@ -178,7 +178,7 @@ async def cb_inventory(call: CallbackQuery) -> None:
         player = await hydrate(user.id, user.full_name, user.username)
         markup = await _inventory_markup(player, page, 0)
         text = (
-            f"🎒 <b>Inventory</b> — {player.display_tag}\n"
+            f"🎒 <b>Inventory</b> — {esc(player.display_tag)}\n"
             f"ATK {player.atk} · DEF {player.defense} · DRIP {player.drip}"
         )
         # NOTE: the card is a *photo* message — render_panel picks edit_caption
