@@ -117,8 +117,8 @@ async def cmd_profile(message: Message) -> None:
 @router.message(CommandOrText(["version", "ver"], {"ورژن", "نسخه"}))
 async def cmd_version(message: Message) -> None:
     await message.answer(
-        "🤖 <b>ربات ایگریس — نسخه ۱.۲.۱</b>\n"
-        "✨ <b>وضعیت:</b> رفع باگ لوداوت و ذخیره وضعیت خلع سلاح کوله‌پشتی"
+        "🤖 <b>ربات ایگریس — نسخه ۱.۳.۰</b>\n"
+        "✨ <b>وضعیت:</b> آرت جدید مانهوایی، تفکیک جنسیت کاراکتر (مرد/زن/سایه) و ویزارد آنبوردینگ فعال است."
     )
 
 

@@ -410,16 +410,14 @@ def render_request(player: Player) -> RenderRequest:
     """Build the compositor request for a player's current look."""
     # Deterministic scene variety: same player always gets the same backdrop.
     background = BACKGROUND_KEYS[player.user_id % len(BACKGROUND_KEYS)][0]
-    if player.body_stance in ("base_male", "base_female", "base_shadow", "base_aegis", "base_street"):
-        body = player.body_stance
-    elif player.gender == "مرد":
-        body = "base_male"
-    elif player.gender == "زن":
+    if player.gender == "زن":
         body = "base_female"
     elif player.gender in ("سایه‌وار", "نامشخص"):
         body = "base_shadow"
+    elif player.body_stance in ("base_female", "base_shadow"):
+        body = player.body_stance
     else:
-        body = "base_street"
+        body = "base_male"
     return RenderRequest(
         display_name=player.display_name,
         username=player.username,
