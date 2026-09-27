@@ -110,7 +110,7 @@ async def ensure_player(
             VALUES (?, ?, ?, 1, 0, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT (user_id) DO UPDATE SET
                 username = excluded.username,
-                display_name = excluded.display_name,
+                display_name = CASE WHEN players.onboarding_completed = 1 THEN players.display_name ELSE excluded.display_name END,
                 last_seen = excluded.last_seen
             """,
             (
@@ -143,7 +143,7 @@ async def ensure_player(
         return await _load_conn(conn, user_id, current)
 
 
-async def load_player(user_id: int, display_name: str = "Unknown") -> Player | None:
+async def load_player(user_id: int, display_name: str | None = None) -> Player | None:
     """Hydrate a player with gear stats, or ``None`` if they never started."""
     current = now()
     async with db.write() as conn:
@@ -194,6 +194,7 @@ async def _load_conn(
         gear = gear + StatBlock(eq["atk"], eq["defense"], eq["drip"])
     await cursor.close()
 
+    keys = row.keys()
     return Player(
         user_id=user_id,
         display_name=row["display_name"] if display_name is None else display_name,
@@ -210,6 +211,12 @@ async def _load_conn(
         last_seen=row["last_seen"],
         gear=gear,
         loadout=loadout,
+        gender=row["gender"] if "gender" in keys else "نامشخص",
+        age=row["age"] if "age" in keys else 20,
+        skin_tone=row["skin_tone"] if "skin_tone" in keys else "fair",
+        eye_color=row["eye_color"] if "eye_color" in keys else "amber",
+        body_stance=row["body_stance"] if "body_stance" in keys else "base_street",
+        onboarding_completed=row["onboarding_completed"] if "onboarding_completed" in keys else 0,
     )
 
 
@@ -403,7 +410,7 @@ def render_request(player: Player) -> RenderRequest:
     """Build the compositor request for a player's current look."""
     # Deterministic scene variety: same player always gets the same backdrop.
     background = BACKGROUND_KEYS[player.user_id % len(BACKGROUND_KEYS)][0]
-    body = "base_aegis" if player.loadout.get(Slot.WEAPON.value) else "base_street"
+    body = player.body_stance or ("base_aegis" if player.loadout.get(Slot.WEAPON.value) else "base_street")
     return RenderRequest(
         display_name=player.display_name,
         username=player.username,
@@ -415,3 +422,58 @@ def render_request(player: Player) -> RenderRequest:
         background=background,
         body=body,
     )
+
+
+async def complete_character_creation(
+    user_id: int,
+    display_name: str,
+    gender: str,
+    age: int,
+    skin_tone: str,
+    eye_color: str,
+    body_stance: str,
+    hair_style: str,
+    starter_items: tuple[str, ...],
+) -> Player:
+    """Commit full onboarding wizard selections, grant & equip kit, mark complete."""
+    current = now()
+    async with db.write() as conn:
+        await conn.execute(
+            """
+            UPDATE players SET
+                display_name = ?,
+                gender = ?,
+                age = ?,
+                skin_tone = ?,
+                eye_color = ?,
+                body_stance = ?,
+                onboarding_completed = 1,
+                last_seen = ?
+            WHERE user_id = ?
+            """,
+            (
+                display_name,
+                gender,
+                age,
+                skin_tone,
+                eye_color,
+                body_stance,
+                current,
+                user_id,
+            ),
+        )
+        # Grant kit items & hair
+        all_items = set(starter_items) | {hair_style}
+        for item_id in all_items:
+            await _grant_item_conn(conn, user_id, item_id, current)
+            item = ITEMS_BY_ID.get(item_id)
+            if item is not None:
+                await conn.execute(
+                    """
+                    INSERT INTO loadout (user_id, slot, item_id)
+                    VALUES (?, ?, ?)
+                    ON CONFLICT(user_id, slot) DO UPDATE SET item_id = excluded.item_id
+                    """,
+                    (user_id, item.slot.value, item_id),
+                )
+        return await _load_conn(conn, user_id, current, display_name=display_name)

@@ -93,6 +93,23 @@ class Database:
         assert self._write_conn is not None
         await self._write_conn.executescript(script)
 
+        # Migrate columns for players table
+        cursor = await self._write_conn.execute("PRAGMA table_info(players)")
+        cols = {row["name"] for row in await cursor.fetchall()}
+        await cursor.close()
+        for col, col_type, default_val in [
+            ("gender", "TEXT", "'نامشخص'"),
+            ("age", "INTEGER", "20"),
+            ("skin_tone", "TEXT", "'fair'"),
+            ("eye_color", "TEXT", "'amber'"),
+            ("body_stance", "TEXT", "'base_street'"),
+            ("onboarding_completed", "INTEGER", "0"),
+        ]:
+            if col not in cols:
+                await self._write_conn.execute(
+                    f"ALTER TABLE players ADD COLUMN {col} {col_type} DEFAULT {default_val}"
+                )
+
     async def close(self) -> None:
         """Close both connections (safe to call twice)."""
         self._closed = True

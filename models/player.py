@@ -66,6 +66,12 @@ class Player:
     last_daily: int = 0
     created_at: int = 0
     last_seen: int = 0
+    gender: str = "نامشخص"
+    age: int = 20
+    skin_tone: str = "fair"
+    eye_color: str = "amber"
+    body_stance: str = "base_street"
+    onboarding_completed: int = 0
 
     # Aggregates, filled in by services.game.load_player().
     gear: StatBlock = field(default_factory=StatBlock)

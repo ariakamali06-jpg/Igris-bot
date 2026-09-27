@@ -29,7 +29,13 @@ CREATE TABLE IF NOT EXISTS players (
     base_drip          INTEGER NOT NULL DEFAULT 5,
     last_daily         INTEGER NOT NULL DEFAULT 0,
     created_at         INTEGER NOT NULL DEFAULT 0,
-    last_seen          INTEGER NOT NULL DEFAULT 0
+    last_seen          INTEGER NOT NULL DEFAULT 0,
+    gender             TEXT    NOT NULL DEFAULT 'نامشخص',
+    age                INTEGER NOT NULL DEFAULT 20,
+    skin_tone          TEXT    NOT NULL DEFAULT 'fair',
+    eye_color          TEXT    NOT NULL DEFAULT 'amber',
+    body_stance        TEXT    NOT NULL DEFAULT 'base_street',
+    onboarding_completed INTEGER NOT NULL DEFAULT 0
 );
 
 -- -----------------------------------------------------------------------------

@@ -54,7 +54,7 @@ DAILY_WORDS = {"روزانه", "جایزه", "پاداش", "حقوق", "daily", 
 WORK_WORDS = {"کار", "شغل", "شیفت", "work", "shift"}
 BAL_WORDS = {"موجودی", "پول", "سکه", "کیف", "کیف پول", "حساب", "balance", "bal", "wallet", "money"}
 STATS_WORDS = {"آمار", "استاتس", "لول", "وضعیت", "stats", "level"}
-HELP_WORDS = {"راهنما", "کمک", "آموزش", "اموزش", "دستورات", "help", "start"}
+HELP_WORDS = {"راهنما", "کمک", "آموزش", "اموزش", "دستورات", "help"}
 
 
 # ---------------------------------------------------------------------------
@@ -329,7 +329,7 @@ _HELP_COMBAT_TEXT = (
 )
 
 
-@router.message(CommandOrText(["help", "start"], HELP_WORDS))
+@router.message(CommandOrText(["help"], HELP_WORDS))
 async def cmd_help(message: Message) -> None:
     await message.reply(_HELP_MAIN_TEXT, reply_markup=_help_markup())
 
