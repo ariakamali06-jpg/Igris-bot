@@ -562,17 +562,19 @@ async def cb_kit(call: CallbackQuery, state: FSMContext) -> None:
 
         buttons = await _profile_markup(player)
 
-        msg = editable_message(call)
-        if msg:
-            await render_panel(
-                msg,
-                text=caption,
-                photo=photo,
+        if isinstance(call.message, Message):
+            try:
+                await call.message.delete()
+            except Exception:
+                pass
+            await call.message.answer_photo(
+                photo=photo_bytes(photo),
+                caption=caption,
                 reply_markup=buttons,
-                force_media=True,
             )
         else:
-            await call.message.answer_photo(
+            await call.bot.send_photo(
+                chat_id=user.id,
                 photo=photo_bytes(photo),
                 caption=caption,
                 reply_markup=buttons,

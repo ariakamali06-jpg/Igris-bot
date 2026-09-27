@@ -240,35 +240,74 @@ def _fit(draw: ImageDraw.ImageDraw, text: str, font: FontLike,
     return (trimmed.rstrip() + ellipsis) if trimmed else ellipsis
 
 
+def _recolor_hair_layer(layer: Image.Image, hair_color: str) -> Image.Image:
+    """Recolor modular hair layers (Fade, Wolf Cut, Ponytail)."""
+    if not hair_color or hair_color == "black":
+        return layer
+    img = layer.copy()
+    data = list(img.getdata())
+    new_data = []
+    for r, g, b, a in data:
+        if a > 80 and r < 120 and g < 120 and b < 120:
+            lum = (r + g + b) / 3.0
+            if hair_color == "silver":
+                val = int(215 + lum * 0.35)
+                nr, ng, nb = val, val, min(255, val + 15)
+            elif hair_color == "crimson":
+                nr = min(255, int(195 + lum * 0.6))
+                ng = int(25 + lum * 0.25)
+                nb = int(35 + lum * 0.25)
+            elif hair_color == "blonde":
+                nr = min(255, int(225 + lum * 0.3))
+                ng = min(255, int(195 + lum * 0.25))
+                nb = int(70 + lum * 0.2)
+            elif hair_color == "blue":
+                nr = int(20 + lum * 0.25)
+                ng = min(255, int(140 + lum * 0.8))
+                nb = min(255, int(235 + lum * 0.2))
+            else:
+                nr, ng, nb = r, g, b
+            new_data.append((nr, ng, nb, a))
+        else:
+            new_data.append((r, g, b, a))
+    img.putdata(new_data)
+    return img
+
+
 def _customize_figure(
     figure: Image.Image,
     skin_tone: str,
     hair_color: str,
     eye_color: str,
     is_female: bool = False,
+    is_shadow: bool = False,
 ) -> Image.Image:
-    """Dynamically tint skin, hair, and render glowing awakened eyes."""
+    """Dynamically tint skin, hair, and render glowing awakened eyes with Solo Leveling aura flare."""
     img = figure.copy()
+    w, h = img.size
 
     # 1. Skin tone
-    if skin_tone and skin_tone != "fair":
+    if skin_tone and skin_tone != "fair" and not is_shadow:
         data = list(img.getdata())
         new_data = []
         for r, g, b, a in data:
-            if a > 0 and r > 160 and g > 130 and b > 110 and r > g and g >= b:
+            if a > 80 and r > 90 and g > 65 and b > 55 and r >= g and r > b:
+                if r < 95 and g < 95 and b < 95:
+                    new_data.append((r, g, b, a))
+                    continue
                 if skin_tone == "tan":
-                    nr = int(r * 0.92)
-                    ng = int(g * 0.82)
-                    nb = int(b * 0.68)
+                    nr = int(r * 0.90)
+                    ng = int(g * 0.80)
+                    nb = int(b * 0.62)
                 elif skin_tone == "dark":
-                    nr = int(r * 0.70)
+                    nr = int(r * 0.72)
                     ng = int(g * 0.58)
-                    nb = int(b * 0.46)
+                    nb = int(b * 0.42)
                 elif skin_tone == "pale":
-                    gray = int(0.3 * r + 0.59 * g + 0.11 * b)
-                    nr = min(255, int(r * 0.95 + gray * 0.05))
-                    ng = min(255, int(g * 0.96 + gray * 0.05))
-                    nb = min(255, int(b * 1.05))
+                    gray = int(0.299 * r + 0.587 * g + 0.114 * b)
+                    nr = min(255, int(r * 0.94 + gray * 0.06 + 8))
+                    ng = min(255, int(g * 0.96 + gray * 0.04 + 10))
+                    nb = min(255, int(b * 1.08 + 18))
                 else:
                     nr, ng, nb = r, g, b
                 new_data.append((nr, ng, nb, a))
@@ -277,32 +316,33 @@ def _customize_figure(
         img.putdata(new_data)
 
     # 2. Hair color
-    if hair_color and hair_color != "black":
+    if hair_color and hair_color != "black" and not is_shadow:
         data = list(img.getdata())
         new_data = []
-        w, h = img.size
+        x_min, x_max = (175, 335) if is_female else (190, 325)
+        y_min, y_max = (85, 250) if is_female else (85, 155)
+
         for idx, (r, g, b, a) in enumerate(data):
             x = idx % w
             y = idx // w
-            if a > 150 and 200 <= x <= 315 and 85 <= y <= 135:
-                if r < 80 and g < 80 and b < 80:
-                    luminance = (r + g + b) / 3.0
+            if a > 100 and x_min <= x <= x_max and y_min <= y <= y_max:
+                if r < 100 and g < 100 and b < 100:
+                    lum = (r + g + b) / 3.0
                     if hair_color == "silver":
-                        val = int(185 + luminance * 0.9)
+                        val = int(215 + lum * 0.35)
                         nr, ng, nb = val, val, min(255, val + 15)
                     elif hair_color == "crimson":
-                        nr = min(255, int(160 + luminance * 1.4))
-                        ng = int(luminance * 0.3)
-                        nb = int(luminance * 0.3)
+                        nr = min(255, int(195 + lum * 0.6))
+                        ng = int(25 + lum * 0.25)
+                        nb = int(35 + lum * 0.25)
                     elif hair_color == "blonde":
-                        val = int(140 + luminance * 1.4)
-                        nr = min(255, int(val * 1.15))
-                        ng = min(255, int(val * 0.95))
-                        nb = int(val * 0.3)
+                        nr = min(255, int(225 + lum * 0.3))
+                        ng = min(255, int(195 + lum * 0.25))
+                        nb = int(70 + lum * 0.2)
                     elif hair_color == "blue":
-                        nr = int(luminance * 0.3)
-                        ng = min(255, int(90 + luminance * 1.2))
-                        nb = min(255, int(190 + luminance * 0.9))
+                        nr = int(20 + lum * 0.25)
+                        ng = min(255, int(140 + lum * 0.8))
+                        nb = min(255, int(235 + lum * 0.2))
                     else:
                         nr, ng, nb = r, g, b
                     new_data.append((nr, ng, nb, a))
@@ -310,22 +350,30 @@ def _customize_figure(
             new_data.append((r, g, b, a))
         img.putdata(new_data)
 
-    # 3. Glowing awakened eyes
+    # 3. Glowing awakened eyes with Solo Leveling energy flare
     if eye_color and eye_color != "default":
         draw = ImageDraw.Draw(img)
         colors = {
-            "blue": ((0, 229, 255, 230), (0, 160, 255, 130)),
-            "red": ((255, 40, 60, 230), (200, 10, 30, 130)),
-            "purple": ((185, 70, 255, 230), (135, 30, 220, 130)),
-            "gold": ((255, 195, 30, 230), (225, 140, 10, 130)),
+            "blue": ((0, 220, 255, 230), (180, 245, 255, 255)),
+            "red": ((255, 35, 55, 230), (255, 220, 220, 255)),
+            "purple": ((195, 65, 255, 230), (245, 205, 255, 255)),
+            "gold": ((255, 195, 20, 230), (255, 250, 205, 255)),
         }
         if eye_color in colors:
-            core, aura = colors[eye_color]
-            eye_y = 124 if is_female else 126
-            for ex in [247, 264]:
-                draw.ellipse((ex - 3, eye_y - 2, ex + 3, eye_y + 2), fill=aura)
-                draw.ellipse((ex - 1, eye_y - 1, ex + 1, eye_y + 1), fill=core)
-                draw.point((ex, eye_y - 1), fill=(255, 255, 255, 240))
+            aura, core = colors[eye_color]
+            if is_shadow:
+                eyes = [(249, 108), (266, 108)]
+            elif is_female:
+                eyes = [(244, 158), (268, 158)]
+            else:
+                eyes = [(246, 150), (266, 150)]
+            for ex, ey in eyes:
+                draw.ellipse((ex - 5, ey - 3, ex + 5, ey + 3), fill=aura)
+                draw.ellipse((ex - 2, ey - 2, ex + 2, ey + 2), fill=core)
+                draw.point((ex, ey), fill=(255, 255, 255, 255))
+                dx = -1 if ex < 256 else 1
+                draw.line([(ex, ey), (ex + dx * 4, ey - 3), (ex + dx * 8, ey - 7), (ex + dx * 13, ey - 13)], fill=aura, width=2)
+                draw.line([(ex, ey), (ex + dx * 5, ey - 4)], fill=core, width=1)
 
     return img
 
@@ -389,7 +437,7 @@ class Compositor:
     # -- cache -------------------------------------------------------------
 
     def _cache_key(self, request: RenderRequest) -> str:
-        material = f"v2-manhwa|{self._assets.version}|{request.signature()}"
+        material = f"v4-manhwa|{self._assets.version}|{request.signature()}"
         return hashlib.sha1(material.encode("utf-8")).hexdigest()
 
     def _read_disk(self, key: str) -> bytes | None:
@@ -435,13 +483,10 @@ class Compositor:
         legacy_starter_keys = {
             "fitted_tee",
             "street_slacks",
-            "street_fade",
             "tactical_hoodie",
             "combat_boots",
             "hunter_trench",
             "techwear_cargo",
-            "raven_shag",
-            "hood_up",
         }
         for slot in SLOT_RENDER_ORDER:
             key = request.loadout.get(slot.value)
@@ -453,6 +498,8 @@ class Compositor:
             if layer is None:
                 logger.debug("missing layer art for %s/%s", slot.value, key)
                 continue
+            if slot == Slot.HEAD and request.hair_color != "black":
+                layer = _recolor_hair_layer(layer, request.hair_color)
             plate = Image.alpha_composite(plate, layer)
             composited = True
 
@@ -498,6 +545,7 @@ class Compositor:
                     hair_color=hair_color,
                     eye_color=eye_color,
                     is_female=(body == "base_female"),
+                    is_shadow=(body == "base_shadow"),
                 )
             plate = Image.alpha_composite(plate, figure)
             if not opaque:
