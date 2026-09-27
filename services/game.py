@@ -139,7 +139,7 @@ async def ensure_player(
             for item_id in starter_kit_ids():
                 await _grant_item_conn(conn, user_id, item_id, current)
             logger.info("created player %s with starter kit", user_id)
-        await _equip_defaults_conn(conn, user_id)
+            await _equip_defaults_conn(conn, user_id)
         return await _load_conn(conn, user_id, current)
 
 

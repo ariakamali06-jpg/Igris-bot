@@ -264,6 +264,21 @@ async def test_equip_refreshes_markup_without_touching_caption(player) -> None:
     assert _has_button(card.reply_markup, "Back to card") or _has_button(card.reply_markup, "کارت من")
 
 
+async def test_unequip_item_removes_from_loadout_and_stays_unequipped(player) -> None:
+    from handlers.common import hydrate
+
+    # Starter item should initially be equipped
+    assert player.loadout["body"] is not None
+
+    card = CardMessage()
+    call = FakeCall("uneq:body:0:fitted_tee", card)
+    await profile.cb_unequip(call)
+
+    fresh = await hydrate(player.user_id, player.display_name, player.username)
+    assert fresh.loadout["body"] is None, "Unequipped item must stay unequipped after hydration"
+    assert _has_button(card.reply_markup, "کارت من")
+
+
 # --------------------------------------------------------------------------
 # duel panel (was also on a text-message path)
 # --------------------------------------------------------------------------

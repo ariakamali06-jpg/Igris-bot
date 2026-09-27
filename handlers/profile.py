@@ -235,7 +235,7 @@ async def cb_item_detail(call: CallbackQuery) -> None:
                 InlineKeyboardButton(
                     text="➖ خلع سلاح / برداشتن" if equipped else "➕ تجهیز / استفاده",
                     callback_data=(
-                        f"uneq:{item.slot.value}:{page}"
+                        f"uneq:{item.slot.value}:{page}:{item_id}"
                         if equipped
                         else f"eq:{item_id}:{page}"
                     ),
@@ -267,11 +267,34 @@ async def cb_equip(call: CallbackQuery) -> None:
     try:
         await game.equip_item(user.id, item_id)
         await call.answer("تجهیز شد ✅")
-        player = await hydrate(user.id, user.full_name, user.username)
-        await refresh_markup(
-            editable_message(call),
-            await _inventory_markup(player, int(page or 0), 0),
-        )
+        from database.items import ITEMS_BY_ID
+
+        item = ITEMS_BY_ID.get(item_id)
+        if item is not None:
+            buttons = [
+                [
+                    InlineKeyboardButton(
+                        text="➖ خلع سلاح / برداشتن",
+                        callback_data=f"uneq:{item.slot.value}:{page}:{item_id}",
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="◀️ کوله‌پشتی", callback_data=f"inv:{page}"
+                    ),
+                    InlineKeyboardButton(text="🏠 کارت من", callback_data="act:me"),
+                ],
+            ]
+            await refresh_markup(
+                editable_message(call),
+                InlineKeyboardMarkup(inline_keyboard=buttons),
+            )
+        else:
+            player = await hydrate(user.id, user.full_name, user.username)
+            await refresh_markup(
+                editable_message(call),
+                await _inventory_markup(player, int(page or 0), 0),
+            )
     except Exception as exc:  # noqa: BLE001
         await answer_error(exc, callback=call)
 
@@ -282,15 +305,40 @@ async def cb_unequip(call: CallbackQuery) -> None:
     if user is None or call.data is None:
         return
     parts = call.data.split(":")
-    slot_value, page = parts[1], parts[2] if len(parts) > 2 else "0"
+    slot_value = parts[1]
+    page = parts[2] if len(parts) > 2 else "0"
+    item_id = parts[3] if len(parts) > 3 else None
     try:
         await game.unequip_item(user.id, Slot(slot_value))
         await call.answer("خلع سلاح شد ➖")
-        player = await hydrate(user.id, user.full_name, user.username)
-        await refresh_markup(
-            editable_message(call),
-            await _inventory_markup(player, int(page or 0), 0),
-        )
+        from database.items import ITEMS_BY_ID
+
+        item = ITEMS_BY_ID.get(item_id) if item_id else None
+        if item is not None:
+            buttons = [
+                [
+                    InlineKeyboardButton(
+                        text="➕ تجهیز / استفاده",
+                        callback_data=f"eq:{item_id}:{page}",
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="◀️ کوله‌پشتی", callback_data=f"inv:{page}"
+                    ),
+                    InlineKeyboardButton(text="🏠 کارت من", callback_data="act:me"),
+                ],
+            ]
+            await refresh_markup(
+                editable_message(call),
+                InlineKeyboardMarkup(inline_keyboard=buttons),
+            )
+        else:
+            player = await hydrate(user.id, user.full_name, user.username)
+            await refresh_markup(
+                editable_message(call),
+                await _inventory_markup(player, int(page or 0), 0),
+            )
     except Exception as exc:  # noqa: BLE001
         await answer_error(exc, callback=call)
 
