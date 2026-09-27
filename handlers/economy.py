@@ -15,7 +15,7 @@ from aiogram.filters import Command, CommandObject
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
 from config import settings
-from handlers.common import answer_error, energy_bar, esc, hydrate
+from handlers.common import CommandOrText, answer_error, energy_bar, esc, hydrate
 from services import economy
 from services.game import GameError, exp_to_next
 
@@ -62,10 +62,7 @@ HELP_WORDS = {"راهنما", "کمک", "آموزش", "اموزش", "دستور�
 # ---------------------------------------------------------------------------
 
 
-@router.message(
-    Command("daily", "claim")
-    | (F.text.func(lambda t: bool(t and t.strip().lower() in DAILY_WORDS)))
-)
+@router.message(CommandOrText(["daily", "claim"], DAILY_WORDS))
 async def cmd_daily(message: Message) -> None:
     user = message.from_user
     if user is None:
@@ -88,10 +85,7 @@ async def cmd_daily(message: Message) -> None:
 # ---------------------------------------------------------------------------
 
 
-@router.message(
-    Command("work", "shift")
-    | (F.text.func(lambda t: bool(t and t.strip().lower() in WORK_WORDS)))
-)
+@router.message(CommandOrText(["work", "shift"], WORK_WORDS))
 async def cmd_work(message: Message) -> None:
     user = message.from_user
     if user is None:
@@ -112,10 +106,7 @@ async def cmd_work(message: Message) -> None:
 # ---------------------------------------------------------------------------
 
 
-@router.message(
-    Command("heist", "rob")
-    | (F.text.func(lambda t: bool(t and t.strip().lower().startswith(("سرقت", "دزدی", "heist")))))
-)
+@router.message(CommandOrText(["heist", "rob"], prefix_words=("سرقت", "دزدی", "heist")))
 async def cmd_heist(message: Message, command: CommandObject | None = None) -> None:
     user = message.from_user
     if user is None:
@@ -143,18 +134,12 @@ async def cmd_heist(message: Message, command: CommandObject | None = None) -> N
 # ---------------------------------------------------------------------------
 
 
-@router.message(
-    Command("dice")
-    | (F.text.func(lambda t: bool(t and t.strip().lower().startswith(("تاس", "dice")))))
-)
+@router.message(CommandOrText(["dice"], prefix_words=("تاس", "dice")))
 async def cmd_dice(message: Message, command: CommandObject | None = None) -> None:
     await _casino_command(message, command, game="dice")
 
 
-@router.message(
-    Command("coinflip", "flip")
-    | (F.text.func(lambda t: bool(t and t.strip().lower().startswith(("سکه", "شیرخط", "شیر یا خط", "coinflip")))))
-)
+@router.message(CommandOrText(["coinflip", "flip"], prefix_words=("سکه", "شیرخط", "شیر یا خط", "coinflip")))
 async def cmd_coinflip(message: Message, command: CommandObject | None = None) -> None:
     await _casino_command(message, command, game="coinflip")
 
@@ -200,10 +185,7 @@ async def _casino_command(message: Message, command: CommandObject | None, game:
 # ---------------------------------------------------------------------------
 
 
-@router.message(
-    Command("balance", "bal", "wallet", "money")
-    | (F.text.func(lambda t: bool(t and t.strip().lower() in BAL_WORDS)))
-)
+@router.message(CommandOrText(["balance", "bal", "wallet", "money"], BAL_WORDS))
 async def cmd_balance(message: Message) -> None:
     user = message.from_user
     if user is None:
@@ -222,10 +204,7 @@ async def cmd_balance(message: Message) -> None:
         await answer_error(exc, message=message)
 
 
-@router.message(
-    Command("stats", "level")
-    | (F.text.func(lambda t: bool(t and t.strip().lower() in STATS_WORDS)))
-)
+@router.message(CommandOrText(["stats", "level"], STATS_WORDS))
 async def cmd_stats(message: Message) -> None:
     user = message.from_user
     if user is None:
@@ -350,10 +329,7 @@ _HELP_COMBAT_TEXT = (
 )
 
 
-@router.message(
-    Command("help", "start")
-    | (F.text.func(lambda t: bool(t and t.strip().lower() in HELP_WORDS)))
-)
+@router.message(CommandOrText(["help", "start"], HELP_WORDS))
 async def cmd_help(message: Message) -> None:
     await message.reply(_HELP_MAIN_TEXT, reply_markup=_help_markup())
 

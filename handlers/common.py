@@ -12,6 +12,7 @@ import asyncio
 import html
 import logging
 
+from aiogram.filters import BaseFilter
 from aiogram.types import CallbackQuery, Message
 
 from models import Player
@@ -31,7 +32,40 @@ __all__ = [
     "message_error",
     "energy_bar",
     "editable_message",
+    "CommandOrText",
 ]
+
+
+class CommandOrText(BaseFilter):
+    """Reliable filter matching both /commands and plain text / Persian words."""
+
+    def __init__(
+        self,
+        commands: list[str] | tuple[str, ...] | set[str] | None = None,
+        words: set[str] | list[str] | tuple[str, ...] | None = None,
+        prefix_words: set[str] | list[str] | tuple[str, ...] | None = None,
+    ) -> None:
+        self.commands = {c.lower() for c in (commands or ())}
+        self.words = {w.lower() for w in (words or ())}
+        self.prefix_words = tuple(p.lower() for p in (prefix_words or ()))
+
+    async def __call__(self, message: Message) -> bool:
+        if not message.text:
+            return False
+        text = message.text.strip()
+        parts = text.split()
+        if not parts:
+            return False
+        first_token = parts[0].lower()
+        if first_token.startswith("/"):
+            cmd = first_token[1:].split("@")[0]
+            if cmd in self.commands:
+                return True
+        if first_token in self.words or text.lower() in self.words:
+            return True
+        if self.prefix_words and text.lower().startswith(self.prefix_words):
+            return True
+        return False
 
 
 def editable_message(call: CallbackQuery) -> Message | None:

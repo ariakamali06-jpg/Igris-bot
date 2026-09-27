@@ -19,7 +19,7 @@ from aiogram.types import (
 )
 
 from config import settings
-from handlers.common import answer_error, editable_message, hydrate
+from handlers.common import CommandOrText, answer_error, editable_message, hydrate
 from handlers.panel import render_panel
 from models import Player
 from services import economy, shop
@@ -105,10 +105,7 @@ async def _owned_ids(user_id: int) -> list[str]:
     return [row["item_id"] for row in rows]
 
 
-@router.message(
-    Command("shop", "store", "market")
-    | (F.text.func(lambda t: bool(t and t.strip().lower() in SHOP_COMMANDS)))
-)
+@router.message(CommandOrText(["shop", "store", "market"], SHOP_COMMANDS))
 async def cmd_shop(message: Message) -> None:
     user = message.from_user
     if user is None:

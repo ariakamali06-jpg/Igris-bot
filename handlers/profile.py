@@ -21,6 +21,7 @@ from aiogram.types import (
 )
 
 from handlers.common import (
+    CommandOrText,
     answer_error,
     card_bytes,
     editable_message,
@@ -100,10 +101,7 @@ async def _show_profile(message: Message | None, player: Player) -> None:
     )
 
 
-@router.message(
-    Command("me", "profile", "card")
-    | (F.text.func(lambda t: bool(t and t.strip().lower() in PROFILE_COMMANDS)))
-)
+@router.message(CommandOrText(["me", "profile", "card"], PROFILE_COMMANDS))
 async def cmd_profile(message: Message) -> None:
     user = message.from_user
     if user is None:
@@ -302,10 +300,7 @@ async def cb_unequip(call: CallbackQuery) -> None:
 # ---------------------------------------------------------------------------
 
 
-@router.message(
-    Command("inventory", "inv")
-    | (F.text.func(lambda t: bool(t and t.strip().lower() in INVENTORY_COMMANDS)))
-)
+@router.message(CommandOrText(["inventory", "inv"], INVENTORY_COMMANDS))
 async def cmd_inventory(message: Message) -> None:
     user = message.from_user
     if user is None:

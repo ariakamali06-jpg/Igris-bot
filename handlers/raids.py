@@ -28,7 +28,13 @@ from aiogram.types import (
 )
 
 from config import settings
-from handlers.common import answer_error, editable_message, esc, hydrate
+from handlers.common import (
+    CommandOrText,
+    answer_error,
+    editable_message,
+    esc,
+    hydrate,
+)
 from handlers.panel import render_panel
 from services import economy, raids
 from services.compositor import RenderRequest, render_card
@@ -291,10 +297,7 @@ async def _raid_row(raid_id: int) -> dict | None:
 BOSS_WORDS = {"باس", "حمله", "غول", "راید", "boss", "raid"}
 
 
-@router.message(
-    Command("boss", "raid")
-    | (F.text.func(lambda t: bool(t and t.strip().lower() in BOSS_WORDS)))
-)
+@router.message(CommandOrText(["boss", "raid"], BOSS_WORDS))
 async def cmd_boss(message: Message) -> None:
     if message.chat.type not in ("group", "supergroup"):
         await message.reply("باس‌ها و رایدها فقط داخل گروه‌ها فعال هستند.")

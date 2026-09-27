@@ -31,7 +31,13 @@ from aiogram.types import (
 
 from config import settings
 from database.connection import db
-from handlers.common import answer_error, editable_message, esc, hydrate
+from handlers.common import (
+    CommandOrText,
+    answer_error,
+    editable_message,
+    esc,
+    hydrate,
+)
 from handlers.panel import render_panel
 from models import ActivityKind, Player
 from services import battle, economy
@@ -96,10 +102,7 @@ def _parse_stake_text(text: str) -> tuple[int | None, str]:
     return stake, " ".join(rest)
 
 
-@router.message(
-    Command("duel")
-    | (F.text.func(lambda t: bool(t and t.strip().lower().startswith(("دوئل", "مبارزه", "چالش", "duel")))))
-)
+@router.message(CommandOrText(["duel"], prefix_words=("دوئل", "مبارزه", "چالش", "duel")))
 async def cmd_duel(message: Message, command: CommandObject | None = None) -> None:
     user = message.from_user
     if user is None:
