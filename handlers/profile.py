@@ -98,6 +98,7 @@ async def _show_profile(message: Message | None, player: Player) -> None:
         text=caption,
         photo=photo,
         reply_markup=await _profile_markup(player),
+        force_media=True,
     )
 
 
@@ -277,6 +278,7 @@ async def cb_equip(call: CallbackQuery) -> None:
         await call.answer("آیتم با موفقیت تنت شد ✅")
         from database.items import ITEMS_BY_ID
 
+        player = await hydrate(user.id, user.full_name, user.username)
         item = ITEMS_BY_ID.get(item_id)
         if item is not None:
             buttons = [
@@ -293,12 +295,22 @@ async def cb_equip(call: CallbackQuery) -> None:
                     InlineKeyboardButton(text="🏠 کارت من", callback_data="act:me"),
                 ],
             ]
-            await refresh_markup(
-                editable_message(call),
-                InlineKeyboardMarkup(inline_keyboard=buttons),
-            )
+            msg = editable_message(call)
+            if msg and msg.photo:
+                photo = await card_bytes(player)
+                await render_panel(
+                    msg,
+                    text=msg.caption,
+                    photo=photo,
+                    reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons),
+                    force_media=True,
+                )
+            else:
+                await refresh_markup(
+                    msg,
+                    InlineKeyboardMarkup(inline_keyboard=buttons),
+                )
         else:
-            player = await hydrate(user.id, user.full_name, user.username)
             await refresh_markup(
                 editable_message(call),
                 await _inventory_markup(player, int(page or 0), 0),
@@ -321,6 +333,7 @@ async def cb_unequip(call: CallbackQuery) -> None:
         await call.answer("آیتم از تنت خارج شد و رفت توی کوله ➖")
         from database.items import ITEMS_BY_ID
 
+        player = await hydrate(user.id, user.full_name, user.username)
         item = ITEMS_BY_ID.get(item_id) if item_id else None
         if item is not None:
             buttons = [
@@ -337,12 +350,22 @@ async def cb_unequip(call: CallbackQuery) -> None:
                     InlineKeyboardButton(text="🏠 کارت من", callback_data="act:me"),
                 ],
             ]
-            await refresh_markup(
-                editable_message(call),
-                InlineKeyboardMarkup(inline_keyboard=buttons),
-            )
+            msg = editable_message(call)
+            if msg and msg.photo:
+                photo = await card_bytes(player)
+                await render_panel(
+                    msg,
+                    text=msg.caption,
+                    photo=photo,
+                    reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons),
+                    force_media=True,
+                )
+            else:
+                await refresh_markup(
+                    msg,
+                    InlineKeyboardMarkup(inline_keyboard=buttons),
+                )
         else:
-            player = await hydrate(user.id, user.full_name, user.username)
             await refresh_markup(
                 editable_message(call),
                 await _inventory_markup(player, int(page or 0), 0),

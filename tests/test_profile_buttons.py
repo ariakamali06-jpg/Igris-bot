@@ -279,6 +279,19 @@ async def test_unequip_item_removes_from_loadout_and_stays_unequipped(player) ->
     assert _has_button(card.reply_markup, "کارت من")
 
 
+async def test_equip_and_unequip_updates_photo_media(player) -> None:
+    from handlers.common import hydrate
+
+    card = CardMessage()
+    call_uneq = FakeCall("uneq:body:0:fitted_tee", card)
+    await profile.cb_unequip(call_uneq)
+    assert card.photo is not None
+
+    call_eq = FakeCall("eq:fitted_tee:0", card)
+    await profile.cb_equip(call_eq)
+    assert card.photo is not None
+
+
 # --------------------------------------------------------------------------
 # duel panel (was also on a text-message path)
 # --------------------------------------------------------------------------

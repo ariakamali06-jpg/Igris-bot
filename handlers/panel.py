@@ -106,13 +106,14 @@ async def _fallback_message(message: Message, *, text: str | None,
 
 
 async def _try_edit(message: Message, text: str | None, photo: bytes | None,
-                    reply_markup: InlineKeyboardMarkup | None) -> bool:
+                    reply_markup: InlineKeyboardMarkup | None,
+                    force_media: bool = False) -> bool:
     """Attempt the type-correct in-place edit. Returns True on success."""
     is_photo_msg = bool(message.photo or message.caption is not None)
 
     if photo is not None:
-        # If it's already a photo message, retitle via caption first
-        if message.photo:
+        # If it's already a photo message and not forced, retitle via caption first
+        if message.photo and not force_media:
             try:
                 await message.edit_caption(caption=text, reply_markup=reply_markup)
                 return True
@@ -177,6 +178,7 @@ async def render_panel(
     text: str | None = None,
     photo: bytes | None = None,
     reply_markup: InlineKeyboardMarkup | None = None,
+    force_media: bool = False,
 ) -> None:
     """Render a panel into ``message``, matching content type to message type.
 
@@ -190,7 +192,7 @@ async def render_panel(
         return
 
     try:
-        if _same_content(message, text=text, photo=photo):
+        if not force_media and _same_content(message, text=text, photo=photo):
             # Buttons may still differ; refresh just the markup.
             await refresh_markup(message, reply_markup)
             return
@@ -200,14 +202,14 @@ async def render_panel(
     message_type = "photo" if message.photo else "text"
     target = "caption" if message.photo else "text"
     try:
-        ok = await _try_edit(message, text, photo, reply_markup)
+        ok = await _try_edit(message, text, photo, reply_markup, force_media=force_media)
         if ok:
             logger.debug(
                 "panel: rendered %s panel on a %s message via edit_%s",
                 "photo" if photo is not None else target,
                 message_type,
                 target if photo is None else (
-                    "caption" if message.photo else "media"
+                    "caption" if (message.photo and not force_media) else "media"
                 ),
             )
             return
