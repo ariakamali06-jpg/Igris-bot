@@ -282,7 +282,11 @@ def _customize_figure(
     is_female: bool = False,
     is_shadow: bool = False,
 ) -> Image.Image:
-    """Dynamically tint skin, hair, and render glowing awakened eyes with Solo Leveling aura flare."""
+    """Dynamically tint skin, hair, and render subtle glowing eyes only when explicitly requested."""
+    # Fast path: if completely default, return untouched high-quality manhwa figure
+    if (not skin_tone or skin_tone == "fair") and (not hair_color or hair_color == "black") and (not eye_color or eye_color == "default"):
+        return figure
+
     img = figure.copy()
     w, h = img.size
 
@@ -350,14 +354,14 @@ def _customize_figure(
             new_data.append((r, g, b, a))
         img.putdata(new_data)
 
-    # 3. Glowing awakened eyes with Solo Leveling energy flare
+    # 3. Glowing awakened eyes (soft glowing iris)
     if eye_color and eye_color != "default":
         draw = ImageDraw.Draw(img)
         colors = {
-            "blue": ((0, 220, 255, 230), (180, 245, 255, 255)),
-            "red": ((255, 35, 55, 230), (255, 220, 220, 255)),
-            "purple": ((195, 65, 255, 230), (245, 205, 255, 255)),
-            "gold": ((255, 195, 20, 230), (255, 250, 205, 255)),
+            "blue": ((0, 220, 255, 180), (180, 245, 255, 255)),
+            "red": ((255, 35, 55, 180), (255, 220, 220, 255)),
+            "purple": ((195, 65, 255, 180), (245, 205, 255, 255)),
+            "gold": ((255, 195, 20, 180), (255, 250, 205, 255)),
         }
         if eye_color in colors:
             aura, core = colors[eye_color]
@@ -368,12 +372,9 @@ def _customize_figure(
             else:
                 eyes = [(246, 150), (266, 150)]
             for ex, ey in eyes:
-                draw.ellipse((ex - 5, ey - 3, ex + 5, ey + 3), fill=aura)
-                draw.ellipse((ex - 2, ey - 2, ex + 2, ey + 2), fill=core)
+                draw.ellipse((ex - 3, ey - 2, ex + 3, ey + 2), fill=aura)
+                draw.ellipse((ex - 1, ey - 1, ex + 1, ey + 1), fill=core)
                 draw.point((ex, ey), fill=(255, 255, 255, 255))
-                dx = -1 if ex < 256 else 1
-                draw.line([(ex, ey), (ex + dx * 4, ey - 3), (ex + dx * 8, ey - 7), (ex + dx * 13, ey - 13)], fill=aura, width=2)
-                draw.line([(ex, ey), (ex + dx * 5, ey - 4)], fill=core, width=1)
 
     return img
 
@@ -437,7 +438,7 @@ class Compositor:
     # -- cache -------------------------------------------------------------
 
     def _cache_key(self, request: RenderRequest) -> str:
-        material = f"v4-manhwa|{self._assets.version}|{request.signature()}"
+        material = f"v5-archetype|{self._assets.version}|{request.signature()}"
         return hashlib.sha1(material.encode("utf-8")).hexdigest()
 
     def _read_disk(self, key: str) -> bytes | None:
