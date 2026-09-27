@@ -20,6 +20,7 @@ import sys
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
+from aiogram.exceptions import TelegramConflictError
 
 from config import settings
 from database.connection import db
@@ -135,11 +136,21 @@ async def run() -> None:
     health_server = await _start_health_server()
     try:
         await on_startup(bot)
-        await dp.start_polling(
-            bot,
-            allowed_updates=dp.resolve_used_update_types(),
-            handle_signals=False,
-        )
+        for attempt in range(1, 11):
+            try:
+                await dp.start_polling(
+                    bot,
+                    allowed_updates=dp.resolve_used_update_types(),
+                    handle_signals=True,
+                )
+                break
+            except TelegramConflictError:
+                logger.warning(
+                    "TelegramConflictError: another bot instance is still active/shutting down. "
+                    "Waiting 3 seconds before retry (attempt %d/10)...",
+                    attempt,
+                )
+                await asyncio.sleep(3)
     finally:
         if health_server is not None:
             health_server.close()
