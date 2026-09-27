@@ -293,7 +293,7 @@ class Compositor:
     # -- cache -------------------------------------------------------------
 
     def _cache_key(self, request: RenderRequest) -> str:
-        material = f"{self._assets.version}|{request.signature()}"
+        material = f"v2-manhwa|{self._assets.version}|{request.signature()}"
         return hashlib.sha1(material.encode("utf-8")).hexdigest()
 
     def _read_disk(self, key: str) -> bytes | None:
@@ -324,9 +324,28 @@ class Compositor:
         composited = False
 
         # Layers 2..7: equipped cosmetics in bottom-to-top order.
+        is_manhwa_base = request.body in (
+            "base_male",
+            "base_female",
+            "base_shadow",
+            "base_street",
+        )
+        legacy_starter_keys = {
+            "fitted_tee",
+            "street_slacks",
+            "street_fade",
+            "tactical_hoodie",
+            "combat_boots",
+            "hunter_trench",
+            "techwear_cargo",
+            "raven_shag",
+            "hood_up",
+        }
         for slot in SLOT_RENDER_ORDER:
             key = request.loadout.get(slot.value)
             if not key:
+                continue
+            if is_manhwa_base and key in legacy_starter_keys:
                 continue
             layer = self._assets.get(_folder_for(slot), key)
             if layer is None:
