@@ -163,8 +163,8 @@ async def cb_shop(call: CallbackQuery) -> None:
 
         # Plain pagination (payload[0] is a page number).
         page = int(action)
-        player = await hydrate(user.id, user.full_name, user.username)
         await call.answer()  # instant ack before the stock queries
+        player = await hydrate(user.id, user.full_name, user.username)
         text, markup = await _shop_page(player, page)
         await render_panel(
             editable_message(call), text=text, reply_markup=markup
