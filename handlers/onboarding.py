@@ -56,6 +56,9 @@ HAIR_LABELS: dict[str, str] = {
 }
 
 BODY_LABELS: dict[str, str] = {
+    "base_male": "چابک مانهوا (مرد)",
+    "base_female": "چابک رزمی (زن)",
+    "base_shadow": "پیکره‌ی اثیری سایه",
     "base_street": "چابک و سرعتی",
     "base_aegis": "تنومند و تدافعی",
 }
@@ -225,26 +228,49 @@ async def _proceed_to_body(message: Any, state: FSMContext, age: int) -> None:
     await state.update_data(age=age)
     await state.set_state(OnboardingState.waiting_for_body)
 
-    buttons = [
-        [
-            InlineKeyboardButton(
-                text="🏃 استایل چابک و سرعتی (پوست روشن)",
-                callback_data="ob:body:base_street:fair",
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                text="🛡 استایل تنومند و تدافعی (پوست تیره)",
-                callback_data="ob:body:base_aegis:tan",
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                text="🌑 فیزیک تاریکی و سایه (پوست مهتابی)",
-                callback_data="ob:body:base_street:shadow",
-            )
-        ],
-    ]
+    data = await state.get_data()
+    gender = data.get("gender", "مرد")
+
+    if gender == "زن":
+        buttons = [
+            [
+                InlineKeyboardButton(
+                    text="🏹 استایل چابک و کماندار (پوست روشن)",
+                    callback_data="ob:body:base_female:fair",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🗡️ استایل جنگجوی چابک (پوست گندمی)",
+                    callback_data="ob:body:base_female:tan",
+                )
+            ],
+        ]
+    elif gender == "مرد":
+        buttons = [
+            [
+                InlineKeyboardButton(
+                    text="🏃 استایل چابک مانهوا (پوست روشن)",
+                    callback_data="ob:body:base_male:fair",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🛡 استایل تانک و رزمی (پوست گندمی)",
+                    callback_data="ob:body:base_aegis:tan",
+                )
+            ],
+        ]
+    else:
+        buttons = [
+            [
+                InlineKeyboardButton(
+                    text="🌑 پیکره‌ی اثیری سایه (فرمانده ارتش تاریکی)",
+                    callback_data="ob:body:base_shadow:shadow",
+                )
+            ],
+        ]
+
     age_str = f"{age} سال" if age < 999 else "نامیرا"
     prompt = (
         f"⏳ سن: <b>{age_str}</b>\n\n"

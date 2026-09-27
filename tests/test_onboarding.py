@@ -108,10 +108,10 @@ async def test_onboarding_full_wizard(_db) -> None:
     assert await state.get_state() == onboarding.OnboardingState.waiting_for_body.state
 
     # 5. Choose body & skin
-    call_body = FakeCall("ob:body:base_street:fair", msg, user)
+    call_body = FakeCall("ob:body:base_male:fair", msg, user)
     await onboarding.cb_body(call_body, state)
     data = await state.get_data()
-    assert data["body_stance"] == "base_street"
+    assert data["body_stance"] == "base_male"
     assert await state.get_state() == onboarding.OnboardingState.waiting_for_hair.state
 
     # 6. Choose hair
@@ -132,7 +132,7 @@ async def test_onboarding_full_wizard(_db) -> None:
     assert player.display_name == "Aria"
     assert player.gender == "مرد"
     assert player.age == 22
-    assert player.body_stance == "base_street"
+    assert player.body_stance == "base_male"
     assert player.onboarding_completed == 1
     assert player.loadout["head"] == "street_fade"
     assert player.loadout["body"] == "fitted_tee"
@@ -178,8 +178,8 @@ async def test_onboarding_custom_typing_and_shadow_kit(_db) -> None:
     data = await state.get_data()
     assert data["age"] == 25
 
-    # 5. Choose Aegis tank body
-    call_body = FakeCall("ob:body:base_aegis:tan", msg, user)
+    # 5. Choose female body
+    call_body = FakeCall("ob:body:base_female:tan", msg, user)
     await onboarding.cb_body(call_body, state)
 
     # 6. Choose Raven Shag hair
@@ -195,7 +195,7 @@ async def test_onboarding_custom_typing_and_shadow_kit(_db) -> None:
     assert player.display_name == "پادشاه سایه‌ها"
     assert player.gender == "زن"
     assert player.age == 25
-    assert player.body_stance == "base_aegis"
+    assert player.body_stance == "base_female"
     assert player.loadout["head"] == "raven_shag"
     assert player.loadout["body"] == "hunter_trench"
     assert player.loadout["legs"] == "techwear_cargo"

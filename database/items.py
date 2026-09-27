@@ -54,6 +54,9 @@ BACKGROUND_KEYS: tuple[tuple[str, str], ...] = (
 BODY_KEYS: tuple[tuple[str, str], ...] = (
     ("base_street", "Athletic neutral stance — the default mannequin."),
     ("base_aegis", "Braced combat stance, weight forward."),
+    ("base_male", "Male Rookie Hunter — athletic compression fit."),
+    ("base_female", "Female Rookie Hunter — athletic stealth fit."),
+    ("base_shadow", "Fledgling Shadow Soldier — dark ethereal aura."),
 )
 
 # ---------------------------------------------------------------------------
