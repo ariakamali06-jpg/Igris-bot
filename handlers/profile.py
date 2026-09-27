@@ -113,6 +113,14 @@ async def cmd_profile(message: Message) -> None:
         await answer_error(exc, message=message)
 
 
+@router.message(CommandOrText(["version", "ver"], {"ورژن", "نسخه"}))
+async def cmd_version(message: Message) -> None:
+    await message.answer(
+        "🤖 <b>ربات ایگریس — نسخه ۱.۲.۱</b>\n"
+        "✨ <b>وضعیت:</b> رفع باگ لوداوت و ذخیره وضعیت خلع سلاح کوله‌پشتی"
+    )
+
+
 @router.callback_query(F.data == "act:me")
 async def cb_profile(call: CallbackQuery) -> None:
     await call.answer()  # instant ack before the slow render
@@ -266,7 +274,7 @@ async def cb_equip(call: CallbackQuery) -> None:
     item_id, page = parts[1], parts[2] if len(parts) > 2 else "0"
     try:
         await game.equip_item(user.id, item_id)
-        await call.answer("تجهیز شد ✅")
+        await call.answer("آیتم با موفقیت تنت شد ✅")
         from database.items import ITEMS_BY_ID
 
         item = ITEMS_BY_ID.get(item_id)
@@ -310,7 +318,7 @@ async def cb_unequip(call: CallbackQuery) -> None:
     item_id = parts[3] if len(parts) > 3 else None
     try:
         await game.unequip_item(user.id, Slot(slot_value))
-        await call.answer("خلع سلاح شد ➖")
+        await call.answer("آیتم از تنت خارج شد و رفت توی کوله ➖")
         from database.items import ITEMS_BY_ID
 
         item = ITEMS_BY_ID.get(item_id) if item_id else None
