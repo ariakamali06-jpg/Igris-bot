@@ -58,6 +58,7 @@ async def _profile_markup(player: Player) -> InlineKeyboardMarkup:
             InlineKeyboardButton(text="💰 موجودی", callback_data="act:bal"),
         ],
         [
+            InlineKeyboardButton(text="🎨 تغییر چهره و ظاهر", callback_data="act:create"),
             InlineKeyboardButton(text="📖 راهنمای بازی", callback_data="act:help"),
         ],
     ]
@@ -117,8 +118,8 @@ async def cmd_profile(message: Message) -> None:
 @router.message(CommandOrText(["version", "ver"], {"ورژن", "نسخه"}))
 async def cmd_version(message: Message) -> None:
     await message.answer(
-        "🤖 <b>ربات ایگریس — نسخه ۱.۳.۰</b>\n"
-        "✨ <b>وضعیت:</b> آرت جدید مانهوایی، تفکیک جنسیت کاراکتر (مرد/زن/سایه) و ویزارد آنبوردینگ فعال است."
+        "🤖 <b>ربات ایگریس — نسخه ۱.۴.۰</b>\n"
+        "✨ <b>وضعیت:</b> استودیو شخصی‌سازی کامل (مدل مو، رنگ مو، چشم‌های بیداری درخشان، رنگ پوست) و رندر داینامیک فعال است."
     )
 
 

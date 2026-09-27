@@ -71,6 +71,7 @@ class Player:
     skin_tone: str = "fair"
     eye_color: str = "amber"
     body_stance: str = "base_street"
+    hair_color: str = "black"
     onboarding_completed: int = 0
 
     # Aggregates, filled in by services.game.load_player().

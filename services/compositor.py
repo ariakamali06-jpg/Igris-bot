@@ -95,6 +95,9 @@ class RenderRequest:
     background: str = "alley_neon"
     body: str = "base_street"
     username: str | None = None
+    skin_tone: str = "fair"
+    hair_color: str = "black"
+    eye_color: str = "blue"
 
     def signature(self) -> str:
         """Stable, order-independent string of everything visible on the card."""
@@ -105,6 +108,9 @@ class RenderRequest:
             (
                 f"bg={self.background}",
                 f"body={self.body}",
+                f"skin={self.skin_tone}",
+                f"hair={self.hair_color}",
+                f"eyes={self.eye_color}",
                 f"slots={slots}",
                 f"name={self.display_name}",
                 f"lvl={self.level}",
@@ -234,6 +240,96 @@ def _fit(draw: ImageDraw.ImageDraw, text: str, font: FontLike,
     return (trimmed.rstrip() + ellipsis) if trimmed else ellipsis
 
 
+def _customize_figure(
+    figure: Image.Image,
+    skin_tone: str,
+    hair_color: str,
+    eye_color: str,
+    is_female: bool = False,
+) -> Image.Image:
+    """Dynamically tint skin, hair, and render glowing awakened eyes."""
+    img = figure.copy()
+
+    # 1. Skin tone
+    if skin_tone and skin_tone != "fair":
+        data = list(img.getdata())
+        new_data = []
+        for r, g, b, a in data:
+            if a > 0 and r > 160 and g > 130 and b > 110 and r > g and g >= b:
+                if skin_tone == "tan":
+                    nr = int(r * 0.92)
+                    ng = int(g * 0.82)
+                    nb = int(b * 0.68)
+                elif skin_tone == "dark":
+                    nr = int(r * 0.70)
+                    ng = int(g * 0.58)
+                    nb = int(b * 0.46)
+                elif skin_tone == "pale":
+                    gray = int(0.3 * r + 0.59 * g + 0.11 * b)
+                    nr = min(255, int(r * 0.95 + gray * 0.05))
+                    ng = min(255, int(g * 0.96 + gray * 0.05))
+                    nb = min(255, int(b * 1.05))
+                else:
+                    nr, ng, nb = r, g, b
+                new_data.append((nr, ng, nb, a))
+            else:
+                new_data.append((r, g, b, a))
+        img.putdata(new_data)
+
+    # 2. Hair color
+    if hair_color and hair_color != "black":
+        data = list(img.getdata())
+        new_data = []
+        w, h = img.size
+        for idx, (r, g, b, a) in enumerate(data):
+            x = idx % w
+            y = idx // w
+            if a > 150 and 200 <= x <= 315 and 85 <= y <= 135:
+                if r < 80 and g < 80 and b < 80:
+                    luminance = (r + g + b) / 3.0
+                    if hair_color == "silver":
+                        val = int(185 + luminance * 0.9)
+                        nr, ng, nb = val, val, min(255, val + 15)
+                    elif hair_color == "crimson":
+                        nr = min(255, int(160 + luminance * 1.4))
+                        ng = int(luminance * 0.3)
+                        nb = int(luminance * 0.3)
+                    elif hair_color == "blonde":
+                        val = int(140 + luminance * 1.4)
+                        nr = min(255, int(val * 1.15))
+                        ng = min(255, int(val * 0.95))
+                        nb = int(val * 0.3)
+                    elif hair_color == "blue":
+                        nr = int(luminance * 0.3)
+                        ng = min(255, int(90 + luminance * 1.2))
+                        nb = min(255, int(190 + luminance * 0.9))
+                    else:
+                        nr, ng, nb = r, g, b
+                    new_data.append((nr, ng, nb, a))
+                    continue
+            new_data.append((r, g, b, a))
+        img.putdata(new_data)
+
+    # 3. Glowing awakened eyes
+    if eye_color and eye_color != "default":
+        draw = ImageDraw.Draw(img)
+        colors = {
+            "blue": ((0, 229, 255, 230), (0, 160, 255, 130)),
+            "red": ((255, 40, 60, 230), (200, 10, 30, 130)),
+            "purple": ((185, 70, 255, 230), (135, 30, 220, 130)),
+            "gold": ((255, 195, 30, 230), (225, 140, 10, 130)),
+        }
+        if eye_color in colors:
+            core, aura = colors[eye_color]
+            eye_y = 124 if is_female else 126
+            for ex in [247, 264]:
+                draw.ellipse((ex - 3, eye_y - 2, ex + 3, eye_y + 2), fill=aura)
+                draw.ellipse((ex - 1, eye_y - 1, ex + 1, eye_y + 1), fill=core)
+                draw.point((ex, eye_y - 1), fill=(255, 255, 255, 240))
+
+    return img
+
+
 # ---------------------------------------------------------------------------
 # Compositor
 # ---------------------------------------------------------------------------
@@ -247,7 +343,7 @@ class Compositor:
         self._cache_dir = Path(cache_dir or settings.cache_dir)
         self._memory: dict[str, bytes] = {}
         # Pre-flattened background+body plates: (image, is_fully_opaque).
-        self._base_cache: dict[tuple[str, str], tuple[Image.Image, bool]] = {}
+        self._base_cache: dict[tuple[str, str, str, str, str], tuple[Image.Image, bool]] = {}
         # Disk persistence runs on a single background thread so the ~15ms
         # write (antivirus-sensitive on Windows) never lands inside the
         # render path the caller is waiting on.
@@ -320,7 +416,13 @@ class Compositor:
         # ``Image.alpha_composite(a, b)`` (module form) benchmarks ~30% faster
         # than the in-place instance method on this artwork, and it never
         # mutates its inputs — so the preloaded library stays pristine.
-        plate, plate_opaque = self._base(request.background, request.body)
+        plate, plate_opaque = self._base(
+            request.background,
+            request.body,
+            request.skin_tone,
+            request.hair_color,
+            request.eye_color,
+        )
         composited = False
 
         # Layers 2..7: equipped cosmetics in bottom-to-top order.
@@ -369,14 +471,16 @@ class Compositor:
         # per-render alpha scan (1ms) and go straight to RGB.
         return self._encode(plate, assume_opaque=plate_opaque)
 
-    def _base(self, background: str, body: str) -> tuple[Image.Image, bool]:
-        """Return the cached ``(background ⊕ body)`` plate and its opacity.
-
-        These two layers never change independently of each other in practice,
-        so pre-flattening them removes one full-canvas composite (~3ms) from
-        every render. The dict is bounded by |backgrounds| x |bodies| (6 today).
-        """
-        key = (background, body)
+    def _base(
+        self,
+        background: str,
+        body: str,
+        skin_tone: str = "fair",
+        hair_color: str = "black",
+        eye_color: str = "blue",
+    ) -> tuple[Image.Image, bool]:
+        """Return the cached ``(background ⊕ body)`` plate and its opacity."""
+        key = (background, body, skin_tone, hair_color, eye_color)
         cached = self._base_cache.get(key)
         if cached is not None:
             return cached
@@ -387,11 +491,19 @@ class Compositor:
         opaque = plate.getchannel("A").getextrema()[0] == 255
         figure = self._assets.get("body", body) or self._assets.get("body", "base_street")
         if figure is not None:
+            if body in ("base_male", "base_female", "base_shadow", "base_street"):
+                figure = _customize_figure(
+                    figure,
+                    skin_tone=skin_tone,
+                    hair_color=hair_color,
+                    eye_color=eye_color,
+                    is_female=(body == "base_female"),
+                )
             plate = Image.alpha_composite(plate, figure)
             if not opaque:
                 opaque = plate.getchannel("A").getextrema()[0] == 255
 
-        if len(self._base_cache) >= 16:
+        if len(self._base_cache) >= 32:
             self._base_cache.clear()
         entry = (plate, opaque)
         self._base_cache[key] = entry

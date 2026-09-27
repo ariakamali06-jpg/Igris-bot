@@ -103,6 +103,7 @@ class Database:
             ("skin_tone", "TEXT", "'fair'"),
             ("eye_color", "TEXT", "'amber'"),
             ("body_stance", "TEXT", "'base_street'"),
+            ("hair_color", "TEXT", "'black'"),
             ("onboarding_completed", "INTEGER", "0"),
         ]:
             if col not in cols:

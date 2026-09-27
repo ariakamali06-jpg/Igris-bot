@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS players (
     skin_tone          TEXT    NOT NULL DEFAULT 'fair',
     eye_color          TEXT    NOT NULL DEFAULT 'amber',
     body_stance        TEXT    NOT NULL DEFAULT 'base_street',
+    hair_color         TEXT    NOT NULL DEFAULT 'black',
     onboarding_completed INTEGER NOT NULL DEFAULT 0
 );
 

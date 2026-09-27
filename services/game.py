@@ -216,6 +216,7 @@ async def _load_conn(
         skin_tone=row["skin_tone"] if "skin_tone" in keys else "fair",
         eye_color=row["eye_color"] if "eye_color" in keys else "amber",
         body_stance=row["body_stance"] if "body_stance" in keys else "base_street",
+        hair_color=row["hair_color"] if "hair_color" in keys else "black",
         onboarding_completed=row["onboarding_completed"] if "onboarding_completed" in keys else 0,
     )
 
@@ -428,6 +429,9 @@ def render_request(player: Player) -> RenderRequest:
         loadout=dict(player.loadout),
         background=background,
         body=body,
+        skin_tone=player.skin_tone,
+        hair_color=player.hair_color,
+        eye_color=player.eye_color,
     )
 
 
@@ -440,6 +444,7 @@ async def complete_character_creation(
     eye_color: str,
     body_stance: str,
     hair_style: str,
+    hair_color: str,
     starter_items: tuple[str, ...],
 ) -> Player:
     """Commit full onboarding wizard selections, grant & equip kit, mark complete."""
@@ -454,6 +459,7 @@ async def complete_character_creation(
                 skin_tone = ?,
                 eye_color = ?,
                 body_stance = ?,
+                hair_color = ?,
                 onboarding_completed = 1,
                 last_seen = ?
             WHERE user_id = ?
@@ -465,6 +471,7 @@ async def complete_character_creation(
                 skin_tone,
                 eye_color,
                 body_stance,
+                hair_color,
                 current,
                 user_id,
             ),
