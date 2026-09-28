@@ -151,7 +151,11 @@ async def cmd_start(message: Message, state: FSMContext) -> None:
             "🏷️ <b>مرحله اول: نام شهروندی کاراکترت چیه؟</b>\n"
             "می‌تونی اسمت رو در چت بنویسی یا با دکمه زیر از نام تلگرامت استفاده کنی:"
         )
-        await message.reply(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons))
+        sent = await message.reply(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons))
+        tracked = [message.message_id]
+        if hasattr(sent, "message_id"):
+            tracked.append(sent.message_id)
+        await state.update_data(tracked_msg_ids=tracked)
     except Exception as exc:  # noqa: BLE001
         await answer_error(exc, message=message)
 
@@ -188,6 +192,8 @@ async def cb_start_creation(call: CallbackQuery, state: FSMContext) -> None:
     )
     msg = editable_message(call)
     await render_panel(msg, text=text, reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons))
+    if msg and hasattr(msg, "message_id"):
+        await state.update_data(tracked_msg_ids=[msg.message_id])
 
 
 # ---------------------------------------------------------------------------
@@ -195,7 +201,12 @@ async def cb_start_creation(call: CallbackQuery, state: FSMContext) -> None:
 # ---------------------------------------------------------------------------
 
 async def _advance_to_age(target: Message, state: FSMContext, name: str) -> None:
-    await state.update_data(name=name)
+    data = await state.get_data()
+    tracked_msg_ids = list(data.get("tracked_msg_ids", []))
+    if hasattr(target, "message_id"):
+        tracked_msg_ids.append(target.message_id)
+
+    await state.update_data(name=name, tracked_msg_ids=tracked_msg_ids)
     await state.set_state(OnboardingState.waiting_for_age)
 
     buttons = [
@@ -213,7 +224,14 @@ async def _advance_to_age(target: Message, state: FSMContext, name: str) -> None
         "🎂 <b>مرحله دوم: سن کاراکترت چقدره؟</b>\n"
         "می‌تونی از دکمه‌های زیر انتخاب کنی یا سن دلخواهت رو در چت تایپ کنی (مثلاً ۲۲):"
     )
-    await target.reply(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons))
+    markup = InlineKeyboardMarkup(inline_keyboard=buttons)
+    try:
+        await target.edit_text(text, reply_markup=markup)
+    except Exception:
+        sent = await target.reply(text, reply_markup=markup)
+        if hasattr(sent, "message_id"):
+            tracked_msg_ids.append(sent.message_id)
+            await state.update_data(tracked_msg_ids=tracked_msg_ids)
 
 
 @router.callback_query(OnboardingState.waiting_for_name, F.data == "ob:name_tg")
@@ -228,6 +246,12 @@ async def cb_name_tg(call: CallbackQuery, state: FSMContext) -> None:
 
 @router.message(OnboardingState.waiting_for_name)
 async def msg_name(message: Message, state: FSMContext) -> None:
+    data = await state.get_data()
+    tracked = list(data.get("tracked_msg_ids", []))
+    if hasattr(message, "message_id"):
+        tracked.append(message.message_id)
+        await state.update_data(tracked_msg_ids=tracked)
+
     text = (message.text or "").strip()
     if len(text) < 2 or len(text) > 30:
         await message.reply("⚠️ نام باید بین ۲ تا ۳۰ کاراکتر باشد. لطفاً مجدداً تایپ کنید:")
@@ -245,7 +269,12 @@ msg_name_text = msg_name
 # ---------------------------------------------------------------------------
 
 async def _advance_to_gender(target: Message, state: FSMContext, age: int) -> None:
-    await state.update_data(age=age)
+    data = await state.get_data()
+    tracked_msg_ids = list(data.get("tracked_msg_ids", []))
+    if hasattr(target, "message_id"):
+        tracked_msg_ids.append(target.message_id)
+
+    await state.update_data(age=age, tracked_msg_ids=tracked_msg_ids)
     await state.set_state(OnboardingState.waiting_for_gender)
 
     buttons = [
@@ -258,7 +287,14 @@ async def _advance_to_gender(target: Message, state: FSMContext, age: int) -> No
         f"✅ سن کاراکتر ثبت شد: <b>{age} سال</b>\n\n"
         "⚧ <b>مرحله سوم: جنسیت کاراکترت رو انتخاب کن:</b>"
     )
-    await target.reply(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons))
+    markup = InlineKeyboardMarkup(inline_keyboard=buttons)
+    try:
+        await target.edit_text(text, reply_markup=markup)
+    except Exception:
+        sent = await target.reply(text, reply_markup=markup)
+        if hasattr(sent, "message_id"):
+            tracked_msg_ids.append(sent.message_id)
+            await state.update_data(tracked_msg_ids=tracked_msg_ids)
 
 
 @router.callback_query(OnboardingState.waiting_for_age, F.data.startswith("ob:age:"))
@@ -272,6 +308,12 @@ async def cb_age(call: CallbackQuery, state: FSMContext) -> None:
 
 @router.message(OnboardingState.waiting_for_age)
 async def msg_age(message: Message, state: FSMContext) -> None:
+    data = await state.get_data()
+    tracked = list(data.get("tracked_msg_ids", []))
+    if hasattr(message, "message_id"):
+        tracked.append(message.message_id)
+        await state.update_data(tracked_msg_ids=tracked)
+
     text = (message.text or "").strip()
     if not text.isdigit() or not (15 <= int(text) <= 99):
         await message.reply("⚠️ لطفاً یک سن معتبر بین ۱۵ تا ۹۹ سال وارد کنید:")
@@ -487,6 +529,11 @@ async def cb_mouth(call: CallbackQuery, state: FSMContext) -> None:
     eye_style_key = f"eyes{eye_shape}_{skin_num}"
     mouth_style_key = f"mouth{mouth_num}_{skin_num}"
 
+    data = await state.get_data()
+    tracked_msg_ids = list(data.get("tracked_msg_ids", []))
+    if isinstance(call.message, Message) and hasattr(call.message, "message_id"):
+        tracked_msg_ids.append(call.message.message_id)
+
     player = await game.complete_character_creation(
         user_id=user.id,
         display_name=name,
@@ -520,24 +567,55 @@ async def cb_mouth(call: CallbackQuery, state: FSMContext) -> None:
         "با دستورات <code>کار</code>، <code>تحصیل</code>، <code>شغل</code>، <code>بانک</code> و <code>فروشگاه</code> شهر را فتح کنید."
     )
 
-    if isinstance(call.message, Message):
+    chat_id = call.message.chat.id if isinstance(call.message, Message) else user.id
+    bot_instance = getattr(call, "bot", None) or (call.message.bot if isinstance(call.message, Message) else None)
+
+    # Clean up all messages from wizard steps to keep the chat tidy
+    if bot_instance:
+        for mid in set(tracked_msg_ids):
+            try:
+                await bot_instance.delete_message(chat_id=chat_id, message_id=mid)
+            except Exception:
+                pass
+    elif isinstance(call.message, Message):
         try:
             await call.message.delete()
         except Exception:
             pass
-        # Strict requirement: NO buttons under card
-        if hasattr(call.message, "reply_photo"):
-            await call.message.reply_photo(
+
+    # Safely send citizenship card photo directly to chat
+    sent_photo = False
+    if bot_instance:
+        try:
+            await bot_instance.send_photo(
+                chat_id=chat_id,
                 photo=photo_bytes(photo),
                 caption=caption,
                 reply_markup=None,
             )
-        else:
-            await call.message.answer_photo(
-                photo=photo_bytes(photo),
-                caption=caption,
-                reply_markup=None,
-            )
+            sent_photo = True
+        except Exception as e:
+            logger.error("Failed to send citizenship card photo via bot: %s", e)
+
+    if not sent_photo and isinstance(call.message, Message):
+        if hasattr(call.message, "answer_photo"):
+            try:
+                await call.message.answer_photo(
+                    photo=photo_bytes(photo),
+                    caption=caption,
+                    reply_markup=None,
+                )
+            except Exception as e:
+                logger.error("Failed to answer_photo fallback: %s", e)
+        elif hasattr(call.message, "reply_photo"):
+            try:
+                await call.message.reply_photo(
+                    photo=photo_bytes(photo),
+                    caption=caption,
+                    reply_markup=None,
+                )
+            except Exception as e:
+                logger.error("Failed to reply_photo fallback: %s", e)
 
 
 async def target_send(target: Message, text: str, buttons: list[list[InlineKeyboardButton]]) -> None:

@@ -440,7 +440,7 @@ class Compositor:
     # -- cache -------------------------------------------------------------
 
     def _cache_key(self, request: RenderRequest) -> str:
-        material = f"v7-perfect-avatars|{self._assets.version}|{request.signature()}"
+        material = f"v8-tiramix-clean|{self._assets.version}|{request.signature()}"
         return hashlib.sha1(material.encode("utf-8")).hexdigest()
 
     def _read_disk(self, key: str) -> bytes | None:

@@ -120,11 +120,20 @@ async def _profile_panel(player: Player) -> tuple[str, bytes]:
 async def _send_profile(target: Message, player: Player) -> None:
     caption, photo = await _profile_panel(player)
     # STRICT USER PREFERENCE: NO CLUTTERED BUTTONS UNDER THE CARD
-    await target.reply_photo(
-        photo=BufferedInputFile(photo, filename="character.jpg"),
-        caption=caption,
-        reply_markup=None,
-    )
+    try:
+        await target.reply_photo(
+            photo=BufferedInputFile(photo, filename="character.jpg"),
+            caption=caption,
+            reply_markup=None,
+        )
+    except Exception:
+        if getattr(target, "bot", None):
+            await target.bot.send_photo(
+                chat_id=target.chat.id,
+                photo=BufferedInputFile(photo, filename="character.jpg"),
+                caption=caption,
+                reply_markup=None,
+            )
 
 
 async def _show_profile(message: Message | None, player: Player) -> None:
