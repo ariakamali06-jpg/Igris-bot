@@ -49,6 +49,8 @@ BACKGROUND_KEYS: tuple[tuple[str, str], ...] = (
     ("alley_neon", "Rain-slick alley under buzzing kanji neon."),
     ("rooftop_zenith", "Helipad rooftop above a sleeping city grid."),
     ("sanctum_abyss", "Runed stone chamber lit by drifting will-o-wisps."),
+    ("city_night", "Distant skyscrapers glowing through evening smog."),
+    ("dungeon", "Dungeon chamber with faint bioluminescent moss."),
 )
 
 BODY_KEYS: tuple[tuple[str, str], ...] = (
@@ -790,6 +792,19 @@ ITEMS: tuple[ItemDef, ...] = (
         price_soul_shards=15,
         shop_pool="permanent",
         description="Fire that only ever consumes one thing.",
+    ),
+    ItemDef(
+        id="golden_hero",
+        name="Golden Aura",
+        slot=Slot.AURA,
+        rarity=Rarity.LEGENDARY,
+        atk=20,
+        defense=10,
+        drip=25,
+        price_credits=10000,
+        price_soul_shards=25,
+        shop_pool="permanent",
+        description="A blazing celestial aura of absolute power.",
     ),
 )
 

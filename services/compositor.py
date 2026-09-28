@@ -476,13 +476,18 @@ def _render_face_and_badges(plate: Image.Image, request: RenderRequest) -> None:
     clean_mouth = str(request.mouth_style).replace("mouth", "").split("_")[0]
 
     by = head_cy - 15
-    if clean_eye == "2":  # Sharp / Hunter
+    if clean_eye == "2":  # Model 2: Sharp / Hunter / Slanted
         draw.line([(head_cx - 22, by + 4), (head_cx - 7, by - 2)], fill=brow_col, width=3)
         draw.line([(head_cx + 7, by - 2), (head_cx + 22, by + 4)], fill=brow_col, width=3)
-    elif clean_eye == "3":  # Calm / Stoic
+    elif clean_eye == "3":  # Model 3: Calm / Stoic Horizontal
         draw.line([(head_cx - 21, by), (head_cx - 7, by)], fill=brow_col, width=2)
         draw.line([(head_cx + 7, by), (head_cx + 21, by)], fill=brow_col, width=2)
-    else:  # Shape 1: Gentle arched
+    elif clean_eye == "4":  # Model 4: Dramatic / Fierce High-Arched
+        draw.line([(head_cx - 22, by - 1), (head_cx - 14, by - 5)], fill=brow_col, width=3)
+        draw.line([(head_cx - 14, by - 5), (head_cx - 6, by)], fill=brow_col, width=3)
+        draw.line([(head_cx + 6, by), (head_cx + 14, by - 5)], fill=brow_col, width=3)
+        draw.line([(head_cx + 14, by - 5), (head_cx + 22, by - 1)], fill=brow_col, width=3)
+    else:  # Model 1: Gentle arched
         draw.arc((head_cx - 22, by - 5, head_cx - 6, by + 5), start=190, end=350, fill=brow_col, width=3)
         draw.arc((head_cx + 6, by - 5, head_cx + 22, by + 5), start=190, end=350, fill=brow_col, width=3)
 
@@ -497,7 +502,7 @@ def _render_face_and_badges(plate: Image.Image, request: RenderRequest) -> None:
     iris_base, iris_hl = eye_palettes.get(str(request.eye_color).lower(), eye_palettes["blue"])
     ey = head_cy - 5
 
-    if clean_eye == "2":  # Sharp Hunter Eyes
+    if clean_eye == "2":  # Model 2: Sharp Hunter Eyes
         draw.polygon([(head_cx - 21, ey + 1), (head_cx - 13, ey - 6), (head_cx - 5, ey), (head_cx - 13, ey + 5)], fill=(255, 255, 255, 255))
         draw.polygon([(head_cx + 21, ey + 1), (head_cx + 13, ey - 6), (head_cx + 5, ey), (head_cx + 13, ey + 5)], fill=(255, 255, 255, 255))
         draw.line([(head_cx - 22, ey + 2), (head_cx - 13, ey - 7), (head_cx - 5, ey)], fill=(15, 15, 20, 255), width=3)
@@ -508,7 +513,7 @@ def _render_face_and_badges(plate: Image.Image, request: RenderRequest) -> None:
         draw.ellipse((head_cx + 11, ey - 2, head_cx + 14, ey + 2), fill=(10, 10, 20, 255))
         draw.point((head_cx - 14, ey - 3), fill=(255, 255, 255, 255))
         draw.point((head_cx + 11, ey - 3), fill=(255, 255, 255, 255))
-    elif clean_eye == "3":  # Calm almond eyes
+    elif clean_eye == "3":  # Model 3: Calm almond eyes
         draw.ellipse((head_cx - 20, ey - 4, head_cx - 6, ey + 4), fill=(255, 255, 255, 255))
         draw.ellipse((head_cx + 6, ey - 4, head_cx + 20, ey + 4), fill=(255, 255, 255, 255))
         draw.arc((head_cx - 21, ey - 6, head_cx - 5, ey + 4), start=190, end=350, fill=(15, 15, 20, 255), width=3)
@@ -517,7 +522,24 @@ def _render_face_and_badges(plate: Image.Image, request: RenderRequest) -> None:
         draw.ellipse((head_cx + 10, ey - 3, head_cx + 16, ey + 4), fill=iris_base)
         draw.point((head_cx - 13, ey), fill=(10, 10, 20, 255))
         draw.point((head_cx + 13, ey), fill=(10, 10, 20, 255))
-    else:  # Shape 1: Round friendly anime eyes
+    elif clean_eye == "4":  # Model 4: Awakened / Fierce Winged Eyes
+        # Sclera with winged outer edge
+        draw.polygon([(head_cx - 23, ey - 1), (head_cx - 13, ey - 6), (head_cx - 5, ey), (head_cx - 13, ey + 5)], fill=(255, 255, 255, 255))
+        draw.polygon([(head_cx + 23, ey - 1), (head_cx + 13, ey - 6), (head_cx + 5, ey), (head_cx + 13, ey + 5)], fill=(255, 255, 255, 255))
+        # Bold winged outer lash
+        draw.line([(head_cx - 24, ey - 2), (head_cx - 13, ey - 7), (head_cx - 5, ey)], fill=(15, 15, 20, 255), width=3)
+        draw.line([(head_cx + 24, ey - 2), (head_cx + 13, ey - 7), (head_cx + 5, ey)], fill=(15, 15, 20, 255), width=3)
+        draw.line([(head_cx - 24, ey - 2), (head_cx - 18, ey + 2)], fill=(15, 15, 20, 255), width=2)
+        draw.line([(head_cx + 24, ey - 2), (head_cx + 18, ey + 2)], fill=(15, 15, 20, 255), width=2)
+        # Intense glowing iris
+        draw.ellipse((head_cx - 16, ey - 5, head_cx - 8, ey + 4), fill=iris_base)
+        draw.ellipse((head_cx + 8, ey - 5, head_cx + 16, ey + 4), fill=iris_base)
+        # Dual highlights
+        draw.point((head_cx - 14, ey - 3), fill=(255, 255, 255, 255))
+        draw.point((head_cx - 10, ey - 1), fill=(255, 255, 255, 255))
+        draw.point((head_cx + 11, ey - 3), fill=(255, 255, 255, 255))
+        draw.point((head_cx + 14, ey - 1), fill=(255, 255, 255, 255))
+    else:  # Model 1: Round friendly anime eyes
         draw.ellipse((head_cx - 20, ey - 6, head_cx - 6, ey + 6), fill=(255, 255, 255, 255))
         draw.ellipse((head_cx + 6, ey - 6, head_cx + 20, ey + 6), fill=(255, 255, 255, 255))
         draw.arc((head_cx - 21, ey - 8, head_cx - 5, ey + 5), start=180, end=360, fill=(15, 15, 20, 255), width=3)
@@ -539,14 +561,14 @@ def _render_face_and_badges(plate: Image.Image, request: RenderRequest) -> None:
     # Mouth
     my = head_cy + 19
     lip_color = (195, 65, 75, 255) if request.gender in ("زن", "دختر") else (170, 75, 70, 255)
-    if clean_mouth == "2":  # Smirk
+    if clean_mouth == "2":  # Model 2: Smirk
         draw.line([(head_cx - 7, my + 1), (head_cx + 1, my), (head_cx + 9, my - 4)], fill=lip_color, width=3)
-    elif clean_mouth == "3":  # Open grin
+    elif clean_mouth == "3":  # Model 3: Open grin
         draw.pieslice((head_cx - 9, my - 2, head_cx + 9, my + 8), start=0, end=180, fill=lip_color)
         draw.line([(head_cx - 9, my), (head_cx + 9, my)], fill=(255, 255, 255, 255), width=2)
-    elif clean_mouth == "4":  # Stoic line
+    elif clean_mouth == "4":  # Model 4: Stoic line
         draw.line([(head_cx - 8, my), (head_cx + 8, my)], fill=lip_color, width=3)
-    else:  # Style 1: Smile
+    else:  # Model 1: Smile
         draw.arc((head_cx - 8, my - 4, head_cx + 8, my + 5), start=20, end=160, fill=lip_color, width=3)
 
     # Face Badges on left side
@@ -555,7 +577,7 @@ def _render_face_and_badges(plate: Image.Image, request: RenderRequest) -> None:
         table = str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹")
         return str(n).translate(table)
 
-    eye_num = clean_eye if clean_eye in ("1", "2", "3") else "1"
+    eye_num = clean_eye if clean_eye in ("1", "2", "3", "4") else "1"
     mouth_num = clean_mouth if clean_mouth in ("1", "2", "3", "4") else "1"
 
     # Badge 1: Eye

@@ -61,9 +61,10 @@ SKIN_LABELS = {
 }
 
 EYE_SHAPE_LABELS = {
-    "1": "🌸 شاداب، گرد و صمیمی",
-    "2": "⚡️ تیز، نافذ و جسور",
-    "3": "🕊 آرام، خونسرد و باوقار",
+    "1": "🌸 شاداب و گرد (مدل ۱)",
+    "2": "⚡️ تیز و جسور (مدل ۲)",
+    "3": "🕊 آرام و خونسرد (مدل ۳)",
+    "4": "🔥 بیدارشده و حماسی (مدل ۴)",
 }
 
 EYE_COLOR_LABELS = {
@@ -364,9 +365,10 @@ async def cb_skin(call: CallbackQuery, state: FSMContext) -> None:
     await state.set_state(OnboardingState.waiting_for_eye_shape)
 
     buttons = [
-        [InlineKeyboardButton(text="🌸 مدل ۱: شاداب، گرد و صمیمی", callback_data="ob:eyes:1")],
-        [InlineKeyboardButton(text="⚡️ مدل ۲: تیز، نافذ و جسور", callback_data="ob:eyes:2")],
-        [InlineKeyboardButton(text="🕊 مدل ۳: آرام، خونسرد و باوقار", callback_data="ob:eyes:3")],
+        [InlineKeyboardButton(text="🌸 مدل ۱: شاداب و گرد", callback_data="ob:eyes:1")],
+        [InlineKeyboardButton(text="⚡️ مدل ۲: تیز و جسور", callback_data="ob:eyes:2")],
+        [InlineKeyboardButton(text="🕊 مدل ۳: آرام و خونسرد", callback_data="ob:eyes:3")],
+        [InlineKeyboardButton(text="🔥 مدل ۴: بیدارشده و حماسی", callback_data="ob:eyes:4")],
     ]
     text = (
         f"✅ رنگ پوست: <b>{SKIN_LABELS.get(skin_num, skin_num)}</b>\n\n"
