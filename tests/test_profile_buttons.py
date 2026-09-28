@@ -349,7 +349,7 @@ async def test_cmd_version_creator_only() -> None:
     await profile.cmd_version(msg_creator)
     assert len(msg_creator.sent) == 1
     sent_text = msg_creator.sent[0]["text"]
-    assert "v1.6.0" in sent_text
+    assert "v2.0.0" in sent_text
     assert "پنل وضعیت نسخه" in sent_text
 
     msg_stranger = CardMessage(photo=False)
@@ -358,5 +358,5 @@ async def test_cmd_version_creator_only() -> None:
     assert len(msg_stranger.sent) == 1
     denied_text = msg_stranger.sent[0]["text"]
     assert "مختص سازنده‌ی ربات" in denied_text
-    assert "v1.6.0" not in denied_text
+    assert "v2.0.0" not in denied_text
 

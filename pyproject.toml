@@ -1,7 +1,7 @@
 [project]
 name = "tele-bot-game"
-version = "1.6.0"
-description = "Urban Fantasy Telegram RPG bot (aiogram v3 + Pillow compositor)"
+version = "2.0.0"
+description = "Tiramix City Life Simulator Telegram Bot"
 requires-python = ">=3.11"
 
 [tool.ruff]
