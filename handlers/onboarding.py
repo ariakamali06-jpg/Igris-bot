@@ -535,6 +535,15 @@ async def cb_mouth(call: CallbackQuery, state: FSMContext) -> None:
     if isinstance(call.message, Message) and hasattr(call.message, "message_id"):
         tracked_msg_ids.append(call.message.message_id)
 
+    chosen_hair_id = {
+        "hair1": "street_fade",
+        "hair2": "hood_up",
+        "hair3": "raven_shag",
+        "hair4": "crown_of_shadows",
+        "hair5": "hair_waves_blonde",
+    }.get(hair_style, "street_fade")
+    starter_kit = ("fitted_tee", "street_slacks", chosen_hair_id)
+
     player = await game.complete_character_creation(
         user_id=user.id,
         display_name=name,
@@ -545,7 +554,7 @@ async def cb_mouth(call: CallbackQuery, state: FSMContext) -> None:
         body_stance=body_stance,
         hair_style=hair_style,
         hair_color=hair_color,
-        starter_items=(),
+        starter_items=starter_kit,
         eye_style=eye_style_key,
         mouth_style=mouth_style_key,
     )

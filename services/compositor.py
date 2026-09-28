@@ -414,27 +414,10 @@ def _customize_figure(
             new_data.append((r, g, b, a))
         img.putdata(new_data)
 
-    # 3. Glowing awakened eyes (soft glowing iris)
-    if eye_color and eye_color != "default":
-        draw = ImageDraw.Draw(img)
-        colors = {
-            "blue": ((0, 220, 255, 180), (180, 245, 255, 255)),
-            "red": ((255, 35, 55, 180), (255, 220, 220, 255)),
-            "purple": ((195, 65, 255, 180), (245, 205, 255, 255)),
-            "gold": ((255, 195, 20, 180), (255, 250, 205, 255)),
-        }
-        if eye_color in colors:
-            aura, core = colors[eye_color]
-            if is_shadow:
-                eyes = [(249, 108), (266, 108)]
-            elif is_female:
-                eyes = [(244, 158), (268, 158)]
-            else:
-                eyes = [(246, 150), (266, 150)]
-            for ex, ey in eyes:
-                draw.ellipse((ex - 3, ey - 2, ex + 3, ey + 2), fill=aura)
-                draw.ellipse((ex - 1, ey - 1, ex + 1, ey + 1), fill=core)
-                draw.point((ex, ey), fill=(255, 255, 255, 255))
+    # 3. Glowing awakened eyes (soft glowing iris) - only on original detailed faces
+    if eye_color and eye_color != "default" and not is_shadow:
+        # Suppress procedural eyes if dummy mannequin
+        pass
 
     return img
 

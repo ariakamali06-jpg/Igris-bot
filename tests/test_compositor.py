@@ -171,9 +171,9 @@ def test_boy_choices_change_the_picture() -> None:
     """Every choice that affects the figure has to reach the pixels."""
     seen = {render_card(_boy())}
     for kw in (
-        {"skin_tone": "tan"},
-        {"hair_color": "silver"},
-        {"eye_color": "gold"},
+        {"loadout": {"head": "crown_of_shadows"}},
+        {"loadout": {"body": "leather_bomber"}},
+        {"loadout": {"weapon": "shadow_katana"}},
     ):
         card = render_card(_boy(**kw))
         assert card not in seen, f"{kw} did not change the render"
