@@ -572,14 +572,6 @@ class Compositor:
             key = request.loadout.get(slot.value)
             if not key:
                 continue
-            # Male manhwa base already has complete hand-drawn athletic suit, trousers & hair.
-            # Only weapons, auras, accessories and special crowns should composite on him.
-            if (is_manhwa_male or is_vn_male) and slot in (Slot.LEGS, Slot.BODY, Slot.HEAD):
-                if key != "crown_of_shadows":
-                    continue
-            # Female VN base wears VN boutique gear; suppress crude legacy procedural shapes.
-            if (is_vn_female or is_vn_male) and key in legacy_procedural_items:
-                continue
             layer = self._assets.get(_folder_for(slot), key)
             if layer is None:
                 logger.debug("missing layer art for %s/%s", slot.value, key)
