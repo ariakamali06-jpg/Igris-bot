@@ -282,10 +282,11 @@ def _recolor_hair_layer(layer: Image.Image, hair_color: str) -> Image.Image:
     return img
 
 
-# The Sutemo boy bust sits at different landmarks than the art was authored
-# against (Sutemo eyes land at y~178, mouth y~249, neck y~290 on the 512
-# canvas), and the 512x768 accessories get vertically squashed by the asset
-# loader, so every face accessory needs its own drop to land on the anatomy.
+# Measured landmarks on the Sutemo bust (512 canvas, from the rendered card):
+# pupils y=190 · ears y174-210 at x150/x361 · mouth y=249 · chin y=291 ·
+# neck y294-312 · jacket collar y=304 · HUD strip top y=388. The accessory art
+# was authored against a different figure and the 512x768 files get vertically
+# squashed by the asset loader, so each piece needs its own drop to land there.
 SUTEMEO_SCALE = CANVAS / 1000                       # pack art is 1000 wide
 SUTEMEO_PLATE = (CANVAS, round(1200 * SUTEMEO_SCALE))   # (512, 614)
 SUTEMEO_CROP = (
@@ -296,16 +297,16 @@ SUTEMEO_CROP = (
 )                                                   # (0, 41, 512, 553)
 SUTEMEO_ACCESSORY_ADJUST: dict[str, tuple[int, int, float]] = {
     # key: (dy, dx, x-scale about the canvas centre)
-    "glasses_cool": (79, 0, 1.0),
-    "glasses_round": (79, 0, 1.0),
-    "tactical_goggles": (34, 0, 1.0),
+    "glasses_cool": (91, 0, 1.0),
+    "glasses_round": (91, 0, 1.0),
+    "tactical_goggles": (46, 0, 1.0),
     "arcane_eye_mark": (28, 0, 1.0),
-    "half_mask": (46, 0, 1.0),
-    "phantom_visage": (46, 0, 1.0),
+    "half_mask": (58, 0, 1.0),
+    "phantom_visage": (70, 0, 1.0),
     # Sutemo's hair hides the earlobes, so hang the studs on the outer
     # hair edge at ear height instead of letting them float on the cheeks.
-    "earrings_star": (115, 0, 1.3),
-    "necklace_gold": (146, 0, 1.0),
+    "earrings_star": (95, 0, 1.25),
+    "necklace_gold": (161, 0, 1.0),
     "scarf_red": (169, 0, 1.0),
 }
 SUTEMEO_ACCESSORY_ADJUST_DEFAULT = (40, 0, 1.0)
