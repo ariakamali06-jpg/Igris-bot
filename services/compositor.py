@@ -422,6 +422,155 @@ def _customize_figure(
     return img
 
 
+def _render_face_and_badges(plate: Image.Image, request: RenderRequest) -> None:
+    """Render anime facial features (eyebrows, eyes, mouth) and test badges on the mannequin."""
+    draw = ImageDraw.Draw(plate)
+    head_cx = 256
+    head_cy = 112
+
+    skin_map = {
+        "pale": ((255, 236, 228, 255), (235, 210, 200, 255)),
+        "fair": ((248, 222, 204, 255), (225, 195, 175, 255)),
+        "natural": ((235, 200, 175, 255), (210, 170, 145, 255)),
+        "tan": ((205, 160, 125, 255), (180, 135, 100, 255)),
+        "dark": ((145, 100, 75, 255), (120, 80, 55, 255)),
+        "1": ((255, 236, 228, 255), (235, 210, 200, 255)),
+        "2": ((248, 222, 204, 255), (225, 195, 175, 255)),
+        "3": ((235, 200, 175, 255), (210, 170, 145, 255)),
+        "4": ((205, 160, 125, 255), (180, 135, 100, 255)),
+        "5": ((145, 100, 75, 255), (120, 80, 55, 255)),
+    }
+    skin_face, skin_neck = skin_map.get(str(request.skin_tone).lower(), skin_map["fair"])
+
+    # Neck
+    draw.polygon([
+        (head_cx - 11, head_cy + 22),
+        (head_cx + 11, head_cy + 22),
+        (head_cx + 13, head_cy + 52),
+        (head_cx - 13, head_cy + 52),
+    ], fill=skin_neck)
+
+    # Head (face shape: smooth anime chin)
+    draw.pieslice((head_cx - 28, head_cy - 36, head_cx + 28, head_cy + 20), start=180, end=360, fill=skin_face)
+    draw.polygon([
+        (head_cx - 28, head_cy - 8),
+        (head_cx + 28, head_cy - 8),
+        (head_cx + 25, head_cy + 16),
+        (head_cx + 12, head_cy + 34),
+        (head_cx - 12, head_cy + 34),
+        (head_cx - 25, head_cy + 16),
+    ], fill=skin_face)
+    draw.ellipse((head_cx - 14, head_cy + 25, head_cx + 14, head_cy + 35), fill=skin_face)
+
+    # Eyebrows
+    brow_colors = {
+        "black": (30, 25, 25, 255),
+        "silver": (180, 185, 195, 255),
+        "brown": (90, 55, 40, 255),
+        "blonde": (195, 165, 70, 255),
+        "crimson": (160, 35, 45, 255),
+        "blue": (35, 90, 170, 255),
+    }
+    brow_col = brow_colors.get(str(request.hair_color).lower(), (30, 25, 25, 255))
+    clean_eye = str(request.eye_style).replace("eyes", "").split("_")[0]
+    clean_mouth = str(request.mouth_style).replace("mouth", "").split("_")[0]
+
+    by = head_cy - 15
+    if clean_eye == "2":  # Sharp / Hunter
+        draw.line([(head_cx - 22, by + 4), (head_cx - 7, by - 2)], fill=brow_col, width=3)
+        draw.line([(head_cx + 7, by - 2), (head_cx + 22, by + 4)], fill=brow_col, width=3)
+    elif clean_eye == "3":  # Calm / Stoic
+        draw.line([(head_cx - 21, by), (head_cx - 7, by)], fill=brow_col, width=2)
+        draw.line([(head_cx + 7, by), (head_cx + 21, by)], fill=brow_col, width=2)
+    else:  # Shape 1: Gentle arched
+        draw.arc((head_cx - 22, by - 5, head_cx - 6, by + 5), start=190, end=350, fill=brow_col, width=3)
+        draw.arc((head_cx + 6, by - 5, head_cx + 22, by + 5), start=190, end=350, fill=brow_col, width=3)
+
+    # Eyes
+    eye_palettes = {
+        "blue": ((0, 190, 255, 255), (160, 235, 255, 255)),
+        "green": ((34, 197, 94, 255), (187, 247, 208, 255)),
+        "amber": ((245, 158, 11, 255), (254, 240, 138, 255)),
+        "violet": ((168, 85, 247, 255), (233, 213, 255, 255)),
+        "black": ((50, 55, 65, 255), (160, 175, 195, 255)),
+    }
+    iris_base, iris_hl = eye_palettes.get(str(request.eye_color).lower(), eye_palettes["blue"])
+    ey = head_cy - 5
+
+    if clean_eye == "2":  # Sharp Hunter Eyes
+        draw.polygon([(head_cx - 21, ey + 1), (head_cx - 13, ey - 6), (head_cx - 5, ey), (head_cx - 13, ey + 5)], fill=(255, 255, 255, 255))
+        draw.polygon([(head_cx + 21, ey + 1), (head_cx + 13, ey - 6), (head_cx + 5, ey), (head_cx + 13, ey + 5)], fill=(255, 255, 255, 255))
+        draw.line([(head_cx - 22, ey + 2), (head_cx - 13, ey - 7), (head_cx - 5, ey)], fill=(15, 15, 20, 255), width=3)
+        draw.line([(head_cx + 22, ey + 2), (head_cx + 13, ey - 7), (head_cx + 5, ey)], fill=(15, 15, 20, 255), width=3)
+        draw.ellipse((head_cx - 16, ey - 4, head_cx - 9, ey + 4), fill=iris_base)
+        draw.ellipse((head_cx + 9, ey - 4, head_cx + 16, ey + 4), fill=iris_base)
+        draw.ellipse((head_cx - 14, ey - 2, head_cx - 11, ey + 2), fill=(10, 10, 20, 255))
+        draw.ellipse((head_cx + 11, ey - 2, head_cx + 14, ey + 2), fill=(10, 10, 20, 255))
+        draw.point((head_cx - 14, ey - 3), fill=(255, 255, 255, 255))
+        draw.point((head_cx + 11, ey - 3), fill=(255, 255, 255, 255))
+    elif clean_eye == "3":  # Calm almond eyes
+        draw.ellipse((head_cx - 20, ey - 4, head_cx - 6, ey + 4), fill=(255, 255, 255, 255))
+        draw.ellipse((head_cx + 6, ey - 4, head_cx + 20, ey + 4), fill=(255, 255, 255, 255))
+        draw.arc((head_cx - 21, ey - 6, head_cx - 5, ey + 4), start=190, end=350, fill=(15, 15, 20, 255), width=3)
+        draw.arc((head_cx + 5, ey - 6, head_cx + 21, ey + 4), start=190, end=350, fill=(15, 15, 20, 255), width=3)
+        draw.ellipse((head_cx - 16, ey - 3, head_cx - 10, ey + 4), fill=iris_base)
+        draw.ellipse((head_cx + 10, ey - 3, head_cx + 16, ey + 4), fill=iris_base)
+        draw.point((head_cx - 13, ey), fill=(10, 10, 20, 255))
+        draw.point((head_cx + 13, ey), fill=(10, 10, 20, 255))
+    else:  # Shape 1: Round friendly anime eyes
+        draw.ellipse((head_cx - 20, ey - 6, head_cx - 6, ey + 6), fill=(255, 255, 255, 255))
+        draw.ellipse((head_cx + 6, ey - 6, head_cx + 20, ey + 6), fill=(255, 255, 255, 255))
+        draw.arc((head_cx - 21, ey - 8, head_cx - 5, ey + 5), start=180, end=360, fill=(15, 15, 20, 255), width=3)
+        draw.arc((head_cx + 5, ey - 8, head_cx + 21, ey + 5), start=180, end=360, fill=(15, 15, 20, 255), width=3)
+        draw.ellipse((head_cx - 17, ey - 4, head_cx - 9, ey + 5), fill=iris_base)
+        draw.ellipse((head_cx + 9, ey - 4, head_cx + 17, ey + 5), fill=iris_base)
+        draw.ellipse((head_cx - 15, ey - 2, head_cx - 11, ey + 3), fill=(10, 10, 20, 255))
+        draw.ellipse((head_cx + 11, ey - 2, head_cx + 15, ey + 3), fill=(10, 10, 20, 255))
+        draw.point((head_cx - 15, ey - 3), fill=(255, 255, 255, 255))
+        draw.point((head_cx + 11, ey - 3), fill=(255, 255, 255, 255))
+
+    # Nose
+    draw.polygon([
+        (head_cx, head_cy + 6),
+        (head_cx + 2, head_cy + 9),
+        (head_cx, head_cy + 9),
+    ], fill=(max(0, skin_face[0] - 50), max(0, skin_face[1] - 50), max(0, skin_face[2] - 50), 255))
+
+    # Mouth
+    my = head_cy + 19
+    lip_color = (195, 65, 75, 255) if request.gender in ("زن", "دختر") else (170, 75, 70, 255)
+    if clean_mouth == "2":  # Smirk
+        draw.line([(head_cx - 7, my + 1), (head_cx + 1, my), (head_cx + 9, my - 4)], fill=lip_color, width=3)
+    elif clean_mouth == "3":  # Open grin
+        draw.pieslice((head_cx - 9, my - 2, head_cx + 9, my + 8), start=0, end=180, fill=lip_color)
+        draw.line([(head_cx - 9, my), (head_cx + 9, my)], fill=(255, 255, 255, 255), width=2)
+    elif clean_mouth == "4":  # Stoic line
+        draw.line([(head_cx - 8, my), (head_cx + 8, my)], fill=lip_color, width=3)
+    else:  # Style 1: Smile
+        draw.arc((head_cx - 8, my - 4, head_cx + 8, my + 5), start=20, end=160, fill=lip_color, width=3)
+
+    # Face Badges on left side
+    font_badge = _font(13)
+    def _to_fa(n: str | int) -> str:
+        table = str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹")
+        return str(n).translate(table)
+
+    eye_num = clean_eye if clean_eye in ("1", "2", "3") else "1"
+    mouth_num = clean_mouth if clean_mouth in ("1", "2", "3", "4") else "1"
+
+    # Badge 1: Eye
+    draw.rounded_rectangle((20, 85, 140, 120), radius=8, fill=(15, 23, 42, 235), outline=iris_base, width=2)
+    draw.text((80, 102), f"چشم {_to_fa(eye_num)}", font=font_badge, fill=(255, 255, 255, 255), anchor="mm")
+
+    # Badge 2: Eyebrow
+    draw.rounded_rectangle((20, 126, 140, 161), radius=8, fill=(15, 23, 42, 235), outline=(148, 163, 184, 255), width=2)
+    draw.text((80, 143), f"ابرو {_to_fa(eye_num)}", font=font_badge, fill=(255, 255, 255, 255), anchor="mm")
+
+    # Badge 3: Mouth
+    draw.rounded_rectangle((20, 167, 140, 202), radius=8, fill=(15, 23, 42, 235), outline=(244, 114, 182, 255), width=2)
+    draw.text((80, 184), f"دهان {_to_fa(mouth_num)}", font=font_badge, fill=(255, 255, 255, 255), anchor="mm")
+
+
 # ---------------------------------------------------------------------------
 # Compositor
 # ---------------------------------------------------------------------------
@@ -521,7 +670,9 @@ class Compositor:
             request.mouth_style,
             request.gender,
         )
-        composited = False
+        plate = plate.copy()
+        _render_face_and_badges(plate, request)
+        composited = True
 
         # Layers 2..7: equipped cosmetics in bottom-to-top order.
         is_manhwa_male = request.body in (
