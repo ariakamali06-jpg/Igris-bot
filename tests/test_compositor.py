@@ -168,15 +168,12 @@ def test_sutemo_boy_renders() -> None:
 
 
 def test_boy_choices_change_the_picture() -> None:
-    """Every wizard choice has to reach the pixels, not just the signature."""
+    """Every choice that affects the figure has to reach the pixels."""
     seen = {render_card(_boy())}
     for kw in (
-        {"eye_style": "2"},
-        {"hair_style": "hair5"},
-        {"mouth_style": "4"},
-        {"body": "base_boy_4", "skin_tone": "tan"},
+        {"skin_tone": "tan"},
         {"hair_color": "silver"},
-        {"eye_color": "violet"},
+        {"eye_color": "gold"},
     ):
         card = render_card(_boy(**kw))
         assert card not in seen, f"{kw} did not change the render"

@@ -793,7 +793,8 @@ class Compositor:
         opaque = plate.getchannel("A").getextrema()[0] == 255
 
         is_boy = body.startswith("base_boy_") or gender in ("مرد", "پسر")
-        if is_boy:
+        sutemo_dir = Path(__file__).resolve().parent.parent / "assets" / "layers" / "sutemo"
+        if is_boy and sutemo_dir.is_dir() and any(sutemo_dir.iterdir()):
             skin_num = body.split("_")[-1] if body.startswith("base_boy_") else "2"
             figure = self._render_sutemo_boy(
                 skin_num=skin_num,
@@ -804,15 +805,20 @@ class Compositor:
                 mouth_style=mouth_style,
             )
         else:
-            figure = self._assets.get("body", body) or self._assets.get("body", "base_female")
-            if figure is not None and body in ("base_male", "base_female", "base_shadow", "base_street"):
+            target_body = body
+            if is_boy or body.startswith("base_boy_"):
+                target_body = "base_male"
+            elif body.startswith("base_vn_"):
+                target_body = "base_female"
+            figure = self._assets.get("body", target_body) or self._assets.get("body", "base_male") or self._assets.get("body", "base_female")
+            if figure is not None and target_body in ("base_male", "base_female", "base_shadow", "base_street", "base_aegis"):
                 figure = _customize_figure(
                     figure,
                     skin_tone=skin_tone,
                     hair_color=hair_color,
                     eye_color=eye_color,
-                    is_female=(body == "base_female"),
-                    is_shadow=(body == "base_shadow"),
+                    is_female=(target_body == "base_female" or gender in ("زن", "دختر")),
+                    is_shadow=(target_body == "base_shadow"),
                 )
 
         if figure is not None:
