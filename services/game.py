@@ -437,14 +437,26 @@ def render_request(player: Player) -> RenderRequest:
             body = player.body_stance
         else:
             body = "base_female"
+    elif player.gender in ("مرد", "پسر"):
+        if player.body_stance and player.body_stance.startswith("base_boy_"):
+            body = player.body_stance
+        else:
+            # Legacy/older rows store skin as pale|fair|natural|tan|dark — map it
+            # onto the Sutemo boy skin number so tone survives the migration.
+            skin_num = {
+                "pale": "1", "fair": "2", "natural": "3", "tan": "4", "dark": "5",
+            }.get(player.skin_tone, "2")
+            body = f"base_boy_{skin_num}"
     elif player.gender in ("سایه‌وار", "نامشخص"):
         body = "base_shadow"
     elif player.body_stance in ("base_female", "base_shadow"):
         body = player.body_stance
+    elif player.body_stance and player.body_stance.startswith("base_boy_"):
+        body = player.body_stance
     elif player.body_stance and player.body_stance in ("base_street", "base_male", "base_aegis"):
         body = player.body_stance
     else:
-        body = "base_street"
+        body = "base_boy_2"
     return RenderRequest(
         display_name=player.display_name,
         username=player.username,
@@ -458,6 +470,10 @@ def render_request(player: Player) -> RenderRequest:
         skin_tone=player.skin_tone,
         hair_color=player.hair_color,
         eye_color=player.eye_color,
+        eye_style=player.eye_style,
+        mouth_style=player.mouth_style,
+        hair_style=player.hair_style,
+        gender=player.gender,
     )
 
 

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import io
 import time
+from typing import Any
 
 import pytest
 from PIL import Image
@@ -132,6 +133,82 @@ def test_render_budget_under_50ms(sample: RenderRequest) -> None:
 def test_canvas_is_512(sample: RenderRequest) -> None:
     img = Image.open(io.BytesIO(render_card(sample)))
     assert img.size == (CANVAS, CANVAS)
+
+
+def _boy(**overrides: Any) -> RenderRequest:
+    base: Any = dict(
+        display_name="پسر",
+        username="boy",
+        level=7,
+        atk=11,
+        defense=9,
+        drip=13,
+        loadout={},
+        background="rooftop_zenith",
+        body="base_boy_2",
+        skin_tone="fair",
+        hair_color="black",
+        eye_color="blue",
+        eye_style="1",
+        mouth_style="1",
+        hair_style="hair2",
+        gender="پسر",
+    )
+    base.update(overrides)
+    return RenderRequest(**base)
+
+
+def test_sutemo_boy_renders() -> None:
+    """The Sutemo pack is the boy body — it must render a real JPEG card."""
+    data = render_card(_boy())
+    assert isinstance(data, bytes) and len(data) > 2000
+    assert data[:2] == b"\xff\xd8"
+    img = Image.open(io.BytesIO(data))
+    assert img.size == (CANVAS, CANVAS)
+
+
+def test_boy_choices_change_the_picture() -> None:
+    """Every wizard choice has to reach the pixels, not just the signature."""
+    seen = {render_card(_boy())}
+    for kw in (
+        {"eye_style": "2"},
+        {"hair_style": "hair5"},
+        {"mouth_style": "4"},
+        {"body": "base_boy_4", "skin_tone": "tan"},
+        {"hair_color": "silver"},
+        {"eye_color": "violet"},
+    ):
+        card = render_card(_boy(**kw))
+        assert card not in seen, f"{kw} did not change the render"
+        seen.add(card)
+
+
+def test_legacy_male_row_falls_back_to_boy_body() -> None:
+    """Old rows stored body_stance=base_street — must still draw a Sutemo boy."""
+    data = render_card(_boy(body="base_street", skin_tone="tan"))
+    assert data[:2] == b"\xff\xd8"
+    img = Image.open(io.BytesIO(data))
+    assert img.size == (CANVAS, CANVAS)
+
+
+def test_boy_accessory_lands_on_the_face() -> None:
+    """Face accessories are re-anchored for the Sutemo bust."""
+    plain = render_card(_boy())
+    masked = render_card(_boy(loadout={"accessory": "half_mask"}))
+    assert plain != masked
+    assert masked[:2] == b"\xff\xd8"
+
+
+def test_boy_render_budget_under_100ms() -> None:
+    compositor.clear_cache()
+    samples: list[float] = []
+    for _ in range(10):
+        start = time.perf_counter()
+        compositor.render(_boy(), use_cache=False)
+        samples.append((time.perf_counter() - start) * 1000)
+    samples.sort()
+    p95 = samples[int(len(samples) * 0.95) - 1]
+    assert p95 < 100, f"boy p95={p95:.1f}ms"
 
 
 def test_visual_novel_outfit_renders() -> None:

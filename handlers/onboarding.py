@@ -515,8 +515,12 @@ async def cb_mouth(call: CallbackQuery, state: FSMContext) -> None:
 
     if gender == "female":
         body_stance = f"base_vn_{skin_num}"
+        eye_style_key = f"eyes{eye_shape}_{skin_num}"
+        mouth_style_key = f"mouth{mouth_num}_{skin_num}"
     else:
-        body_stance = "base_street"
+        body_stance = f"base_boy_{skin_num}"
+        eye_style_key = str(eye_shape)
+        mouth_style_key = str(mouth_num)
 
     skin_tone_internal = {
         "1": "pale",
@@ -525,9 +529,6 @@ async def cb_mouth(call: CallbackQuery, state: FSMContext) -> None:
         "4": "tan",
         "5": "dark",
     }.get(skin_num, "fair")
-
-    eye_style_key = f"eyes{eye_shape}_{skin_num}"
-    mouth_style_key = f"mouth{mouth_num}_{skin_num}"
 
     data = await state.get_data()
     tracked_msg_ids = list(data.get("tracked_msg_ids", []))
@@ -558,7 +559,7 @@ async def cb_mouth(call: CallbackQuery, state: FSMContext) -> None:
         f"🎂 <b>سن:</b> {player.age} سال | ⚧ <b>جنسیت:</b> {player.gender}\n"
         f"🎨 <b>پوست:</b> {SKIN_LABELS.get(skin_num, skin_num)}\n"
         f"👁 <b>چشم‌ها:</b> {EYE_SHAPE_LABELS.get(eye_shape, eye_shape)} ({EYE_COLOR_LABELS.get(eye_color, eye_color)})\n"
-        f"💇 <b>مدل مو:</b> {HAIR_COLOR_LABELS.get(hair_color, hair_color)}\n"
+        f"💇 <b>مدل مو:</b> {(HAIR_STYLES_FEMALE if gender == 'female' else HAIR_STYLES_MALE).get(hair_style, hair_style)} ({HAIR_COLOR_LABELS.get(hair_color, hair_color)})\n"
         f"👄 <b>چهره:</b> {MOUTH_LABELS.get(mouth_num, mouth_num)}\n\n"
         f"🎓 <b>سطح سواد:</b> {player.education_title}\n"
         f"💼 <b>شغل:</b> {player.job}\n"

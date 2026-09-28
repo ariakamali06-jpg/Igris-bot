@@ -98,6 +98,10 @@ class RenderRequest:
     skin_tone: str = "fair"
     hair_color: str = "black"
     eye_color: str = "blue"
+    eye_style: str = "1"
+    mouth_style: str = "1"
+    hair_style: str = "hair1"
+    gender: str = "نامشخص"
 
     def signature(self) -> str:
         """Stable, order-independent string of everything visible on the card."""
@@ -111,6 +115,10 @@ class RenderRequest:
                 f"skin={self.skin_tone}",
                 f"hair={self.hair_color}",
                 f"eyes={self.eye_color}",
+                f"eye_style={self.eye_style}",
+                f"mouth_style={self.mouth_style}",
+                f"hair_style={self.hair_style}",
+                f"gender={self.gender}",
                 f"slots={slots}",
                 f"name={self.display_name}",
                 f"lvl={self.level}",
@@ -274,6 +282,57 @@ def _recolor_hair_layer(layer: Image.Image, hair_color: str) -> Image.Image:
     return img
 
 
+# The Sutemo boy bust sits at different landmarks than the art was authored
+# against (Sutemo eyes land at y~178, mouth y~249, neck y~290 on the 512
+# canvas), and the 512x768 accessories get vertically squashed by the asset
+# loader, so every face accessory needs its own drop to land on the anatomy.
+SUTEMEO_SCALE = CANVAS / 1000                       # pack art is 1000 wide
+SUTEMEO_PLATE = (CANVAS, round(1200 * SUTEMEO_SCALE))   # (512, 614)
+SUTEMEO_CROP = (
+    0,
+    round(80 * SUTEMEO_SCALE),
+    CANVAS,
+    round(1080 * SUTEMEO_SCALE),
+)                                                   # (0, 41, 512, 553)
+SUTEMEO_ACCESSORY_ADJUST: dict[str, tuple[int, int, float]] = {
+    # key: (dy, dx, x-scale about the canvas centre)
+    "glasses_cool": (79, 0, 1.0),
+    "glasses_round": (79, 0, 1.0),
+    "tactical_goggles": (34, 0, 1.0),
+    "arcane_eye_mark": (28, 0, 1.0),
+    "half_mask": (46, 0, 1.0),
+    "phantom_visage": (46, 0, 1.0),
+    # Sutemo's hair hides the earlobes, so hang the studs on the outer
+    # hair edge at ear height instead of letting them float on the cheeks.
+    "earrings_star": (115, 0, 1.3),
+    "necklace_gold": (146, 0, 1.0),
+    "scarf_red": (169, 0, 1.0),
+}
+SUTEMEO_ACCESSORY_ADJUST_DEFAULT = (40, 0, 1.0)
+
+
+def _shift_layer(
+    layer: Image.Image, dy: int, dx: int = 0, scale_x: float = 1.0
+) -> Image.Image:
+    """Translate (and optionally widen) a layer on its own canvas.
+
+    Keeps the compositing size so ``alpha_composite`` stays happy.
+    """
+    if scale_x != 1.0:
+        w, h = layer.size
+        new_w = max(1, round(w * scale_x))
+        layer = layer.resize((new_w, h), Image.Resampling.LANCZOS)
+        spread = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+        spread.paste(layer, ((w - new_w) // 2, 0))
+        layer = spread
+    if not (dx or dy):
+        return layer
+    w, h = layer.size
+    out = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    out.paste(layer, (dx, dy))
+    return out
+
+
 def _customize_figure(
     figure: Image.Image,
     skin_tone: str,
@@ -392,7 +451,7 @@ class Compositor:
         self._cache_dir = Path(cache_dir or settings.cache_dir)
         self._memory: dict[str, bytes] = {}
         # Pre-flattened background+body plates: (image, is_fully_opaque).
-        self._base_cache: dict[tuple[str, str, str, str, str], tuple[Image.Image, bool]] = {}
+        self._base_cache: dict[tuple[str, ...], tuple[Image.Image, bool]] = {}
         # Disk persistence runs on a single background thread so the ~15ms
         # write (antivirus-sensitive on Windows) never lands inside the
         # render path the caller is waiting on.
@@ -440,7 +499,7 @@ class Compositor:
     # -- cache -------------------------------------------------------------
 
     def _cache_key(self, request: RenderRequest) -> str:
-        material = f"v8-tiramix-clean|{self._assets.version}|{request.signature()}"
+        material = f"v9-sutemo-boys|{self._assets.version}|{request.signature()}"
         return hashlib.sha1(material.encode("utf-8")).hexdigest()
 
     def _read_disk(self, key: str) -> bytes | None:
@@ -473,14 +532,16 @@ class Compositor:
             request.skin_tone,
             request.hair_color,
             request.eye_color,
+            request.eye_style,
+            request.hair_style,
+            request.mouth_style,
+            request.gender,
         )
         composited = False
 
         # Layers 2..7: equipped cosmetics in bottom-to-top order.
         is_manhwa_male = request.body in (
-            "base_male",
             "base_shadow",
-            "base_street",
             "base_aegis",
         )
         is_vn_female = request.body in (
@@ -491,6 +552,7 @@ class Compositor:
             "base_vn_4",
             "base_vn_5",
         )
+        is_vn_male = request.body.startswith("base_boy_") or request.gender in ("مرد", "پسر")
         legacy_procedural_items = {
             "street_slacks",
             "combat_boots",
@@ -511,11 +573,11 @@ class Compositor:
                 continue
             # Male manhwa base already has complete hand-drawn athletic suit, trousers & hair.
             # Only weapons, auras, accessories and special crowns should composite on him.
-            if is_manhwa_male and slot in (Slot.LEGS, Slot.BODY, Slot.HEAD):
+            if (is_manhwa_male or is_vn_male) and slot in (Slot.LEGS, Slot.BODY, Slot.HEAD):
                 if key != "crown_of_shadows":
                     continue
             # Female VN base wears VN boutique gear; suppress crude legacy procedural shapes.
-            if is_vn_female and key in legacy_procedural_items:
+            if (is_vn_female or is_vn_male) and key in legacy_procedural_items:
                 continue
             layer = self._assets.get(_folder_for(slot), key)
             if layer is None:
@@ -523,6 +585,13 @@ class Compositor:
                 continue
             if slot == Slot.HEAD and request.hair_color != "black":
                 layer = _recolor_hair_layer(layer, request.hair_color)
+            if is_vn_male and slot == Slot.ACCESSORY:
+                # Sutemo boy's face sits at different landmarks than the art
+                # was authored against; translate each accessory onto it.
+                dy, dx, sx = SUTEMEO_ACCESSORY_ADJUST.get(
+                    key, SUTEMEO_ACCESSORY_ADJUST_DEFAULT
+                )
+                layer = _shift_layer(layer, dy=dy, dx=dx, scale_x=sx)
             plate = Image.alpha_composite(plate, layer)
             composited = True
 
@@ -541,6 +610,154 @@ class Compositor:
         # per-render alpha scan (1ms) and go straight to RGB.
         return self._encode(plate, assume_opaque=plate_opaque)
 
+    def _render_sutemo_boy(
+        self,
+        skin_num: str = "2",
+        eye_style: str = "1",
+        eye_color: str = "blue",
+        hair_style: str = "hair2",
+        hair_color: str = "black",
+        mouth_style: str = "2",
+    ) -> Image.Image:
+        """Render modular Sutemo visual novel anime boy bust."""
+        if not hasattr(self, "_sutemo_cache"):
+            self._sutemo_cache: dict[str, Image.Image] = {}
+            sutemo_dir = Path(__file__).resolve().parent.parent / "assets" / "layers" / "sutemo"
+            if sutemo_dir.is_dir():
+                # The pack ships 1000x1200 layers; the card is 512 wide, so
+                # downscale once at load. Holding all 31 layers at source
+                # resolution would cost ~150MB of RSS — enough to get the
+                # process OOM-killed on a 1GB container.
+                for p in sorted(sutemo_dir.glob("*.png")):
+                    try:
+                        img = Image.open(p).convert("RGBA")
+                        if img.size != SUTEMEO_PLATE:
+                            img = img.resize(SUTEMEO_PLATE, Image.Resampling.LANCZOS)
+                        self._sutemo_cache[p.name] = img
+                    except Exception:
+                        pass
+
+        cached = self._sutemo_cache
+        if "body_skin.png" not in cached:
+            return self._assets.get("body", "base_female") or Image.new("RGBA", (CANVAS, CANVAS), (0, 0, 0, 0))
+
+        skin_tints = {
+            "1": (255, 240, 232),
+            "2": (252, 224, 210),
+            "3": (240, 204, 168),
+            "4": (223, 176, 136),
+            "5": (141, 91, 76),
+        }
+        hair_tints = {
+            "black": ((35, 35, 40), (120, 120, 130)),
+            "silver": ((235, 235, 245), (255, 255, 255)),
+            "brown": ((140, 95, 60), (200, 160, 120)),
+        }
+        eye_tints = {
+            "blue": (40, 110, 220),
+            "green": (40, 150, 90),
+            "amber": (190, 120, 40),
+            "purple": (140, 60, 190),
+            "violet": (140, 60, 190),
+            "black": (45, 45, 50),
+        }
+        hair_keys = {
+            "hair1": ("hair_short1_base.png", "hair_short1_hl.png"),
+            "hair2": ("hair_short2_base.png", "hair_short2_hl.png"),
+            "hair3": ("hair_sidebangs_base.png", "hair_sidebangs_hl.png"),
+            "hair4": ("hair_curly_base.png", "hair_curly_hl.png"),
+            "hair5": ("hair_bob_base.png", "hair_bob_hl.png"),
+        }
+        # Onboarding button order is 1=bright/round/friendly, 2=sharp/bold,
+        # 3=calm/dignified — which does NOT match the Sutemo asset file names
+        # (determined / neutral / friendly). Map button -> asset so the art
+        # always matches the label the user tapped.
+        eye_keys = {
+            "1": ("eyes_friendly_skin.png", "eyes_friendly_base.png", "eyes_friendly_static.png"),
+            "2": ("eyes_determined_skin.png", "eyes_determined_base.png", "eyes_determined_static.png"),
+            "3": ("eyes_neutral_skin.png", "eyes_neutral_base.png", "eyes_neutral_static.png"),
+        }
+        mouth_keys = {
+            "1": ("mouth_smile_skin.png", None),
+            "2": ("mouth_smirk_skin.png", None),
+            "3": ("mouth_open_skin.png", "mouth_open_base.png"),
+            "4": ("mouth_stoic_skin.png", None),
+        }
+
+        clean_skin = str(skin_num).split("_")[-1] if "_" in str(skin_num) else str(skin_num)
+        clean_hair = str(hair_style).lower()
+        if clean_hair not in hair_keys:
+            clean_hair = "hair2"
+        clean_eye_shape = str(eye_style).replace("eyes", "").split("_")[0]
+        if clean_eye_shape not in eye_keys:
+            clean_eye_shape = "1"
+        clean_mouth = str(mouth_style).replace("mouth", "").split("_")[0]
+        if clean_mouth not in mouth_keys:
+            clean_mouth = "2"
+        clean_eye_color = str(eye_color).lower()
+        if clean_eye_color not in eye_tints:
+            clean_eye_color = "blue"
+        clean_hair_color = str(hair_color).lower()
+        if clean_hair_color not in hair_tints:
+            clean_hair_color = "black"
+
+        char = Image.new("RGBA", SUTEMEO_PLATE, (0, 0, 0, 0))
+        # Body skin
+        skin_raw = cached["body_skin.png"]
+        r, g, b, a = skin_raw.split()
+        st = skin_tints.get(clean_skin, skin_tints["2"])
+        tr = r.point(lambda p: int(p * st[0] / 255))
+        tg = g.point(lambda p: int(p * st[1] / 255))
+        tb = b.point(lambda p: int(p * st[2] / 255))
+        char.alpha_composite(Image.merge("RGBA", (tr, tg, tb, a)))
+
+        if "body_highlights.png" in cached:
+            char.alpha_composite(cached["body_highlights.png"])
+
+        # Mouth
+        m_skin_file, m_base_file = mouth_keys.get(clean_mouth, mouth_keys["2"])
+        if m_skin_file and m_skin_file in cached:
+            char.alpha_composite(cached[m_skin_file])
+        if m_base_file and m_base_file in cached:
+            char.alpha_composite(cached[m_base_file])
+
+        # Eyes
+        e_skin_file, e_base_file, e_stat_file = eye_keys.get(clean_eye_shape, eye_keys["1"])
+        if e_skin_file and e_skin_file in cached:
+            char.alpha_composite(cached[e_skin_file])
+        if e_base_file and e_base_file in cached:
+            e_im = cached[e_base_file]
+            er, eg, eb, ea = e_im.split()
+            ec = eye_tints[clean_eye_color]
+            ter = er.point(lambda p: int(p * ec[0] / 255))
+            teg = eg.point(lambda p: int(p * ec[1] / 255))
+            teb = eb.point(lambda p: int(p * ec[2] / 255))
+            char.alpha_composite(Image.merge("RGBA", (ter, teg, teb, ea)))
+        if e_stat_file and e_stat_file in cached:
+            char.alpha_composite(cached[e_stat_file])
+
+        # Outfit (urban smart jacket over dark V-neck)
+        if "outfit_casual1_base.png" in cached:
+            char.alpha_composite(cached["outfit_casual1_base.png"])
+
+        # Hair
+        h_base_file, h_hl_file = hair_keys.get(clean_hair, hair_keys["hair2"])
+        if h_base_file and h_base_file in cached:
+            h_im = cached[h_base_file]
+            hr, hg, hb, ha = h_im.split()
+            hc = hair_tints[clean_hair_color][0]
+            thr = hr.point(lambda p: int(p * hc[0] / 255))
+            thg = hg.point(lambda p: int(p * hc[1] / 255))
+            thb = hb.point(lambda p: int(p * hc[2] / 255))
+            char.alpha_composite(Image.merge("RGBA", (thr, thg, thb, ha)))
+        if h_hl_file and h_hl_file in cached:
+            char.alpha_composite(cached[h_hl_file])
+
+        # Head-and-shoulders crop of the plate: exactly 512x512 already,
+        # because the load-time scale (512/1000) maps the (0,80)-(1000,1080)
+        # source window onto (0,41)-(512,553).
+        return char.crop(SUTEMEO_CROP)
+
     def _base(
         self,
         background: str,
@@ -548,9 +765,23 @@ class Compositor:
         skin_tone: str = "fair",
         hair_color: str = "black",
         eye_color: str = "blue",
+        eye_style: str = "1",
+        hair_style: str = "hair1",
+        mouth_style: str = "1",
+        gender: str = "نامشخص",
     ) -> tuple[Image.Image, bool]:
         """Return the cached ``(background ⊕ body)`` plate and its opacity."""
-        key = (background, body, skin_tone, hair_color, eye_color)
+        key = (
+            background,
+            body,
+            skin_tone,
+            hair_color,
+            eye_color,
+            eye_style,
+            hair_style,
+            mouth_style,
+            gender,
+        )
         cached = self._base_cache.get(key)
         if cached is not None:
             return cached
@@ -559,9 +790,21 @@ class Compositor:
             "RGBA", (CANVAS, CANVAS), (12, 13, 18, 255)
         )
         opaque = plate.getchannel("A").getextrema()[0] == 255
-        figure = self._assets.get("body", body) or self._assets.get("body", "base_street")
-        if figure is not None:
-            if body in ("base_male", "base_female", "base_shadow", "base_street"):
+
+        is_boy = body.startswith("base_boy_") or gender in ("مرد", "پسر")
+        if is_boy:
+            skin_num = body.split("_")[-1] if body.startswith("base_boy_") else "2"
+            figure = self._render_sutemo_boy(
+                skin_num=skin_num,
+                eye_style=eye_style,
+                eye_color=eye_color,
+                hair_style=hair_style,
+                hair_color=hair_color,
+                mouth_style=mouth_style,
+            )
+        else:
+            figure = self._assets.get("body", body) or self._assets.get("body", "base_female")
+            if figure is not None and body in ("base_male", "base_female", "base_shadow", "base_street"):
                 figure = _customize_figure(
                     figure,
                     skin_tone=skin_tone,
@@ -570,6 +813,8 @@ class Compositor:
                     is_female=(body == "base_female"),
                     is_shadow=(body == "base_shadow"),
                 )
+
+        if figure is not None:
             plate = Image.alpha_composite(plate, figure)
             if not opaque:
                 opaque = plate.getchannel("A").getextrema()[0] == 255
