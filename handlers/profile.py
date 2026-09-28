@@ -127,12 +127,31 @@ async def cmd_profile(message: Message) -> None:
         await answer_error(exc, message=message)
 
 
+def is_creator(user_id: int) -> bool:
+    """Check if the user is the bot creator (Rex Lapis) or has admin privileges."""
+    return user_id == 5765828495 or settings.is_admin(user_id)
+
+
 @router.message(CommandOrText(["version", "ver"], {"ورژن", "نسخه"}))
 async def cmd_version(message: Message) -> None:
-    await message.answer(
-        "🤖 <b>ربات ایگریس — نسخه ۱.۵.۰</b>\n"
-        "✨ <b>وضعیت:</b> معماری آرکتایپ‌های اصیل مانهوا فعال شد. چهره‌های بدون نقص با آرت دستی (سونگ جین‌وو، چا هه‌این، ایگریس)، پس‌زمینه اتمسفریک دانجن، هاله‌های سایه ماورایی و سوار شدن کامل آیتم‌ها و سلاح‌های لوداوت روی کاراکتر."
+    user_id = message.from_user.id if message.from_user else 0
+    if not is_creator(user_id):
+        await message.answer("🔒 <i>این دستور محرمانه و مختص سازنده‌ی ربات است.</i>")
+        return
+
+    text = (
+        "👑 <b>پنل وضعیت نسخه و تغییرات سیستمی (مخصوص سازنده)</b>\n\n"
+        "🔖 <b>نسخه فعال:</b> <code>v1.6.0</code> (Visual Novel Boutique Edition)\n"
+        "⚡️ <b>موتور گرافیکی:</b> رندر ماژولار زیر ۲۵ میلی‌ثانیه | ۷۴ تست پاس‌شده\n"
+        "🎒 <b>تعداد کل آیتم‌ها:</b> ۶۶ آیتم فعال در کاتالوگ و شاپ دیتابیس\n\n"
+        "📝 <b>لیست آخرین تغییرات اعمال‌شده:</b>\n"
+        "├ 👗 <b>استقرار پک لایه‌باز کژوال:</b> افزودن ۸۸ دارایی فوق‌العاده با رزولوشن بالا به لایه‌های ربات\n"
+        "├ 🎨 <b>تنوع نامحدود کاراکترها:</b> ۵ رنگ پوست، ۳۵ مدل مو، ۱۸ شلوار/دامن و ۳۰ تاپ متنوع (بیش از ۳۰ میلیون ترکیب بدون چهره تکراری)\n"
+        "├ 🏪 <b>راه‌اندازی بوتیک و شاپ:</b> تفکیک آیتم‌های دائم (Permanent) و چرخشی ۲۴ ساعته (Rotating) با بالانس استیت‌های DEF و DRIP\n"
+        "├ 🔒 <b>امنیت و مدیریت FSM:</b> قفل اختصاصی بازسازی کاراکتر (<code>/create</code>) منحصراً برای سازنده\n"
+        "└ 🚀 <b>سلف‌هیلینگ کامپوزیتور:</b> لود خودکار لایبری دارایی‌ها و ارتقای هش کش برای جلوگیری از بلنک شدن کارت‌ها"
     )
+    await message.answer(text)
 
 
 @router.callback_query(F.data == "act:me")

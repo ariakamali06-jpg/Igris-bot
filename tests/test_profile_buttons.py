@@ -147,10 +147,13 @@ class FakeCall:
 async def _db():
     from database.connection import db
     from database.seed import seed_catalog
+    from services.compositor import compositor
 
     await db.connect()
     await seed_catalog()
     yield db
+    await db.close()
+    compositor.close()
 
 
 @pytest.fixture()
@@ -337,3 +340,23 @@ def test_card_is_posted_as_photo_not_text() -> None:  # noqa: D401
     src = inspect.getsource(profile._send_profile)
     assert "reply_photo" in src
     assert "reply(" not in src
+
+
+@pytest.mark.asyncio
+async def test_cmd_version_creator_only() -> None:
+    msg_creator = CardMessage(photo=False)
+    msg_creator.from_user = User(id=5765828495, is_bot=False, first_name="Rex Lapis")
+    await profile.cmd_version(msg_creator)
+    assert len(msg_creator.sent) == 1
+    sent_text = msg_creator.sent[0]["text"]
+    assert "v1.6.0" in sent_text
+    assert "پنل وضعیت نسخه" in sent_text
+
+    msg_stranger = CardMessage(photo=False)
+    msg_stranger.from_user = User(id=999888777, is_bot=False, first_name="Stranger")
+    await profile.cmd_version(msg_stranger)
+    assert len(msg_stranger.sent) == 1
+    denied_text = msg_stranger.sent[0]["text"]
+    assert "مختص سازنده‌ی ربات" in denied_text
+    assert "v1.6.0" not in denied_text
+

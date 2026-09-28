@@ -1,6 +1,6 @@
 [project]
 name = "tele-bot-game"
-version = "0.1.0"
+version = "1.6.0"
 description = "Urban Fantasy Telegram RPG bot (aiogram v3 + Pillow compositor)"
 requires-python = ">=3.11"
 
