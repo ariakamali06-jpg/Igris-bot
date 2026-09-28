@@ -402,6 +402,8 @@ class Compositor:
 
     def render(self, request: RenderRequest, *, use_cache: bool = True) -> bytes:
         """Return encoded card bytes (JPEG q92). Never raises for bad assets."""
+        if self._assets.loaded == 0:
+            self._assets.load()
         key = self._cache_key(request)
 
         if use_cache:
@@ -477,9 +479,7 @@ class Compositor:
         # Layers 2..7: equipped cosmetics in bottom-to-top order.
         is_manhwa_base = request.body in (
             "base_male",
-            "base_female",
             "base_shadow",
-            "base_street",
         )
         legacy_starter_keys = {
             "fitted_tee",

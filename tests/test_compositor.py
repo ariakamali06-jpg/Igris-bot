@@ -132,3 +132,28 @@ def test_render_budget_under_50ms(sample: RenderRequest) -> None:
 def test_canvas_is_512(sample: RenderRequest) -> None:
     img = Image.open(io.BytesIO(render_card(sample)))
     assert img.size == (CANVAS, CANVAS)
+
+
+def test_visual_novel_outfit_renders() -> None:
+    vn_req = RenderRequest(
+        display_name="Heroine",
+        username="heroine",
+        level=10,
+        atk=25,
+        defense=20,
+        drip=30,
+        loadout={
+            "legs": "jeans_blue",
+            "body": "tunic_casual_striped",
+            "head": "hair_waves_blonde",
+            "aura": "violet_monarch",
+        },
+        background="rooftop_zenith",
+        body="base_female",
+    )
+    data = render_card(vn_req)
+    assert isinstance(data, bytes) and len(data) > 2000
+    assert data[:2] == b"\xff\xd8"
+    img = Image.open(io.BytesIO(data))
+    assert img.size == (CANVAS, CANVAS)
+

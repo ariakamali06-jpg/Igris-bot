@@ -32,9 +32,16 @@ from handlers.common import (
 from handlers.panel import refresh_markup, render_panel
 from models import Player, Slot
 from services import economy, game
+from config import settings
 
 logger = logging.getLogger(__name__)
 router = Router(name="profile")
+
+
+def is_admin_or_owner(user_id: int) -> bool:
+    """Check if the user is the project owner (Rex Lapis) or has admin privileges."""
+    return settings.is_admin(user_id) or user_id == 5765828495
+
 
 _INVENTORY_PAGE_SIZE = 6
 
@@ -57,11 +64,16 @@ async def _profile_markup(player: Player) -> InlineKeyboardMarkup:
             InlineKeyboardButton(text="⚡ کار کردن", callback_data="act:work"),
             InlineKeyboardButton(text="💰 موجودی", callback_data="act:bal"),
         ],
-        [
-            InlineKeyboardButton(text="🎨 تغییر چهره و ظاهر", callback_data="act:create"),
-            InlineKeyboardButton(text="📖 راهنمای بازی", callback_data="act:help"),
-        ],
     ]
+    if is_admin_or_owner(player.user_id):
+        rows.append([
+            InlineKeyboardButton(text="🎨 بازطراحی کاراکتر (ادمین)", callback_data="act:create"),
+            InlineKeyboardButton(text="📖 راهنمای بازی", callback_data="act:help"),
+        ])
+    else:
+        rows.append([
+            InlineKeyboardButton(text="📖 راهنمای بازی", callback_data="act:help"),
+        ])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 

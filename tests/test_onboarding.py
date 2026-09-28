@@ -228,3 +228,77 @@ async def test_onboarding_custom_typing_and_shadow_kit(_db) -> None:
     assert player.loadout["head"] == "raven_shag"
     assert player.loadout["body"] == "hunter_trench"
     assert player.loadout["legs"] == "techwear_cargo"
+
+
+@pytest.mark.asyncio
+async def test_recreation_restriction_for_regular_users_and_admin(_db) -> None:
+    from handlers import profile
+
+    reg_user_id = 888001
+    owner_user_id = 5765828495
+
+    async with db.write() as conn:
+        await conn.execute("DELETE FROM players WHERE user_id IN (?, ?)", (reg_user_id, owner_user_id))
+        await conn.execute("DELETE FROM loadout WHERE user_id IN (?, ?)", (reg_user_id, owner_user_id))
+        await conn.execute("DELETE FROM inventory WHERE user_id IN (?, ?)", (reg_user_id, owner_user_id))
+        await conn.execute("DELETE FROM wallets WHERE user_id IN (?, ?)", (reg_user_id, owner_user_id))
+
+    storage = MemoryStorage()
+
+    # 1. Create a regular player with onboarding completed
+    reg_user = User(id=reg_user_id, is_bot=False, first_name="RegularPlayer", username="regular")
+    await game.ensure_player(reg_user_id, "RegularPlayer", "regular")
+    async with db.write() as conn:
+        await conn.execute("UPDATE players SET onboarding_completed = 1 WHERE user_id = ?", (reg_user_id,))
+    reg_player = await game.load_player(reg_user_id)
+    assert reg_player is not None
+    assert reg_player.onboarding_completed == 1
+
+    # Check profile markup for regular player: NO act:create button!
+    reg_markup = await profile._profile_markup(reg_player)
+    reg_cb_data = [b.callback_data for row in reg_markup.inline_keyboard for b in row]
+    assert "act:create" not in reg_cb_data
+
+    # Regular player tries /create command -> REJECTED
+    reg_state = FSMContext(storage=storage, key=StorageKey(bot_id=1, chat_id=reg_user_id, user_id=reg_user_id))
+    msg_create = MutableMessage(text="/create", user=reg_user)
+    await onboarding.cmd_start(msg_create, reg_state)
+    assert len(msg_create.replies) == 1
+    assert "قفل" in msg_create.replies[0]["text"]
+    assert await reg_state.get_state() is None
+
+    # Regular player taps act:create callback -> REJECTED with alert
+    call_create = FakeCall("act:create", msg_create, reg_user)
+    await onboarding.cb_start_creation(call_create, reg_state)
+    assert len(call_create.alerts) == 1
+    assert "قفل" in call_create.alerts[0]
+    assert await reg_state.get_state() is None
+
+    # 2. Check Owner (Rex Lapis: 5765828495)
+    owner_user = User(id=owner_user_id, is_bot=False, first_name="Rex Lapis", username="rexlapis")
+    await game.ensure_player(owner_user_id, "Rex Lapis", "rexlapis")
+    async with db.write() as conn:
+        await conn.execute("UPDATE players SET onboarding_completed = 1 WHERE user_id = ?", (owner_user_id,))
+    owner_player = await game.load_player(owner_user_id)
+    assert owner_player is not None
+    assert owner_player.onboarding_completed == 1
+
+    # Check profile markup for owner: HAS act:create button!
+    owner_markup = await profile._profile_markup(owner_player)
+    owner_cb_data = [b.callback_data for row in owner_markup.inline_keyboard for b in row]
+    assert "act:create" in owner_cb_data
+
+    # Owner runs /create -> ALLOWED into wizard!
+    owner_state = FSMContext(storage=storage, key=StorageKey(bot_id=1, chat_id=owner_user_id, user_id=owner_user_id))
+    msg_owner_create = MutableMessage(text="/create", user=owner_user)
+    await onboarding.cmd_start(msg_owner_create, owner_state)
+    assert len(msg_owner_create.replies) == 1
+    assert "سفارشی‌سازی" in msg_owner_create.replies[0]["text"]
+    assert await owner_state.get_state() == onboarding.OnboardingState.waiting_for_name.state
+
+    # Owner taps act:create callback -> ALLOWED into wizard!
+    owner_state_2 = FSMContext(storage=storage, key=StorageKey(bot_id=1, chat_id=owner_user_id, user_id=owner_user_id))
+    call_owner = FakeCall("act:create", msg_owner_create, owner_user)
+    await onboarding.cb_start_creation(call_owner, owner_state_2)
+    assert len(call_owner.alerts) == 0
+    assert await owner_state_2.get_state() == onboarding.OnboardingState.waiting_for_name.state

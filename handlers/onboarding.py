@@ -26,9 +26,15 @@ from handlers.common import (
 from handlers.panel import photo_bytes, render_panel
 from handlers.profile import _profile_markup, _send_profile, _show_profile
 from services import game
+from config import settings
 
 logger = logging.getLogger(__name__)
 router = Router(name="onboarding")
+
+
+def is_admin_or_owner(user_id: int) -> bool:
+    """Check if the user is the project owner (Rex Lapis) or has admin privileges."""
+    return settings.is_admin(user_id) or user_id == 5765828495
 
 STARTER_KITS: dict[str, tuple[str, tuple[str, ...]]] = {
     "street": ("شکارچی شهری", ("fitted_tee", "street_slacks")),
@@ -103,9 +109,17 @@ async def cmd_start(message: Message, state: FSMContext) -> None:
         is_recreation = message.text and any(
             t in message.text.lower() for t in ("create", "new_char", "شخصیت جدید", "ساخت", "تغییر چهره")
         )
-        if player.onboarding_completed == 1 and not is_recreation:
-            await _send_profile(message, player)
-            return
+        if player.onboarding_completed == 1:
+            if not is_recreation:
+                await _send_profile(message, player)
+                return
+            if not is_admin_or_owner(user.id):
+                await message.reply(
+                    "⚠️ <b>وَخَه بینُم شکارچی! هویتت قفل رفته!</b>\n\n"
+                    "کارت شناسایی و کاراکتر تو قبلاً با موفقیت ثبت شده و هر بازیکن فقط یک‌بار حق ساخت کاراکتر اولیه رو داره.\n\n"
+                    "برای دیدن مشخصات، تغییر لباس و ارتقای تجهیزاتت از دستور /profile یا منوی بازی استفاده کن!"
+                )
+                return
 
         # Start Character Creation Wizard
         await state.clear()
@@ -133,10 +147,17 @@ async def cmd_start(message: Message, state: FSMContext) -> None:
 
 @router.callback_query(F.data.in_({"act:create", "panel:create"}))
 async def cb_start_creation(call: CallbackQuery, state: FSMContext) -> None:
-    await call.answer()
     user = call.from_user
     if user is None:
         return
+    player = await hydrate(user.id, user.full_name, user.username)
+    if player.onboarding_completed == 1 and not is_admin_or_owner(user.id):
+        await call.answer(
+            "⚠️ وَخَه بینُم! هویتت قبلاً ثبت شده و ساخت مجدد کاراکتر قفله!",
+            show_alert=True,
+        )
+        return
+    await call.answer()
     await state.clear()
     await state.set_state(OnboardingState.waiting_for_name)
 
@@ -557,7 +578,13 @@ async def cb_kit(call: CallbackQuery, state: FSMContext) -> None:
             f"• مدل مو: <b>{hair_str}</b> ({hair_col_str})\n"
             f"• کیت اولیه: <b>{kit_label}</b>\n\n"
             f"⚔️ قدرت: <b>{player.atk}</b> · 🛡 دفاع: <b>{player.defense}</b> · 💎 استایل: <b>{player.drip}</b>\n\n"
-            "🎮 کارت هویت سفارشی تو صادر شد! هر زمان خواستی می‌تونی با دکمه‌ی «تغییر چهره و ظاهر» یا دستور <code>/create</code> ظاهرت رو دوباره تغییر بدی."
+            "🎮 <b>کارت هویت اختصاصی تو صادر و قفل شد!</b>\n"
+            "از این پس می‌تونی با تجهیز لباس‌ها و سلاح‌های جدید در «کوله‌پشتی» یا خرید از «فروشگاه»، استایل و قدرتت رو ارتقا بدی."
+            + (
+                "\n\n🛠 <i>(دسترسی توسعه‌دهنده: با دستور <code>/create</code> می‌تونی مجدداً کاراکتر رو تست و بازسازی کنی.)</i>"
+                if is_admin_or_owner(user.id)
+                else ""
+            )
         )
 
         buttons = await _profile_markup(player)
