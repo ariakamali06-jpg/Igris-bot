@@ -36,7 +36,28 @@ CREATE TABLE IF NOT EXISTS players (
     eye_color          TEXT    NOT NULL DEFAULT 'amber',
     body_stance        TEXT    NOT NULL DEFAULT 'base_street',
     hair_color         TEXT    NOT NULL DEFAULT 'black',
-    onboarding_completed INTEGER NOT NULL DEFAULT 0
+    onboarding_completed INTEGER NOT NULL DEFAULT 0,
+    education_level    INTEGER NOT NULL DEFAULT 0,
+    job                TEXT    NOT NULL DEFAULT 'بیکار',
+    spouse_id          INTEGER DEFAULT NULL,
+    marriage_date      INTEGER NOT NULL DEFAULT 0,
+    children_count     INTEGER NOT NULL DEFAULT 0,
+    is_pregnant_until  INTEGER NOT NULL DEFAULT 0,
+    is_jailed_until    INTEGER NOT NULL DEFAULT 0,
+    bank_balance       INTEGER NOT NULL DEFAULT 0,
+    loan_amount        INTEGER NOT NULL DEFAULT 0,
+    loan_due           INTEGER NOT NULL DEFAULT 0,
+    last_work_time     INTEGER NOT NULL DEFAULT 0,
+    last_study_time    INTEGER NOT NULL DEFAULT 0,
+    last_steal_time    INTEGER NOT NULL DEFAULT 0,
+    last_duel_time     INTEGER NOT NULL DEFAULT 0,
+    last_intimacy_time INTEGER NOT NULL DEFAULT 0,
+    last_affair_time   INTEGER NOT NULL DEFAULT 0,
+    eye_style          TEXT    NOT NULL DEFAULT 'eyes1_1',
+    mouth_style        TEXT    NOT NULL DEFAULT 'mouth1_1',
+    hair_style         TEXT    NOT NULL DEFAULT 'hair1',
+    clan_id            INTEGER DEFAULT NULL,
+    clan_role          TEXT    DEFAULT NULL
 );
 
 -- -----------------------------------------------------------------------------
@@ -222,3 +243,15 @@ INSERT OR IGNORE INTO constants (key, value) VALUES
     ('schema_version', '1'),
     ('slots', 'head,body,legs,weapon,accessory,aura'),
     ('rarities', 'common,rare,epic,legendary');
+
+-- -----------------------------------------------------------------------------
+-- Clashing and City Clans
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS clans (
+    clan_id     INTEGER PRIMARY KEY AUTOINCREMENT,
+    group_id    INTEGER NOT NULL,
+    name        TEXT    NOT NULL UNIQUE,
+    leader_id   INTEGER NOT NULL REFERENCES players (user_id),
+    treasury    INTEGER NOT NULL DEFAULT 0 CHECK (treasury >= 0),
+    created_at  INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
+);

@@ -91,12 +91,123 @@ async def cmd_work(message: Message) -> None:
     if user is None:
         return
     try:
-        economy.require_ready(user.id, "work", settings.cooldown_work)
         player = await hydrate(user.id, user.full_name, user.username)
-        result = await economy.do_work(
-            player.user_id, player.level, player.drip
-        )
-        await message.reply(_activity_card(result))
+        from services import tiramix
+        res = await tiramix.execute_work(player)
+        await message.reply(res["message"])
+    except Exception as exc:  # noqa: BLE001
+        await answer_error(exc, message=message)
+
+
+# ---------------------------------------------------------------------------
+# /study & education
+# ---------------------------------------------------------------------------
+
+@router.message(CommandOrText(["study", "edu"], {"تحصیل", "درس", "دانشگاه", "مدرک", "کلاس"}))
+async def cmd_study(message: Message) -> None:
+    user = message.from_user
+    if user is None:
+        return
+    try:
+        player = await hydrate(user.id, user.full_name, user.username)
+        from services import tiramix
+        res = await tiramix.execute_study(player)
+        await message.reply(res["message"])
+    except Exception as exc:  # noqa: BLE001
+        await answer_error(exc, message=message)
+
+
+# ---------------------------------------------------------------------------
+# /job & career
+# ---------------------------------------------------------------------------
+
+@router.message(CommandOrText(["job", "career"], {"شغل", "کارها", "استخدام"}))
+async def cmd_job(message: Message) -> None:
+    user = message.from_user
+    if user is None:
+        return
+    try:
+        player = await hydrate(user.id, user.full_name, user.username)
+        from services import tiramix
+
+        args = _extract_args(message)
+        if args:
+            wanted_job = " ".join(args)
+            res = await tiramix.set_player_job(player, wanted_job)
+            await message.reply(res["message"])
+            return
+
+        unlocked_jobs = tiramix.list_available_jobs(player.education_level)
+        lines = [
+            f"💼 <b>اداره کار و استخدام مرکزی شهر تیرامیکس</b>\n",
+            f"👤 شغل فعلی شما: <b>{player.job}</b>",
+            f"🎓 مدرک تحصیلی: <b>{player.education_title}</b>\n",
+            "📋 <b>فرصت‌های شغلی متناسب با مدرک شما:</b>",
+        ]
+        for j in unlocked_jobs:
+            lines.append(f"• <b>{j['title']}</b>: ساعتی <b>{j['wage']:,}</b> سکه\n  <i>{j['desc']}</i>")
+
+        lines.append("\n💡 <i>برای استخدام در یک شغل، نام آن را بنویسید:</i>")
+        lines.append("<code>شغل [نام شغل]</code>")
+        lines.append("<i>مثال: شغل برنامه‌نویس جونیور</i>")
+
+        await message.reply("\n".join(lines))
+    except Exception as exc:  # noqa: BLE001
+        await answer_error(exc, message=message)
+
+
+# ---------------------------------------------------------------------------
+# /bank & loans
+# ---------------------------------------------------------------------------
+
+@router.message(CommandOrText(["bank"], {"بانک", "وام", "سپرده", "صندوق"}))
+async def cmd_bank(message: Message) -> None:
+    user = message.from_user
+    if user is None:
+        return
+    try:
+        player = await hydrate(user.id, user.full_name, user.username)
+        from services import tiramix
+
+        args = _extract_args(message)
+        creds, _ = await economy.balances(player.user_id)
+
+        if not args:
+            loan_info = f"بدهی فعال: <b>{player.loan_amount:,}</b> سکه" if player.loan_amount > 0 else "بدون بدهی معوق ✅"
+            text = (
+                "🏦 <b>بانک مرکزی شهر تیرامیکس (سیستم امن ضدسرقت)</b>\n\n"
+                f"💵 موجودی نقد در جیب: <b>{creds:,}</b> سکه\n"
+                f"🔒 موجودی در گاوصندوق بانک: <b>{player.bank_balance:,}</b> سکه\n"
+                f"📊 وضعیت تسهیلات: {loan_info}\n\n"
+                "📌 <b>دستورات بانکی:</b>\n"
+                "• <code>بانک واریز [مبلغ]</code> — انتقال پول نقد به گاوصندوق امن\n"
+                "• <code>بانک برداشت [مبلغ]</code> — برداشت وجه نقد به کیف پول\n"
+                "• <code>بانک وام [مبلغ]</code> — دریافت تسهیلات با بهره ۱۵٪\n"
+                "• <code>بانک تسویه [مبلغ]</code> — پرداخت اقساط و بدهی وام"
+            )
+            await message.reply(text)
+            return
+
+        action = args[0].lower()
+        if len(args) < 2 or not args[1].isdigit():
+            await message.reply("⚠️ لطفاً مبلغ را به عدد وارد کنید.\nمثال: <code>بانک واریز 500</code>")
+            return
+
+        amount = int(args[1])
+        if action in ("واریز", "deposit"):
+            res = await tiramix.deposit_bank(player, amount)
+            await message.reply(res["message"])
+        elif action in ("برداشت", "withdraw"):
+            res = await tiramix.withdraw_bank(player, amount)
+            await message.reply(res["message"])
+        elif action in ("وام", "loan"):
+            res = await tiramix.apply_bank_loan(player, amount)
+            await message.reply(res["message"])
+        elif action in ("تسویه", "repay"):
+            res = await tiramix.repay_bank_loan(player, amount)
+            await message.reply(res["message"])
+        else:
+            await message.reply("⚠️ عملیات نامعتبر. گزینه‌ها: واریز، برداشت، وام، تسویه.")
     except Exception as exc:  # noqa: BLE001
         await answer_error(exc, message=message)
 
@@ -193,12 +304,14 @@ async def cmd_balance(message: Message) -> None:
     try:
         player = await hydrate(user.id, user.full_name, user.username)
         credits, shards = await economy.balances(player.user_id)
-        discount = economy.drip_discount(player.drip)
+        loan_line = f"\n⚠️ بدهی وام بانکی: <b>{player.loan_amount:,}</b> سکه" if player.loan_amount > 0 else ""
         await message.reply(
-            f"💰 <b>کیف پول {esc(player.display_tag)}</b>\n"
-            f"سکه: <b>{credits:,}</b>\n"
-            f"شارد روح: <b>{shards}</b> 💎\n"
-            f"تخفیف استایل در فروشگاه: <b>{discount:.0%}</b>"
+            f"💰 <b>وضعیت مالی شهروندی {esc(player.display_tag)}</b>\n\n"
+            f"💵 موجودی نقد (کیف پول): <b>{credits:,}</b> سکه\n"
+            f"🏦 سپرده امن بانکی: <b>{player.bank_balance:,}</b> سکه\n"
+            f"💎 شارد روح: <b>{shards}</b> عدد{loan_line}\n\n"
+            f"💼 شغل فعلی: <b>{player.job}</b>\n"
+            f"🎓 مدرک تحصیلی: <b>{player.education_title}</b>"
         )
     except Exception as exc:  # noqa: BLE001
         await answer_error(exc, message=message)

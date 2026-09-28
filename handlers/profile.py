@@ -51,7 +51,7 @@ _INVENTORY_PAGE_SIZE = 6
 # ---------------------------------------------------------------------------
 
 PROFILE_COMMANDS = {"پروفایل", "من", "کارت", "کاراکتر", "مشخصات", "profile", "me", "card"}
-INVENTORY_COMMANDS = {"کوله", "کیف", "اینونتوری", "وسایل", "inventory", "inv"}
+INVENTORY_COMMANDS = {"کوله", "کیف", "اینونتوری", "وسایل", "inventory", "inv", "کمد"}
 
 
 async def _profile_markup(player: Player) -> InlineKeyboardMarkup:
@@ -79,25 +79,51 @@ async def _profile_markup(player: Player) -> InlineKeyboardMarkup:
 
 async def _profile_panel(player: Player) -> tuple[str, bytes]:
     """The card's caption + rendered bytes, shared by /me and the callback."""
+    import time
+    from services import tiramix
+
     photo = await card_bytes(player)
-    stats = player.stats
     credits, shards = await economy.balances(player.user_id)
-    caption = (
-        f"🎴 <b>{esc(player.username or player.display_name)}</b> — لول <b>{player.level}</b>\n"
-        f"⚡ {energy_bar(player.energy, stats.max_energy)} {player.energy}/{stats.max_energy}\n"
-        f"⚔️ قدرت: <b>{player.atk}</b> · 🛡 دفاع: <b>{player.defense}</b> · 💎 استایل: <b>{player.drip}</b>\n"
-        f"💰 موجودی: <b>{credits:,}</b> سکه · 💎 <b>{shards}</b> شارد روح\n"
-        f"✨ پیشرفت: <b>{player.exp}/{game.exp_to_next(player.level)}</b> EXP"
-    )
-    return caption, photo
+    now = int(time.time())
+
+    jail_status = f"🔒 حبس در بازداشتگاه ({int((player.is_jailed_until - now)//60)} دقیقه)" if player.is_in_jail(now) else "🟢 آزاد"
+    pregnancy_status = "🤰 باردار" if player.is_pregnant(now) else ""
+    marital_status = f"💍 متأهل" if player.spouse_id else "مجرد"
+    
+    clan_name = "ندارد"
+    if player.clan_id:
+        clan_info = await tiramix.get_player_clan(player.clan_id)
+        if clan_info:
+            clan_name = f"🛡 {clan_info['name']}"
+
+    lines = [
+        f"🍁 <b>شناسنامه شهروندی شهر تیرامیکس</b>",
+        "",
+        f"👤 <b>نام:</b> {esc(player.username or player.display_name)} (لول <b>{player.level}</b>)",
+        f"🎂 <b>سن:</b> {player.age} سال | ⚧ <b>جنسیت:</b> {player.gender}",
+        f"🎓 <b>سطح سواد:</b> {player.education_title}",
+        f"💼 <b>شغل:</b> {player.job}",
+        f"💍 <b>وضعیت تأهل:</b> {marital_status} | 👶 <b>فرزندان:</b> {player.children_count} {pregnancy_status}",
+        f"💰 <b>کیف پول:</b> <b>{credits:,}</b> سکه | 🏦 <b>بانک:</b> <b>{player.bank_balance:,}</b> سکه",
+        f"🛡 <b>کلن:</b> {clan_name} | ⚖️ <b>وضعیت قضایی:</b> {jail_status}",
+        f"⚔️ قدرت: <b>{player.atk}</b> · 🛡 دفاع: <b>{player.defense}</b> · 💎 استایل: <b>{player.drip}</b>",
+        "",
+        "📜 <b>دستورات اصلی شهر:</b>",
+        "• <code>کار</code> · <code>تحصیل</code> · <code>شغل</code> · <code>کیف پول</code> · <code>بانک</code>",
+        "• <code>کمد</code> · <code>آرایشگاه</code> · <code>زیبایی</code> · <code>کلینیک</code> · <code>فروشگاه</code>",
+        "• <code>دوئل</code> · <code>دزدی</code> · <code>ازدواج</code> · <code>طلاق</code> · <code>رابطه</code> · <code>خیانت</code>",
+    ]
+
+    return "\n".join(lines), photo
 
 
 async def _send_profile(target: Message, player: Player) -> None:
     caption, photo = await _profile_panel(player)
+    # STRICT USER PREFERENCE: NO CLUTTERED BUTTONS UNDER THE CARD
     await target.reply_photo(
         photo=BufferedInputFile(photo, filename="character.jpg"),
         caption=caption,
-        reply_markup=await _profile_markup(player),
+        reply_markup=None,
     )
 
 
@@ -444,3 +470,88 @@ async def cb_balance(call: CallbackQuery) -> None:
         )
     except Exception as exc:  # noqa: BLE001
         await answer_error(exc, callback=call)
+
+
+# ---------------------------------------------------------------------------
+# Tiramix City Services: Barber, Beauty Surgery & Clinic
+# ---------------------------------------------------------------------------
+
+@router.message(CommandOrText(["barber"], {"آرایشگاه", "سلمونی", "مو"}))
+async def cmd_barber(message: Message) -> None:
+    user = message.from_user
+    if user is None:
+        return
+    try:
+        player = await hydrate(user.id, user.full_name, user.username)
+        from services import tiramix
+        text = (
+            "✂️ <b>به آرایشگاه و سالن پیرایش تیرامیکس خوش آمدید!</b>\n\n"
+            f"👤 مدل موی فعلی: <b>{player.hair_style}</b> ({player.hair_color})\n"
+            f"💵 هزینه تغییر مدل و رنگ مو: <b>{tiramix.HAIRSTYLE_FEES:,}</b> سکه\n\n"
+            "برای تغییر فوری مدل مو به همراه رنگ دلخواه، از دستور زیر استفاده کنید:\n"
+            "<code>آرایشگاه [مدل 1 تا 5] [مشکی/نقره‌ای/قهوه‌ای]</code>\n"
+            "<i>مثال: آرایشگاه 2 مشکی</i>"
+        )
+        parts = (message.text or "").strip().split()
+        if len(parts) >= 3:
+            s_num = parts[1]
+            c_fa = parts[2]
+            color_map = {"مشکی": "black", "نقره‌ای": "silver", "نقره": "silver", "قهوه‌ای": "brown", "قهوه": "brown"}
+            c_key = color_map.get(c_fa, "black")
+            s_key = f"hair{s_num}" if s_num in ("1", "2", "3", "4", "5") else "hair1"
+            res = await tiramix.update_hairstyle(player, s_key, c_key)
+            await message.reply(res["message"])
+            return
+
+        await message.reply(text)
+    except Exception as exc:  # noqa: BLE001
+        await answer_error(exc, message=message)
+
+
+@router.message(CommandOrText(["beauty"], {"زیبایی", "جراحی", "عمل"}))
+async def cmd_beauty(message: Message) -> None:
+    user = message.from_user
+    if user is None:
+        return
+    try:
+        player = await hydrate(user.id, user.full_name, user.username)
+        from services import tiramix
+        text = (
+            "💎 <b>به کلینیک فوق تخصصی زیبایی و جراحی پلاستیک تیرامیکس خوش آمدید!</b>\n\n"
+            f"💵 هزینه جراحی کامل چهره: <b>{tiramix.SURGERY_FEES:,}</b> سکه\n\n"
+            "برای جراحی و تغییر چشم و دهان از فرمول زیر استفاده کنید:\n"
+            "<code>زیبایی [چشم 1 تا 3] [رنگ] [لبخند 1 تا 4]</code>\n"
+            "<i>رنگ‌های مجاز: آبی، سبز، عسلی، بنفش، مشکی</i>\n"
+            "<i>مثال: زیبایی 2 آبی 1</i>"
+        )
+        parts = (message.text or "").strip().split()
+        if len(parts) >= 4:
+            e_num = parts[1]
+            col_fa = parts[2]
+            m_num = parts[3]
+            color_map = {"آبی": "blue", "سبز": "green", "عسلی": "amber", "بنفش": "violet", "مشکی": "black"}
+            col_key = color_map.get(col_fa, "blue")
+            e_key = f"eyes{e_num}_1"
+            m_key = f"mouth{m_num}_1"
+            res = await tiramix.update_facial_surgery(player, e_key, col_key, m_key)
+            await message.reply(res["message"])
+            return
+
+        await message.reply(text)
+    except Exception as exc:  # noqa: BLE001
+        await answer_error(exc, message=message)
+
+
+@router.message(CommandOrText(["clinic"], {"کلینیک", "بیمارستان", "درمانگاه", "دکتر"}))
+async def cmd_clinic(message: Message) -> None:
+    user = message.from_user
+    if user is None:
+        return
+    try:
+        player = await hydrate(user.id, user.full_name, user.username)
+        from services import tiramix
+        res = await tiramix.clinic_service(player)
+        await message.reply(res["message"])
+    except Exception as exc:  # noqa: BLE001
+        await answer_error(exc, message=message)
+

@@ -57,6 +57,10 @@ class MutableMessage(Message):
         self._replies.append({"caption": caption, "reply_markup": reply_markup})
         return self
 
+    async def answer_photo(self, photo=None, caption=None, reply_markup=None, **kw):
+        self._replies.append({"caption": caption, "reply_markup": reply_markup})
+        return self
+
 
 @pytest.fixture(scope="session")
 async def _db():
@@ -91,80 +95,80 @@ async def test_onboarding_full_wizard(_db) -> None:
     await onboarding.cb_name_telegram(call_name, state)
     data = await state.get_data()
     assert data["name"] == "Aria"
-    assert await state.get_state() == onboarding.OnboardingState.waiting_for_gender.state
-
-    # 3. Choose gender
-    call_gen = FakeCall("ob:gen:مرد", msg, user)
-    await onboarding.cb_gender(call_gen, state)
-    data = await state.get_data()
-    assert data["gender"] == "مرد"
     assert await state.get_state() == onboarding.OnboardingState.waiting_for_age.state
 
-    # 4. Choose age
+    # 3. Choose age
     call_age = FakeCall("ob:age:22", msg, user)
     await onboarding.cb_age(call_age, state)
     data = await state.get_data()
     assert data["age"] == 22
-    assert await state.get_state() == onboarding.OnboardingState.waiting_for_body.state
+    assert await state.get_state() == onboarding.OnboardingState.waiting_for_gender.state
 
-    # 5. Choose body & skin
-    call_body = FakeCall("ob:body:base_male:fair", msg, user)
-    await onboarding.cb_body(call_body, state)
+    # 4. Choose gender: male
+    call_gen = FakeCall("ob:gen:male", msg, user)
+    await onboarding.cb_gender(call_gen, state)
     data = await state.get_data()
-    assert data["body_stance"] == "base_male"
-    assert data["skin_tone"] == "fair"
-    assert await state.get_state() == onboarding.OnboardingState.waiting_for_eyes.state
+    assert data["gender"] == "male"
+    assert await state.get_state() == onboarding.OnboardingState.waiting_for_skin.state
 
-    # 6. Choose eyes
-    call_eyes = FakeCall("ob:eyes:blue", msg, user)
-    await onboarding.cb_eyes(call_eyes, state)
+    # 5. Choose skin tone
+    call_skin = FakeCall("ob:skin:2", msg, user)
+    await onboarding.cb_skin(call_skin, state)
+    data = await state.get_data()
+    assert data["skin_tone"] == "2"
+    assert await state.get_state() == onboarding.OnboardingState.waiting_for_eye_shape.state
+
+    # 6. Choose eye shape
+    call_eyes = FakeCall("ob:eyes:1", msg, user)
+    await onboarding.cb_eye_shape(call_eyes, state)
+    data = await state.get_data()
+    assert data["eye_shape"] == "1"
+    assert await state.get_state() == onboarding.OnboardingState.waiting_for_eye_color.state
+
+    # 7. Choose eye color
+    call_eyec = FakeCall("ob:eyec:blue", msg, user)
+    await onboarding.cb_eye_color(call_eyec, state)
     data = await state.get_data()
     assert data["eye_color"] == "blue"
-    assert await state.get_state() == onboarding.OnboardingState.waiting_for_hair.state
+    assert await state.get_state() == onboarding.OnboardingState.waiting_for_hair_style.state
 
-    # 7. Choose hair style
-    call_hair = FakeCall("ob:hair:street_fade", msg, user)
-    await onboarding.cb_hair(call_hair, state)
+    # 8. Choose hair style
+    call_hair = FakeCall("ob:hair:1", msg, user)
+    await onboarding.cb_hair_style(call_hair, state)
     data = await state.get_data()
-    assert data["hair_style"] == "street_fade"
+    assert data["hair_style"] == "1"
     assert await state.get_state() == onboarding.OnboardingState.waiting_for_hair_color.state
 
-    # 8. Choose hair color
-    call_hair_color = FakeCall("ob:hairc:silver", msg, user)
-    await onboarding.cb_hair_color(call_hair_color, state)
+    # 9. Choose hair color
+    call_hairc = FakeCall("ob:hairc:silver", msg, user)
+    await onboarding.cb_hair_color(call_hairc, state)
     data = await state.get_data()
     assert data["hair_color"] == "silver"
-    assert await state.get_state() == onboarding.OnboardingState.waiting_for_kit.state
+    assert await state.get_state() == onboarding.OnboardingState.waiting_for_mouth.state
 
-    # 9. Choose kit & finalize
-    call_kit = FakeCall("ob:kit:street", msg, user)
-    await onboarding.cb_kit(call_kit, state)
+    # 10. Choose mouth & finalize
+    call_mouth = FakeCall("ob:mouth:1", msg, user)
+    await onboarding.cb_mouth(call_mouth, state)
     assert await state.get_state() is None
 
     # Check player in DB
     player = await game.load_player(user.id)
     assert player is not None
     assert player.display_name == "Aria"
-    assert player.gender == "مرد"
+    assert player.gender == "پسر"
     assert player.age == 22
-    assert player.body_stance == "base_male"
-    assert player.skin_tone == "fair"
     assert player.eye_color == "blue"
     assert player.hair_color == "silver"
     assert player.onboarding_completed == 1
-    assert player.loadout["head"] == "street_fade"
-    assert player.loadout["body"] == "fitted_tee"
-    assert player.loadout["legs"] == "street_slacks"
 
-    # 10. Subsequent /start directly opens profile
+    # 11. Subsequent /start directly opens profile
     msg2 = MutableMessage(text="/start", user=user)
     await onboarding.cmd_start(msg2, state)
-    # Profile should be sent (card/profile)
     assert len(msg2.replies) == 1
 
 
 @pytest.mark.asyncio
-async def test_onboarding_custom_typing_and_shadow_kit(_db) -> None:
+async def test_onboarding_custom_female_character(_db) -> None:
     async with db.write() as conn:
         await conn.execute("DELETE FROM players WHERE user_id = 999002")
         await conn.execute("DELETE FROM loadout WHERE user_id = 999002")
@@ -172,7 +176,7 @@ async def test_onboarding_custom_typing_and_shadow_kit(_db) -> None:
         await conn.execute("DELETE FROM wallets WHERE user_id = 999002")
 
     storage = MemoryStorage()
-    user = User(id=999002, is_bot=False, first_name="Shadow", username="shadow_king")
+    user = User(id=999002, is_bot=False, first_name="Shadow", username="shadow_queen")
     key = StorageKey(bot_id=123456, chat_id=999002, user_id=999002)
     state = FSMContext(storage=storage, key=key)
 
@@ -181,53 +185,52 @@ async def test_onboarding_custom_typing_and_shadow_kit(_db) -> None:
     await onboarding.cmd_start(msg, state)
 
     # 2. Type custom name
-    name_msg = MutableMessage(text="پادشاه سایه‌ها", user=user)
+    name_msg = MutableMessage(text="ملکه تیرامیکس", user=user)
     await onboarding.msg_name_text(name_msg, state)
     data = await state.get_data()
-    assert data["name"] == "پادشاه سایه‌ها"
+    assert data["name"] == "ملکه تیرامیکس"
 
-    # 3. Choose female/other
-    call_gen = FakeCall("ob:gen:زن", msg, user)
-    await onboarding.cb_gender(call_gen, state)
-
-    # 4. Type custom age
-    age_msg = MutableMessage(text="25", user=user)
+    # 3. Type custom age
+    age_msg = MutableMessage(text="24", user=user)
     await onboarding.msg_age_text(age_msg, state)
     data = await state.get_data()
-    assert data["age"] == 25
+    assert data["age"] == 24
 
-    # 5. Choose female body
-    call_body = FakeCall("ob:body:base_female:tan", msg, user)
-    await onboarding.cb_body(call_body, state)
+    # 4. Choose female
+    call_gen = FakeCall("ob:gen:female", msg, user)
+    await onboarding.cb_gender(call_gen, state)
 
-    # 6. Choose eyes
-    call_eyes = FakeCall("ob:eyes:red", msg, user)
-    await onboarding.cb_eyes(call_eyes, state)
+    # 5. Choose skin
+    call_skin = FakeCall("ob:skin:3", msg, user)
+    await onboarding.cb_skin(call_skin, state)
 
-    # 7. Choose Raven Shag hair
-    call_hair = FakeCall("ob:hair:raven_shag", msg, user)
-    await onboarding.cb_hair(call_hair, state)
+    # 6. Choose eye shape
+    call_eyes = FakeCall("ob:eyes:2", msg, user)
+    await onboarding.cb_eye_shape(call_eyes, state)
 
-    # 8. Choose Hair color
-    call_hair_color = FakeCall("ob:hairc:crimson", msg, user)
-    await onboarding.cb_hair_color(call_hair_color, state)
+    # 7. Choose eye color
+    call_eyec = FakeCall("ob:eyec:violet", msg, user)
+    await onboarding.cb_eye_color(call_eyec, state)
 
-    # 9. Choose Shadow kit
-    call_kit = FakeCall("ob:kit:shadow", msg, user)
-    await onboarding.cb_kit(call_kit, state)
+    # 8. Choose hair style
+    call_hair = FakeCall("ob:hair:2", msg, user)
+    await onboarding.cb_hair_style(call_hair, state)
+
+    # 9. Choose hair color
+    call_hairc = FakeCall("ob:hairc:brown", msg, user)
+    await onboarding.cb_hair_color(call_hairc, state)
+
+    # 10. Choose mouth & finalize
+    call_mouth = FakeCall("ob:mouth:2", msg, user)
+    await onboarding.cb_mouth(call_mouth, state)
 
     player = await game.load_player(user.id)
     assert player is not None
-    assert player.display_name == "پادشاه سایه‌ها"
-    assert player.gender == "زن"
-    assert player.age == 25
-    assert player.body_stance == "base_female"
-    assert player.skin_tone == "tan"
-    assert player.eye_color == "red"
-    assert player.hair_color == "crimson"
-    assert player.loadout["head"] == "raven_shag"
-    assert player.loadout["body"] == "hunter_trench"
-    assert player.loadout["legs"] == "techwear_cargo"
+    assert player.display_name == "ملکه تیرامیکس"
+    assert player.gender == "دختر"
+    assert player.age == 24
+    assert player.eye_color == "violet"
+    assert player.hair_color == "brown"
 
 
 @pytest.mark.asyncio

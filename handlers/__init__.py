@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from aiogram import Dispatcher
 
-from handlers import duels, economy, onboarding, profile, raids, shop
+from handlers import duels, economy, onboarding, profile, raids, shop, social
 from handlers.diagnostics import CallbackDiagnosticsMiddleware
 
 
@@ -20,6 +20,7 @@ def register_routers(dp: Dispatcher) -> None:
     dp.include_router(profile.router)
     dp.include_router(economy.router)
     dp.include_router(shop.router)
+    dp.include_router(social.router)
     dp.include_router(duels.router)
     dp.include_router(raids.router)
     # Innermost on callback_query: sees the payload and any handler failure,

@@ -218,6 +218,27 @@ async def _load_conn(
         body_stance=row["body_stance"] if "body_stance" in keys else "base_street",
         hair_color=row["hair_color"] if "hair_color" in keys else "black",
         onboarding_completed=row["onboarding_completed"] if "onboarding_completed" in keys else 0,
+        education_level=row["education_level"] if "education_level" in keys else 0,
+        job=row["job"] if "job" in keys else "بیکار",
+        spouse_id=row["spouse_id"] if "spouse_id" in keys else None,
+        marriage_date=row["marriage_date"] if "marriage_date" in keys else 0,
+        children_count=row["children_count"] if "children_count" in keys else 0,
+        is_pregnant_until=row["is_pregnant_until"] if "is_pregnant_until" in keys else 0,
+        is_jailed_until=row["is_jailed_until"] if "is_jailed_until" in keys else 0,
+        bank_balance=row["bank_balance"] if "bank_balance" in keys else 0,
+        loan_amount=row["loan_amount"] if "loan_amount" in keys else 0,
+        loan_due=row["loan_due"] if "loan_due" in keys else 0,
+        last_work_time=row["last_work_time"] if "last_work_time" in keys else 0,
+        last_study_time=row["last_study_time"] if "last_study_time" in keys else 0,
+        last_steal_time=row["last_steal_time"] if "last_steal_time" in keys else 0,
+        last_duel_time=row["last_duel_time"] if "last_duel_time" in keys else 0,
+        last_intimacy_time=row["last_intimacy_time"] if "last_intimacy_time" in keys else 0,
+        last_affair_time=row["last_affair_time"] if "last_affair_time" in keys else 0,
+        eye_style=row["eye_style"] if "eye_style" in keys else "eyes1_1",
+        mouth_style=row["mouth_style"] if "mouth_style" in keys else "mouth1_1",
+        hair_style=row["hair_style"] if "hair_style" in keys else "hair1",
+        clan_id=row["clan_id"] if "clan_id" in keys else None,
+        clan_role=row["clan_role"] if "clan_role" in keys else None,
     )
 
 
@@ -446,6 +467,8 @@ async def complete_character_creation(
     hair_style: str,
     hair_color: str,
     starter_items: tuple[str, ...],
+    eye_style: str = "eyes1_1",
+    mouth_style: str = "mouth1_1",
 ) -> Player:
     """Commit full onboarding wizard selections, grant & equip kit, mark complete."""
     current = now()
@@ -460,6 +483,9 @@ async def complete_character_creation(
                 eye_color = ?,
                 body_stance = ?,
                 hair_color = ?,
+                hair_style = ?,
+                eye_style = ?,
+                mouth_style = ?,
                 onboarding_completed = 1,
                 last_seen = ?
             WHERE user_id = ?
@@ -472,16 +498,19 @@ async def complete_character_creation(
                 eye_color,
                 body_stance,
                 hair_color,
+                hair_style,
+                eye_style,
+                mouth_style,
                 current,
                 user_id,
             ),
         )
-        # Grant kit items & hair
+        # Grant kit items & hair if they exist in catalog
         all_items = set(starter_items) | {hair_style}
         for item_id in all_items:
-            await _grant_item_conn(conn, user_id, item_id, current)
-            item = ITEMS_BY_ID.get(item_id)
-            if item is not None:
+            if item_id in ITEMS_BY_ID:
+                await _grant_item_conn(conn, user_id, item_id, current)
+                item = ITEMS_BY_ID[item_id]
                 await conn.execute(
                     """
                     INSERT INTO loadout (user_id, slot, item_id)

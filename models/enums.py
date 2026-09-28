@@ -109,6 +109,14 @@ class ActivityKind(StrEnum):
     SHOP_BUY = "shop_buy"
     ADMIN = "admin"
     SYSTEM = "system"
+    BANK_DEPOSIT = "bank_deposit"
+    BANK_WITHDRAW = "bank_withdraw"
+    LOAN = "loan"
+    STUDY = "study"
+    THEFT = "theft"
+    CLINIC = "clinic"
+    SALON = "salon"
+    CLAN = "clan"
 
 
 _SLOT_LABELS: dict[Slot, str] = {

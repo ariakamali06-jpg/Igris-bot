@@ -1,9 +1,8 @@
-"""Interactive onboarding and character creation wizard for Igris."""
+"""Interactive onboarding and character creation wizard for Tiramix Life Simulator."""
 
 from __future__ import annotations
 
 import logging
-from typing import Any
 
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
@@ -15,6 +14,7 @@ from aiogram.types import (
     Message,
 )
 
+from config import settings
 from handlers.common import (
     CommandOrText,
     answer_error,
@@ -24,9 +24,8 @@ from handlers.common import (
     hydrate,
 )
 from handlers.panel import photo_bytes, render_panel
-from handlers.profile import _profile_markup, _send_profile, _show_profile
+from handlers.profile import _send_profile
 from services import game
-from config import settings
 
 logger = logging.getLogger(__name__)
 router = Router(name="onboarding")
@@ -36,66 +35,78 @@ def is_admin_or_owner(user_id: int) -> bool:
     """Check if the user is the project owner (Rex Lapis) or has admin privileges."""
     return settings.is_admin(user_id) or user_id == 5765828495
 
-STARTER_KITS: dict[str, tuple[str, tuple[str, ...]]] = {
-    "street": ("شکارچی شهری", ("fitted_tee", "street_slacks")),
-    "tactical": ("تکاور تاکتیکال", ("tactical_hoodie", "combat_boots")),
-    "shadow": ("کارآگاه سایه", ("hunter_trench", "techwear_cargo")),
-}
-
-HAIR_LABELS: dict[str, str] = {
-    "street_fade": "⚡️ فید آندرکات مانهوا (Street Fade)",
-    "raven_shag": "🐺 مدل موی گرگی (Wolf Cut)",
-    "hood_up": "🏹 دم‌اسبی رزمی (Ponytail)",
-    "crown_of_shadows": "👑 تاج تاریکی (Crown of Shadows)",
-}
-
-HAIR_COLOR_LABELS: dict[str, str] = {
-    "black": "🖤 مشکی کلاغی مانهوا",
-    "silver": "🌪 نقره‌ای / سفید پلاتینیوم",
-    "crimson": "🩸 زرشکی آتشین",
-    "blonde": "⚡️ بلوند طلایی",
-    "blue": "🌌 آبی کهکشانی",
-}
-
-EYE_LABELS: dict[str, str] = {
-    "blue": "⚡️ آبی نئونی (چشم بیداری)",
-    "red": "🩸 قرمز خونی (مود شکارچی)",
-    "purple": "🔮 بنفش تاریکی (پادشاه سایه)",
-    "gold": "👑 کهربایی طلایی (سلطنتی)",
-    "default": "👁 ساده و کلاسیک",
-}
-
-SKIN_LABELS: dict[str, str] = {
-    "fair": "⚪️ پوست روشن مانهوایی",
-    "tan": "🌾 پوست گندمی طبیعی",
-    "dark": "🏽 پوست برنزه ورزشی",
-    "pale": "🌑 پوست رنگ‌پریده / مهتابی",
-}
-
-BODY_LABELS: dict[str, str] = {
-    "base_male": "چابک مانهوا (مرد)",
-    "base_female": "چابک رزمی (زن)",
-    "base_shadow": "پیکره‌ی اثیری سایه",
-    "base_street": "چابک و سرعتی",
-    "base_aegis": "تنومند و تدافعی",
-}
-
 
 class OnboardingState(StatesGroup):
     waiting_for_name = State()
-    waiting_for_gender = State()
     waiting_for_age = State()
-    waiting_for_body = State()
-    waiting_for_eyes = State()
-    waiting_for_hair = State()
+    waiting_for_gender = State()
+    waiting_for_skin = State()
+    waiting_for_eye_shape = State()
+    waiting_for_eye_color = State()
+    waiting_for_hair_style = State()
     waiting_for_hair_color = State()
-    waiting_for_kit = State()
+    waiting_for_mouth = State()
 
 
 # ---------------------------------------------------------------------------
-# /start, /create & entry point
+# Label Constants
 # ---------------------------------------------------------------------------
 
+SKIN_LABELS = {
+    "1": "🌕 مهتابی و فوق‌العاده روشن",
+    "2": "🌾 روشن و لطیف",
+    "3": "🍑 طبیعی و شاداب",
+    "4": "🌰 گندمی و گرم",
+    "5": "🍫 تیره شکلاتی",
+}
+
+EYE_SHAPE_LABELS = {
+    "1": "🌸 شاداب، گرد و صمیمی",
+    "2": "⚡️ تیز، نافذ و جسور",
+    "3": "🕊 آرام، خونسرد و باوقار",
+}
+
+EYE_COLOR_LABELS = {
+    "blue": "💎 آبی یاقوتی",
+    "green": "🌿 سبز زمردی",
+    "amber": "🍯 عسلی درخشان",
+    "violet": "🔮 بنفش رویایی",
+    "black": "🖤 مشکی پرکلاغی",
+}
+
+HAIR_STYLES_FEMALE = {
+    "hair1": "🎀 بلند موج‌دار کژوال",
+    "hair2": "🌸 لایه‌ای مدرن و کره‌ای",
+    "hair3": "👱‍♀️ دم‌اسبی پرانرژی",
+    "hair4": "💇‍♀️ باب کوتاه شهری",
+    "hair5": "✨ باز رها روی شانه",
+}
+
+HAIR_STYLES_MALE = {
+    "hair1": "🕶 کوتاه فید مدرن (Street Fade)",
+    "hair2": "⚡️ لیر آشفته و کره‌ای (Wolf Cut)",
+    "hair3": "🎩 فرق بغل کلاسیک",
+    "hair4": "🌪 بلند و رها",
+    "hair5": "🗡 بوکات منظم",
+}
+
+HAIR_COLOR_LABELS = {
+    "black": "🖤 مشکی پرکلاغی",
+    "silver": "🌪 نقره‌ای پلاتینیوم",
+    "brown": "🌰 قهوه‌ای خرمایی",
+}
+
+MOUTH_LABELS = {
+    "1": "😊 لبخند ملایم و صمیمی",
+    "2": "😏 پوزخند مغرور و جذاب",
+    "3": "😄 خنده شاداب و پرانرژی",
+    "4": "😐 خط لب جدی و باوقار",
+}
+
+
+# ---------------------------------------------------------------------------
+# Entry Point: /start, /create
+# ---------------------------------------------------------------------------
 
 @router.message(CommandOrText(["start", "create", "new_char"], {"شروع", "استارت", "شخصیت جدید", "ساخت", "تغییر چهره"}))
 async def cmd_start(message: Message, state: FSMContext) -> None:
@@ -105,7 +116,6 @@ async def cmd_start(message: Message, state: FSMContext) -> None:
 
     try:
         player = await hydrate(user.id, user.full_name, user.username)
-        # If user is already onboarded and not explicitly asking for recreation
         is_recreation = message.text and any(
             t in message.text.lower() for t in ("create", "new_char", "شخصیت جدید", "ساخت", "تغییر چهره")
         )
@@ -115,17 +125,16 @@ async def cmd_start(message: Message, state: FSMContext) -> None:
                 return
             if not is_admin_or_owner(user.id):
                 await message.reply(
-                    "⚠️ <b>وَخَه بینُم شکارچی! هویتت قفل رفته!</b>\n\n"
-                    "کارت شناسایی و کاراکتر تو قبلاً با موفقیت ثبت شده و هر بازیکن فقط یک‌بار حق ساخت کاراکتر اولیه رو داره.\n\n"
-                    "برای دیدن مشخصات، تغییر لباس و ارتقای تجهیزاتت از دستور /profile یا منوی بازی استفاده کن!"
+                    "⚠️ <b>وَخَه بینُم شهروند! شناسنامه تو قفل است و قبلاً ثبت شده!</b>\n\n"
+                    "شناسنامه شهروندی تو در شهرداری تیرامیکس صادر شده و هر شخص فقط یک‌بار ثبت‌نام اولیه دارد.\n"
+                    "برای تغییر ظاهر و مو از دستورات <code>آرایشگاه</code> یا <code>زیبایی</code> استفاده کن!"
                 )
                 return
 
-        # Start Character Creation Wizard
         await state.clear()
         await state.set_state(OnboardingState.waiting_for_name)
 
-        tg_name = (user.first_name or "شکارچی")[:24]
+        tg_name = (user.first_name or "مسافر")[:24]
         buttons = [
             [
                 InlineKeyboardButton(
@@ -135,10 +144,12 @@ async def cmd_start(message: Message, state: FSMContext) -> None:
             ]
         ]
         text = (
-            "✨ <b>به استودیوی ساخت و سفارشی‌سازی کاراکتر خوش آمدی!</b>\n\n"
-            "سیستم برای فعال‌سازی شناسنامه و استایل ظاهری‌ات نیاز به چند مشخصه پایه داره.\n\n"
-            "🏷️ <b>مرحله اول: نام کاراکترت چیه؟</b>\n"
-            "می‌تونی نام دلخواهت رو در چت بنویسی یا با دکمه‌ی زیر از نام تلگرامت استفاده کنی:"
+            "🍁 <b>به ایستگاه قطار شهر تیرامیکس خوش آمدی!</b>\n\n"
+            "صدای باران پاییزی روی سنگ‌فرش‌های خیابان و بوی قهوه گرم کافه‌های شهر حسابی دلنشینه...\n"
+            "تو مسافر جدید تیرامیکسی؛ شهری مدرن، پرجنب‌وجوش و پر از فرصت برای ساختن آینده و شهرت!\n\n"
+            "برای سفارشی‌سازی و صدور شناسنامه شهروندی، مشخصاتت رو با هم کامل می‌کنیم.\n\n"
+            "🏷️ <b>مرحله اول: نام شهروندی کاراکترت چیه؟</b>\n"
+            "می‌تونی اسمت رو در چت بنویسی یا با دکمه زیر از نام تلگرامت استفاده کنی:"
         )
         await message.reply(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons))
     except Exception as exc:  # noqa: BLE001
@@ -152,16 +163,13 @@ async def cb_start_creation(call: CallbackQuery, state: FSMContext) -> None:
         return
     player = await hydrate(user.id, user.full_name, user.username)
     if player.onboarding_completed == 1 and not is_admin_or_owner(user.id):
-        await call.answer(
-            "⚠️ وَخَه بینُم! هویتت قبلاً ثبت شده و ساخت مجدد کاراکتر قفله!",
-            show_alert=True,
-        )
+        await call.answer("⚠️ هویت شما قبلاً ثبت شده و قفل است!", show_alert=True)
         return
     await call.answer()
     await state.clear()
     await state.set_state(OnboardingState.waiting_for_name)
 
-    tg_name = (user.first_name or "شکارچی")[:24]
+    tg_name = (user.first_name or "مسافر")[:24]
     buttons = [
         [
             InlineKeyboardButton(
@@ -171,440 +179,370 @@ async def cb_start_creation(call: CallbackQuery, state: FSMContext) -> None:
         ]
     ]
     text = (
-        "🎨 <b>استودیو بازطراحی و سفارشی‌سازی کاراکتر!</b>\n\n"
-        "می‌تونی ظاهر، مدل مو، رنگ چشم، رنگ پوست و استایل رزمی کاراکترت رو بازطراحی کنی.\n\n"
-        "🏷️ <b>مرحله اول: نام کاراکترت چیه؟</b>\n"
-        "می‌تونی نام جدید بنویسی یا نام فعلی تلگرامت رو انتخاب کنی:"
+        "🍁 <b>به ایستگاه قطار شهر تیرامیکس خوش آمدی!</b>\n\n"
+        "صدای باران پاییزی روی سنگ‌فرش‌های خیابان و بوی قهوه گرم کافه‌های شهر حسابی دلنشینه...\n"
+        "تو مسافر جدید تیرامیکسی؛ شهری مدرن، پرجنب‌وجوش و پر از فرصت برای ساختن آینده و شهرت!\n\n"
+        "برای سفارشی‌سازی و صدور شناسنامه شهروندی، مشخصاتت رو با هم کامل می‌کنیم.\n\n"
+        "🏷️ <b>مرحله اول: نام شهروندی کاراکترت چیه؟</b>\n"
+        "می‌تونی اسمت رو در چت بنویسی یا با دکمه زیر از نام تلگرامت استفاده کنی:"
     )
     msg = editable_message(call)
     await render_panel(msg, text=text, reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons))
 
 
 # ---------------------------------------------------------------------------
-# Step 1: Name
+# Step 1: Name -> Step 2: Age
 # ---------------------------------------------------------------------------
 
-
-@router.callback_query(OnboardingState.waiting_for_name, F.data == "ob:name_tg")
-async def cb_name_telegram(call: CallbackQuery, state: FSMContext) -> None:
-    await call.answer()
-    user = call.from_user
-    if user is None:
-        return
-    name = (user.first_name or "شکارچی").strip()[:30]
-    await _proceed_to_gender(call.message, state, name)
-
-
-@router.message(OnboardingState.waiting_for_name)
-async def msg_name_text(message: Message, state: FSMContext) -> None:
-    text = (message.text or "").strip()
-    if not text or len(text) < 2:
-        await message.reply("لطفاً یک نام حداقل ۲ حرفی بنویس یا از دکمه نام تلگرام استفاده کن:")
-        return
-    name = text[:30]
-    await _proceed_to_gender(message, state, name)
-
-
-async def _proceed_to_gender(message: Any, state: FSMContext, name: str) -> None:
+async def _advance_to_age(target: Message, state: FSMContext, name: str) -> None:
     await state.update_data(name=name)
-    await state.set_state(OnboardingState.waiting_for_gender)
-
-    buttons = [
-        [
-            InlineKeyboardButton(text="🗡️ مذکر (مرد)", callback_data="ob:gen:مرد"),
-            InlineKeyboardButton(text="🏹 مؤنث (زن)", callback_data="ob:gen:زن"),
-        ],
-        [
-            InlineKeyboardButton(text="🔮 سایه‌وار (نامشخص)", callback_data="ob:gen:نامشخص"),
-        ],
-    ]
-    prompt = (
-        f"✅ نام ثبت شد: <b>{esc(name)}</b>\n\n"
-        "⚡️ <b>مرحله دوم: جنسیت شکارچی خودت رو انتخاب کن:</b>"
-    )
-    if isinstance(message, Message):
-        await message.reply(prompt, reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons))
-
-
-# ---------------------------------------------------------------------------
-# Step 2: Gender
-# ---------------------------------------------------------------------------
-
-
-@router.callback_query(OnboardingState.waiting_for_gender, F.data.startswith("ob:gen:"))
-async def cb_gender(call: CallbackQuery, state: FSMContext) -> None:
-    await call.answer()
-    gender = call.data.split(":", 2)[2]
-    await state.update_data(gender=gender)
     await state.set_state(OnboardingState.waiting_for_age)
 
     buttons = [
         [
-            InlineKeyboardButton(text="۱۸ سال", callback_data="ob:age:18"),
-            InlineKeyboardButton(text="۲۲ سال", callback_data="ob:age:22"),
-            InlineKeyboardButton(text="۲۶ سال", callback_data="ob:age:26"),
+            InlineKeyboardButton(text="🎂 ۱۸ سال", callback_data="ob:age:18"),
+            InlineKeyboardButton(text="🎂 ۲۰ سال", callback_data="ob:age:20"),
         ],
         [
-            InlineKeyboardButton(text="۳۰ سال", callback_data="ob:age:30"),
-            InlineKeyboardButton(text="♾ نامیرا (بی‌سن)", callback_data="ob:age:999"),
+            InlineKeyboardButton(text="🎂 ۲۵ سال", callback_data="ob:age:25"),
+            InlineKeyboardButton(text="🎂 ۳۰ سال", callback_data="ob:age:30"),
         ],
     ]
-    prompt = (
-        f"⚡️ جنسیت: <b>{esc(gender)}</b>\n\n"
-        "⏳ <b>مرحله سوم: سن کاراکترت چقدره؟</b>\n"
-        "(می‌تونی از گزینه‌ها انتخاب کنی یا عدد سن رو مستقیماً تایپ کنی):"
+    text = (
+        f"✅ نام شهروندی شما ثبت شد: <b>{esc(name)}</b>\n\n"
+        "🎂 <b>مرحله دوم: سن کاراکترت چقدره؟</b>\n"
+        "می‌تونی از دکمه‌های زیر انتخاب کنی یا سن دلخواهت رو در چت تایپ کنی (مثلاً ۲۲):"
     )
+    await target.reply(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons))
+
+
+@router.callback_query(OnboardingState.waiting_for_name, F.data == "ob:name_tg")
+async def cb_name_tg(call: CallbackQuery, state: FSMContext) -> None:
+    await call.answer()
+    user = call.from_user
+    name = (user.first_name or "مسافر")[:24] if user else "مسافر"
     msg = editable_message(call)
-    await render_panel(msg, text=prompt, reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons))
+    if msg:
+        await _advance_to_age(msg, state, name)
+
+
+@router.message(OnboardingState.waiting_for_name)
+async def msg_name(message: Message, state: FSMContext) -> None:
+    text = (message.text or "").strip()
+    if len(text) < 2 or len(text) > 30:
+        await message.reply("⚠️ نام باید بین ۲ تا ۳۰ کاراکتر باشد. لطفاً مجدداً تایپ کنید:")
+        return
+    await _advance_to_age(message, state, text)
+
+
+# Aliases for tests/legacy callers
+cb_name_telegram = cb_name_tg
+msg_name_text = msg_name
 
 
 # ---------------------------------------------------------------------------
-# Step 3: Age
+# Step 2: Age -> Step 3: Gender
 # ---------------------------------------------------------------------------
+
+async def _advance_to_gender(target: Message, state: FSMContext, age: int) -> None:
+    await state.update_data(age=age)
+    await state.set_state(OnboardingState.waiting_for_gender)
+
+    buttons = [
+        [
+            InlineKeyboardButton(text="👧 دختر", callback_data="ob:gen:female"),
+            InlineKeyboardButton(text="👦 پسر", callback_data="ob:gen:male"),
+        ]
+    ]
+    text = (
+        f"✅ سن کاراکتر ثبت شد: <b>{age} سال</b>\n\n"
+        "⚧ <b>مرحله سوم: جنسیت کاراکترت رو انتخاب کن:</b>"
+    )
+    await target.reply(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons))
 
 
 @router.callback_query(OnboardingState.waiting_for_age, F.data.startswith("ob:age:"))
 async def cb_age(call: CallbackQuery, state: FSMContext) -> None:
     await call.answer()
-    try:
-        age = int(call.data.split(":", 2)[2])
-    except ValueError:
-        age = 20
-    await _proceed_to_body(call.message, state, age)
+    val = int(call.data.split(":")[2])
+    msg = editable_message(call)
+    if msg:
+        await _advance_to_gender(msg, state, val)
 
 
 @router.message(OnboardingState.waiting_for_age)
-async def msg_age_text(message: Message, state: FSMContext) -> None:
-    raw = (message.text or "").strip()
-    try:
-        age = int(raw)
-        if age < 1 or age > 9999:
-            age = 20
-    except ValueError:
-        await message.reply("لطفاً یک عدد معتبر برای سن وارد کن یا از گزینه‌های دکمه‌ای انتخاب کن:")
+async def msg_age(message: Message, state: FSMContext) -> None:
+    text = (message.text or "").strip()
+    if not text.isdigit() or not (15 <= int(text) <= 99):
+        await message.reply("⚠️ لطفاً یک سن معتبر بین ۱۵ تا ۹۹ سال وارد کنید:")
         return
-    await _proceed_to_body(message, state, age)
+    await _advance_to_gender(message, state, int(text))
 
 
-async def _proceed_to_body(message: Any, state: FSMContext, age: int) -> None:
-    await state.update_data(age=age)
-    await state.set_state(OnboardingState.waiting_for_body)
+msg_age_text = msg_age
+
+
+# ---------------------------------------------------------------------------
+# Step 3: Gender -> Step 4: Skin Tone
+# ---------------------------------------------------------------------------
+
+@router.callback_query(OnboardingState.waiting_for_gender, F.data.startswith("ob:gen:"))
+async def cb_gender(call: CallbackQuery, state: FSMContext) -> None:
+    await call.answer()
+    gender = call.data.split(":")[2]
+    gender_fa = "دختر" if gender == "female" else "پسر"
+    await state.update_data(gender=gender, gender_fa=gender_fa)
+    await state.set_state(OnboardingState.waiting_for_skin)
+
+    buttons = [
+        [InlineKeyboardButton(text="🌕 درجه ۱: مهتابی و فوق‌العاده روشن", callback_data="ob:skin:1")],
+        [InlineKeyboardButton(text="🌾 درجه ۲: روشن و لطیف", callback_data="ob:skin:2")],
+        [InlineKeyboardButton(text="🍑 درجه ۳: طبیعی و شاداب", callback_data="ob:skin:3")],
+        [InlineKeyboardButton(text="🌰 درجه ۴: گندمی و گرم", callback_data="ob:skin:4")],
+        [InlineKeyboardButton(text="🍫 درجه ۵: تیره شکلاتی", callback_data="ob:skin:5")],
+    ]
+    text = (
+        f"✅ جنسیت: <b>{gender_fa}</b>\n\n"
+        "🎨 <b>مرحله چهارم: رنگ پوست کاراکترت رو انتخاب کن:</b>"
+    )
+    msg = editable_message(call)
+    if msg:
+        await target_send(msg, text, buttons)
+
+
+# ---------------------------------------------------------------------------
+# Step 4: Skin -> Step 5: Eye Shape
+# ---------------------------------------------------------------------------
+
+@router.callback_query(OnboardingState.waiting_for_skin, F.data.startswith("ob:skin:"))
+async def cb_skin(call: CallbackQuery, state: FSMContext) -> None:
+    await call.answer()
+    skin_num = call.data.split(":")[2]
+    await state.update_data(skin_tone=skin_num)
+    await state.set_state(OnboardingState.waiting_for_eye_shape)
+
+    buttons = [
+        [InlineKeyboardButton(text="🌸 مدل ۱: شاداب، گرد و صمیمی", callback_data="ob:eyes:1")],
+        [InlineKeyboardButton(text="⚡️ مدل ۲: تیز، نافذ و جسور", callback_data="ob:eyes:2")],
+        [InlineKeyboardButton(text="🕊 مدل ۳: آرام، خونسرد و باوقار", callback_data="ob:eyes:3")],
+    ]
+    text = (
+        f"✅ رنگ پوست: <b>{SKIN_LABELS.get(skin_num, skin_num)}</b>\n\n"
+        "👁 <b>مرحله پنجم: مدل و فرم چشم‌ها رو انتخاب کن:</b>"
+    )
+    msg = editable_message(call)
+    if msg:
+        await target_send(msg, text, buttons)
+
+
+# ---------------------------------------------------------------------------
+# Step 5: Eye Shape -> Step 6: Eye Color
+# ---------------------------------------------------------------------------
+
+@router.callback_query(OnboardingState.waiting_for_eye_shape, F.data.startswith("ob:eyes:"))
+async def cb_eye_shape(call: CallbackQuery, state: FSMContext) -> None:
+    await call.answer()
+    eye_shape = call.data.split(":")[2]
+    await state.update_data(eye_shape=eye_shape)
+    await state.set_state(OnboardingState.waiting_for_eye_color)
+
+    buttons = [
+        [
+            InlineKeyboardButton(text="💎 آبی یاقوتی", callback_data="ob:eyec:blue"),
+            InlineKeyboardButton(text="🌿 سبز زمردی", callback_data="ob:eyec:green"),
+        ],
+        [
+            InlineKeyboardButton(text="🍯 عسلی درخشان", callback_data="ob:eyec:amber"),
+            InlineKeyboardButton(text="🔮 بنفش رویایی", callback_data="ob:eyec:violet"),
+        ],
+        [
+            InlineKeyboardButton(text="🖤 مشکی پرکلاغی", callback_data="ob:eyec:black"),
+        ],
+    ]
+    text = (
+        f"✅ فرم چشم: <b>{EYE_SHAPE_LABELS.get(eye_shape, eye_shape)}</b>\n\n"
+        "🎨 <b>مرحله ششم: رنگ چشم کاراکترت چیه؟</b>"
+    )
+    msg = editable_message(call)
+    if msg:
+        await target_send(msg, text, buttons)
+
+
+# ---------------------------------------------------------------------------
+# Step 6: Eye Color -> Step 7: Hair Style
+# ---------------------------------------------------------------------------
+
+@router.callback_query(OnboardingState.waiting_for_eye_color, F.data.startswith("ob:eyec:"))
+async def cb_eye_color(call: CallbackQuery, state: FSMContext) -> None:
+    await call.answer()
+    eye_col = call.data.split(":")[2]
+    await state.update_data(eye_color=eye_col)
+    await state.set_state(OnboardingState.waiting_for_hair_style)
 
     data = await state.get_data()
-    gender = data.get("gender", "مرد")
-
-    if gender == "زن":
-        buttons = [
-            [
-                InlineKeyboardButton(
-                    text="⚪️ چابک رزمی (پوست روشن)",
-                    callback_data="ob:body:base_female:fair",
-                ),
-                InlineKeyboardButton(
-                    text="🌾 چابک رزمی (پوست گندمی)",
-                    callback_data="ob:body:base_female:tan",
-                ),
-            ],
-            [
-                InlineKeyboardButton(
-                    text="🏽 چابک رزمی (پوست برنزه)",
-                    callback_data="ob:body:base_female:dark",
-                ),
-                InlineKeyboardButton(
-                    text="🌑 چابک رزمی (پوست مهتابی)",
-                    callback_data="ob:body:base_female:pale",
-                ),
-            ],
-        ]
-    elif gender == "مرد":
-        buttons = [
-            [
-                InlineKeyboardButton(
-                    text="⚪️ چابک مانهوا (پوست روشن)",
-                    callback_data="ob:body:base_male:fair",
-                ),
-                InlineKeyboardButton(
-                    text="🌾 چابک مانهوا (پوست گندمی)",
-                    callback_data="ob:body:base_male:tan",
-                ),
-            ],
-            [
-                InlineKeyboardButton(
-                    text="🏽 چابک مانهوا (پوست برنزه)",
-                    callback_data="ob:body:base_male:dark",
-                ),
-                InlineKeyboardButton(
-                    text="🌑 چابک مانهوا (پوست مهتابی)",
-                    callback_data="ob:body:base_male:pale",
-                ),
-            ],
-        ]
-    else:
-        buttons = [
-            [
-                InlineKeyboardButton(
-                    text="🌑 پیکره‌ی اثیری سایه (تاریکی)",
-                    callback_data="ob:body:base_shadow:shadow",
-                )
-            ],
-        ]
-
-    age_str = f"{age} سال" if age < 999 else "نامیرا"
-    prompt = (
-        f"⏳ سن: <b>{age_str}</b>\n\n"
-        "🥋 <b>مرحله چهارم: رنگ پوست و استایل بدنی:</b>\n"
-        "رنگ پوست و فرم فیزیکی دلخواهت رو انتخاب کن:"
-    )
-    if isinstance(message, Message):
-        await render_panel(message, text=prompt, reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons))
-
-
-# ---------------------------------------------------------------------------
-# Step 4: Body & Skin Tone -> Eyes
-# ---------------------------------------------------------------------------
-
-
-@router.callback_query(OnboardingState.waiting_for_body, F.data.startswith("ob:body:"))
-async def cb_body(call: CallbackQuery, state: FSMContext) -> None:
-    await call.answer()
-    parts = call.data.split(":")
-    body_stance = parts[2]
-    skin_tone = parts[3] if len(parts) > 3 else "fair"
-
-    await state.update_data(body_stance=body_stance, skin_tone=skin_tone)
-    await state.set_state(OnboardingState.waiting_for_eyes)
+    is_female = data.get("gender") == "female"
+    hair_catalog = HAIR_STYLES_FEMALE if is_female else HAIR_STYLES_MALE
 
     buttons = [
-        [
-            InlineKeyboardButton(text="⚡️ آبی نئونی (چشم بیداری)", callback_data="ob:eyes:blue"),
-            InlineKeyboardButton(text="🩸 قرمز خونی (مود خشم)", callback_data="ob:eyes:red"),
-        ],
-        [
-            InlineKeyboardButton(text="🔮 بنفش سایه (پادشاه)", callback_data="ob:eyes:purple"),
-            InlineKeyboardButton(text="👑 کهربایی طلایی (اژدها)", callback_data="ob:eyes:gold"),
-        ],
-        [
-            InlineKeyboardButton(text="👁 ساده و کلاسیک", callback_data="ob:eyes:default"),
-        ],
+        [InlineKeyboardButton(text=lbl, callback_data=f"ob:hair:{key}")]
+        for key, lbl in hair_catalog.items()
     ]
-    prompt = (
-        f"🎨 رنگ پوست: <b>{SKIN_LABELS.get(skin_tone, skin_tone)}</b>\n\n"
-        "👁 <b>مرحله پنجم: رنگ و درخشش چشم‌ها:</b>\n"
-        "چشم‌های بیداری و انرژی درونی کاراکترت چه رنگی باشن؟"
+    text = (
+        f"✅ رنگ چشم: <b>{EYE_COLOR_LABELS.get(eye_col, eye_col)}</b>\n\n"
+        "💇 <b>مرحله هفتم: مدل موی کاراکترت رو انتخاب کن:</b>"
     )
     msg = editable_message(call)
-    await render_panel(msg, text=prompt, reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons))
+    if msg:
+        await target_send(msg, text, buttons)
 
 
 # ---------------------------------------------------------------------------
-# Step 5: Eyes -> Hair Style
+# Step 7: Hair Style -> Step 8: Hair Color
 # ---------------------------------------------------------------------------
 
-
-@router.callback_query(OnboardingState.waiting_for_eyes, F.data.startswith("ob:eyes:"))
-async def cb_eyes(call: CallbackQuery, state: FSMContext) -> None:
+@router.callback_query(OnboardingState.waiting_for_hair_style, F.data.startswith("ob:hair:"))
+async def cb_hair_style(call: CallbackQuery, state: FSMContext) -> None:
     await call.answer()
-    eye_color = call.data.split(":", 2)[2]
-    await state.update_data(eye_color=eye_color)
-    await state.set_state(OnboardingState.waiting_for_hair)
-
-    buttons = [
-        [
-            InlineKeyboardButton(
-                text="⚡️ فید آندرکات مانهوا (Street Fade)",
-                callback_data="ob:hair:street_fade",
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                text="🐺 مدل موی گرگی (Wolf Cut)",
-                callback_data="ob:hair:raven_shag",
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                text="🏹 دم‌اسبی رزمی (Ponytail)",
-                callback_data="ob:hair:hood_up",
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                text="👑 تاج تاریکی (Crown of Shadows)",
-                callback_data="ob:hair:crown_of_shadows",
-            )
-        ],
-    ]
-    prompt = (
-        f"👁 رنگ چشم: <b>{EYE_LABELS.get(eye_color, eye_color)}</b>\n\n"
-        "💇‍♂️ <b>مرحله ششم: مدل و سبک موی سر:</b>\n"
-        "کدوم حالت مو معرف شخصیت توئه؟"
-    )
-    msg = editable_message(call)
-    await render_panel(msg, text=prompt, reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons))
-
-
-# ---------------------------------------------------------------------------
-# Step 6: Hair Style -> Hair Color
-# ---------------------------------------------------------------------------
-
-
-@router.callback_query(OnboardingState.waiting_for_hair, F.data.startswith("ob:hair:"))
-async def cb_hair(call: CallbackQuery, state: FSMContext) -> None:
-    await call.answer()
-    hair_style = call.data.split(":", 2)[2]
-    await state.update_data(hair_style=hair_style)
+    hair_key = call.data.split(":")[2]
+    await state.update_data(hair_style=hair_key)
     await state.set_state(OnboardingState.waiting_for_hair_color)
 
     buttons = [
-        [
-            InlineKeyboardButton(text="🖤 مشکی مانهوا", callback_data="ob:hairc:black"),
-            InlineKeyboardButton(text="🌪 نقره‌ای / سفید", callback_data="ob:hairc:silver"),
-        ],
-        [
-            InlineKeyboardButton(text="🩸 زرشکی آتشین", callback_data="ob:hairc:crimson"),
-            InlineKeyboardButton(text="⚡️ بلوند طلایی", callback_data="ob:hairc:blonde"),
-        ],
-        [
-            InlineKeyboardButton(text="🌌 آبی کهکشانی", callback_data="ob:hairc:blue"),
-        ],
+        [InlineKeyboardButton(text="🖤 مشکی پرکلاغی", callback_data="ob:hairc:black")],
+        [InlineKeyboardButton(text="🌪 نقره‌ای پلاتینیوم", callback_data="ob:hairc:silver")],
+        [InlineKeyboardButton(text="🌰 قهوه‌ای خرمایی", callback_data="ob:hairc:brown")],
     ]
-    prompt = (
-        f"💇‍♂️ مدل مو: <b>{HAIR_LABELS.get(hair_style, hair_style)}</b>\n\n"
-        "🎨 <b>مرحله هفتم: رنگ موی سر:</b>\n"
-        "رنگ موی شکارچی‌ات چه رنگی باشه؟"
+    text = (
+        "✅ مدل مو ثبت شد.\n\n"
+        "🎨 <b>مرحله هشتم: رنگ موی کاراکترت چیه؟</b>"
     )
     msg = editable_message(call)
-    await render_panel(msg, text=prompt, reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons))
+    if msg:
+        await target_send(msg, text, buttons)
 
 
 # ---------------------------------------------------------------------------
-# Step 7: Hair Color -> Starter Kit
+# Step 8: Hair Color -> Step 9: Mouth Expression
 # ---------------------------------------------------------------------------
-
 
 @router.callback_query(OnboardingState.waiting_for_hair_color, F.data.startswith("ob:hairc:"))
 async def cb_hair_color(call: CallbackQuery, state: FSMContext) -> None:
     await call.answer()
-    hair_color = call.data.split(":", 2)[2]
-    await state.update_data(hair_color=hair_color)
-    await state.set_state(OnboardingState.waiting_for_kit)
+    hair_col = call.data.split(":")[2]
+    await state.update_data(hair_color=hair_col)
+    await state.set_state(OnboardingState.waiting_for_mouth)
 
     buttons = [
-        [
-            InlineKeyboardButton(
-                text="🏙️ کیت شکارچی شهری (Street Kit)",
-                callback_data="ob:kit:street",
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                text="🪖 کیت تکاور تاکتیکال (Tactical Kit)",
-                callback_data="ob:kit:tactical",
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                text="🧥 کیت کارآگاه سایه (Shadow Kit)",
-                callback_data="ob:kit:shadow",
-            )
-        ],
+        [InlineKeyboardButton(text="😊 مدل ۱: لبخند ملایم و صمیمی", callback_data="ob:mouth:1")],
+        [InlineKeyboardButton(text="😏 مدل ۲: پوزخند مغرور و جذاب", callback_data="ob:mouth:2")],
+        [InlineKeyboardButton(text="😄 مدل ۳: خنده شاداب و پرانرژی", callback_data="ob:mouth:3")],
+        [InlineKeyboardButton(text="😐 مدل ۴: خط لب جدی و باوقار", callback_data="ob:mouth:4")],
     ]
-    prompt = (
-        f"🎨 رنگ مو: <b>{HAIR_COLOR_LABELS.get(hair_color, hair_color)}</b>\n\n"
-        "🎒 <b>مرحله هشتم: کیت تجهیزات آغازین (Starter Kit):</b>\n"
-        "اولین ست لباس و لوداوت اهدایی سیستم رو انتخاب کن:"
+    text = (
+        f"✅ رنگ مو: <b>{HAIR_COLOR_LABELS.get(hair_col, hair_col)}</b>\n\n"
+        "👄 <b>مرحله نهم: فرم لبخند و میمیک چهره:</b>"
     )
     msg = editable_message(call)
-    await render_panel(msg, text=prompt, reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons))
+    if msg:
+        await target_send(msg, text, buttons)
 
 
 # ---------------------------------------------------------------------------
-# Step 8: Starter Kit & Finalization
+# Step 9: Finalizing & Issuing Citizen ID Card
 # ---------------------------------------------------------------------------
 
-
-@router.callback_query(OnboardingState.waiting_for_kit, F.data.startswith("ob:kit:"))
-async def cb_kit(call: CallbackQuery, state: FSMContext) -> None:
-    await call.answer("در حال رندر و ثبت نهایی کاراکتر مانهوا... 🔮")
+@router.callback_query(OnboardingState.waiting_for_mouth, F.data.startswith("ob:mouth:"))
+async def cb_mouth(call: CallbackQuery, state: FSMContext) -> None:
+    await call.answer("صدور شناسنامه شهروندی تیرامیکس... 🍁")
     user = call.from_user
     if user is None:
         return
 
-    kit_key = call.data.split(":", 2)[2]
-    kit_label, kit_items = STARTER_KITS.get(kit_key, STARTER_KITS["street"])
-
+    mouth_num = call.data.split(":")[2]
     data = await state.get_data()
-    name = data.get("name", (user.first_name or "شکارچی"))[:30]
-    gender = data.get("gender", "نامشخص")
+
+    name = data.get("name", user.first_name or "مسافر")[:30]
+    gender = data.get("gender", "male")
+    gender_fa = "دختر" if gender == "female" else "پسر"
     age = data.get("age", 20)
-    body_stance = data.get("body_stance", "base_male" if gender == "مرد" else ("base_female" if gender == "زن" else "base_shadow"))
-    skin_tone = data.get("skin_tone", "fair")
+    skin_num = data.get("skin_tone", "3")
+    eye_shape = data.get("eye_shape", "1")
     eye_color = data.get("eye_color", "blue")
-    hair_style = data.get("hair_style", "street_fade")
+    hair_style = data.get("hair_style", "hair1")
     hair_color = data.get("hair_color", "black")
 
-    try:
-        # Commit to DB
-        player = await game.complete_character_creation(
-            user_id=user.id,
-            display_name=name,
-            gender=gender,
-            age=age,
-            skin_tone=skin_tone,
-            eye_color=eye_color,
-            body_stance=body_stance,
-            hair_style=hair_style,
-            hair_color=hair_color,
-            starter_items=kit_items,
-        )
-        await state.clear()
+    if gender == "female":
+        body_stance = f"base_vn_{skin_num}"
+    else:
+        body_stance = "base_street"
 
-        # Render custom character card
-        photo = await card_bytes(player)
-        age_str = f"{age} سال" if age < 999 else "نامیرا"
-        stance_str = BODY_LABELS.get(body_stance, "چابک")
-        hair_str = HAIR_LABELS.get(hair_style, hair_style)
-        hair_col_str = HAIR_COLOR_LABELS.get(hair_color, hair_color)
-        eye_str = EYE_LABELS.get(eye_color, eye_color)
-        skin_str = SKIN_LABELS.get(skin_tone, skin_tone)
+    skin_tone_internal = {
+        "1": "pale",
+        "2": "fair",
+        "3": "natural",
+        "4": "tan",
+        "5": "dark",
+    }.get(skin_num, "fair")
 
-        caption = (
-            f"🎉 <b>شکارچی «{esc(player.display_name)}» با موفقیت ساخته شد!</b>\n\n"
-            f"⚡️ <b>شناسنامه و استایل ظاهری:</b>\n"
-            f"• جنسیت: <b>{esc(player.gender)}</b>\n"
-            f"• سن: <b>{age_str}</b>\n"
-            f"• پوست: <b>{skin_str}</b>\n"
-            f"• چشم‌ها: <b>{eye_str}</b>\n"
-            f"• مدل مو: <b>{hair_str}</b> ({hair_col_str})\n"
-            f"• کیت اولیه: <b>{kit_label}</b>\n\n"
-            f"⚔️ قدرت: <b>{player.atk}</b> · 🛡 دفاع: <b>{player.defense}</b> · 💎 استایل: <b>{player.drip}</b>\n\n"
-            "🎮 <b>کارت هویت اختصاصی تو صادر و قفل شد!</b>\n"
-            "از این پس می‌تونی با تجهیز لباس‌ها و سلاح‌های جدید در «کوله‌پشتی» یا خرید از «فروشگاه»، استایل و قدرتت رو ارتقا بدی."
-            + (
-                "\n\n🛠 <i>(دسترسی توسعه‌دهنده: با دستور <code>/create</code> می‌تونی مجدداً کاراکتر رو تست و بازسازی کنی.)</i>"
-                if is_admin_or_owner(user.id)
-                else ""
+    eye_style_key = f"eyes{eye_shape}_{skin_num}"
+    mouth_style_key = f"mouth{mouth_num}_{skin_num}"
+
+    player = await game.complete_character_creation(
+        user_id=user.id,
+        display_name=name,
+        gender=gender_fa,
+        age=age,
+        skin_tone=skin_tone_internal,
+        eye_color=eye_color,
+        body_stance=body_stance,
+        hair_style=hair_style,
+        hair_color=hair_color,
+        starter_items=(),
+        eye_style=eye_style_key,
+        mouth_style=mouth_style_key,
+    )
+    await state.clear()
+
+    photo = await card_bytes(player)
+
+    caption = (
+        f"🍁 <b>شناسنامه شهروندی تیرامیکس صادر شد!</b>\n\n"
+        f"👤 <b>نام:</b> {esc(player.display_name)}\n"
+        f"🎂 <b>سن:</b> {player.age} سال | ⚧ <b>جنسیت:</b> {player.gender}\n"
+        f"🎨 <b>پوست:</b> {SKIN_LABELS.get(skin_num, skin_num)}\n"
+        f"👁 <b>چشم‌ها:</b> {EYE_SHAPE_LABELS.get(eye_shape, eye_shape)} ({EYE_COLOR_LABELS.get(eye_color, eye_color)})\n"
+        f"💇 <b>مدل مو:</b> {HAIR_COLOR_LABELS.get(hair_color, hair_color)}\n"
+        f"👄 <b>چهره:</b> {MOUTH_LABELS.get(mouth_num, mouth_num)}\n\n"
+        f"🎓 <b>سطح سواد:</b> {player.education_title}\n"
+        f"💼 <b>شغل:</b> {player.job}\n"
+        f"💰 <b>کیف پول:</b> ۰ سکه | 🏦 <b>بانک:</b> ۰ سکه\n\n"
+        "✨ <b>زندگی شما در شهر تیرامیکس رسماً آغاز شد!</b>\n"
+        "با دستورات <code>کار</code>، <code>تحصیل</code>، <code>شغل</code>، <code>بانک</code> و <code>فروشگاه</code> شهر را فتح کنید."
+    )
+
+    if isinstance(call.message, Message):
+        try:
+            await call.message.delete()
+        except Exception:
+            pass
+        # Strict requirement: NO buttons under card
+        if hasattr(call.message, "reply_photo"):
+            await call.message.reply_photo(
+                photo=photo_bytes(photo),
+                caption=caption,
+                reply_markup=None,
             )
-        )
-
-        buttons = await _profile_markup(player)
-
-        if isinstance(call.message, Message):
-            try:
-                await call.message.delete()
-            except Exception:
-                pass
+        else:
             await call.message.answer_photo(
                 photo=photo_bytes(photo),
                 caption=caption,
-                reply_markup=buttons,
+                reply_markup=None,
             )
-        else:
-            await call.bot.send_photo(
-                chat_id=user.id,
-                photo=photo_bytes(photo),
-                caption=caption,
-                reply_markup=buttons,
-            )
-    except Exception as exc:  # noqa: BLE001
-        await answer_error(exc, callback=call)
+
+
+async def target_send(target: Message, text: str, buttons: list[list[InlineKeyboardButton]]) -> None:
+    markup = InlineKeyboardMarkup(inline_keyboard=buttons)
+    try:
+        await target.edit_text(text, reply_markup=markup)
+    except Exception:
+        await target.reply(text, reply_markup=markup)

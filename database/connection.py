@@ -105,11 +105,58 @@ class Database:
             ("body_stance", "TEXT", "'base_street'"),
             ("hair_color", "TEXT", "'black'"),
             ("onboarding_completed", "INTEGER", "0"),
+            ("education_level", "INTEGER", "0"),
+            ("job", "TEXT", "'بیکار'"),
+            ("spouse_id", "INTEGER", "NULL"),
+            ("marriage_date", "INTEGER", "0"),
+            ("children_count", "INTEGER", "0"),
+            ("is_pregnant_until", "INTEGER", "0"),
+            ("is_jailed_until", "INTEGER", "0"),
+            ("bank_balance", "INTEGER", "0"),
+            ("loan_amount", "INTEGER", "0"),
+            ("loan_due", "INTEGER", "0"),
+            ("last_work_time", "INTEGER", "0"),
+            ("last_study_time", "INTEGER", "0"),
+            ("last_steal_time", "INTEGER", "0"),
+            ("last_duel_time", "INTEGER", "0"),
+            ("last_intimacy_time", "INTEGER", "0"),
+            ("last_affair_time", "INTEGER", "0"),
+            ("eye_style", "TEXT", "'eyes1_1'"),
+            ("mouth_style", "TEXT", "'mouth1_1'"),
+            ("hair_style", "TEXT", "'hair1'"),
+            ("clan_id", "INTEGER", "NULL"),
+            ("clan_role", "TEXT", "NULL"),
         ]:
             if col not in cols:
                 await self._write_conn.execute(
                     f"ALTER TABLE players ADD COLUMN {col} {col_type} DEFAULT {default_val}"
                 )
+
+        await self._write_conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS clans (
+                clan_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                group_id INTEGER NOT NULL DEFAULT 0,
+                name TEXT NOT NULL UNIQUE,
+                leader_id INTEGER NOT NULL,
+                treasury INTEGER NOT NULL DEFAULT 0,
+                created_at INTEGER NOT NULL,
+                FOREIGN KEY (leader_id) REFERENCES players(user_id)
+            )
+            """
+        )
+        await self._write_conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS clan_members (
+                clan_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL PRIMARY KEY,
+                role TEXT NOT NULL DEFAULT 'member',
+                joined_at INTEGER NOT NULL,
+                FOREIGN KEY (clan_id) REFERENCES clans(clan_id),
+                FOREIGN KEY (user_id) REFERENCES players(user_id)
+            )
+            """
+        )
 
     async def close(self) -> None:
         """Close both connections (safe to call twice)."""

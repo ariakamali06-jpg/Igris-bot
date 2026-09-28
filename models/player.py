@@ -73,6 +73,27 @@ class Player:
     body_stance: str = "base_street"
     hair_color: str = "black"
     onboarding_completed: int = 0
+    education_level: int = 0
+    job: str = "بیکار"
+    spouse_id: int | None = None
+    marriage_date: int = 0
+    children_count: int = 0
+    is_pregnant_until: int = 0
+    is_jailed_until: int = 0
+    bank_balance: int = 0
+    loan_amount: int = 0
+    loan_due: int = 0
+    last_work_time: int = 0
+    last_study_time: int = 0
+    last_steal_time: int = 0
+    last_duel_time: int = 0
+    last_intimacy_time: int = 0
+    last_affair_time: int = 0
+    eye_style: str = "eyes1_1"
+    mouth_style: str = "mouth1_1"
+    hair_style: str = "hair1"
+    clan_id: int | None = None
+    clan_role: str | None = None
 
     # Aggregates, filled in by services.game.load_player().
     gear: StatBlock = field(default_factory=StatBlock)
@@ -108,3 +129,21 @@ class Player:
     def display_tag(self) -> str:
         """``@username`` when present, otherwise the display name."""
         return f"@{self.username}" if self.username else self.display_name
+
+    @property
+    def education_title(self) -> str:
+        titles = {
+            0: "بی‌سواد (ابتدایی)",
+            1: "دیپلم متوسطه",
+            2: "کارشناسی (لیسانس)",
+            3: "کارشناسی ارشد (فوق لیسانس)",
+            4: "دکترا (PhD)",
+            5: "پروفسور و نابغه شهری",
+        }
+        return titles.get(self.education_level, "نامشخص")
+
+    def is_in_jail(self, now: int) -> bool:
+        return self.is_jailed_until > now
+
+    def is_pregnant(self, now: int) -> bool:
+        return self.is_pregnant_until > now
