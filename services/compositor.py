@@ -440,7 +440,7 @@ class Compositor:
     # -- cache -------------------------------------------------------------
 
     def _cache_key(self, request: RenderRequest) -> str:
-        material = f"v6-vn-boutique|{self._assets.version}|{request.signature()}"
+        material = f"v7-perfect-avatars|{self._assets.version}|{request.signature()}"
         return hashlib.sha1(material.encode("utf-8")).hexdigest()
 
     def _read_disk(self, key: str) -> bytes | None:
@@ -477,23 +477,45 @@ class Compositor:
         composited = False
 
         # Layers 2..7: equipped cosmetics in bottom-to-top order.
-        is_manhwa_base = request.body in (
+        is_manhwa_male = request.body in (
             "base_male",
             "base_shadow",
+            "base_street",
+            "base_aegis",
         )
-        legacy_starter_keys = {
-            "fitted_tee",
+        is_vn_female = request.body in (
+            "base_female",
+            "base_vn_1",
+            "base_vn_2",
+            "base_vn_3",
+            "base_vn_4",
+            "base_vn_5",
+        )
+        legacy_procedural_items = {
             "street_slacks",
-            "tactical_hoodie",
             "combat_boots",
-            "hunter_trench",
             "techwear_cargo",
+            "street_slides",
+            "shadow_wargreaves",
+            "tactical_hoodie",
+            "leather_bomber",
+            "hunter_trench",
+            "void_cuirass",
+            "street_fade",
+            "hood_up",
+            "raven_shag",
         }
         for slot in SLOT_RENDER_ORDER:
             key = request.loadout.get(slot.value)
             if not key:
                 continue
-            if is_manhwa_base and key in legacy_starter_keys:
+            # Male manhwa base already has complete hand-drawn athletic suit, trousers & hair.
+            # Only weapons, auras, accessories and special crowns should composite on him.
+            if is_manhwa_male and slot in (Slot.LEGS, Slot.BODY, Slot.HEAD):
+                if key != "crown_of_shadows":
+                    continue
+            # Female VN base wears VN boutique gear; suppress crude legacy procedural shapes.
+            if is_vn_female and key in legacy_procedural_items:
                 continue
             layer = self._assets.get(_folder_for(slot), key)
             if layer is None:
