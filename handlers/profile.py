@@ -51,30 +51,21 @@ _INVENTORY_PAGE_SIZE = 6
 # ---------------------------------------------------------------------------
 
 PROFILE_COMMANDS = {"پروفایل", "من", "کارت", "کاراکتر", "مشخصات", "profile", "me", "card"}
-INVENTORY_COMMANDS = {"کوله", "کیف", "اینونتوری", "وسایل", "inventory", "inv", "کمد"}
+INVENTORY_COMMANDS = {
+    "کمد",
+    "کوله",
+    "کوله پشتی",
+    "کوله_پشتی",
+    "وسایل",
+    "اینونتوری",
+    "inventory",
+    "inv",
+    "wardrobe",
+}
 
 
 async def _profile_markup(player: Player) -> InlineKeyboardMarkup:
-    rows = [
-        [
-            InlineKeyboardButton(text="🎒 کوله‌پشتی", callback_data="inv:0"),
-            InlineKeyboardButton(text="🏪 فروشگاه", callback_data="shop:0"),
-        ],
-        [
-            InlineKeyboardButton(text="⚡ کار کردن", callback_data="act:work"),
-            InlineKeyboardButton(text="💰 موجودی", callback_data="act:bal"),
-        ],
-    ]
-    if is_admin_or_owner(player.user_id):
-        rows.append([
-            InlineKeyboardButton(text="🎨 بازطراحی کاراکتر (ادمین)", callback_data="act:create"),
-            InlineKeyboardButton(text="📖 راهنمای بازی", callback_data="act:help"),
-        ])
-    else:
-        rows.append([
-            InlineKeyboardButton(text="📖 راهنمای بازی", callback_data="act:help"),
-        ])
-    return InlineKeyboardMarkup(inline_keyboard=rows)
+    return InlineKeyboardMarkup(inline_keyboard=[])
 
 
 async def _profile_panel(player: Player) -> tuple[str, bytes]:
@@ -107,11 +98,6 @@ async def _profile_panel(player: Player) -> tuple[str, bytes]:
         f"💰 <b>کیف پول:</b> <b>{credits:,}</b> سکه | 🏦 <b>بانک:</b> <b>{player.bank_balance:,}</b> سکه",
         f"🛡 <b>کلن:</b> {clan_name} | ⚖️ <b>وضعیت قضایی:</b> {jail_status}",
         f"⚔️ قدرت: <b>{player.atk}</b> · 🛡 دفاع: <b>{player.defense}</b> · 💎 استایل: <b>{player.drip}</b>",
-        "",
-        "📜 <b>دستورات اصلی شهر:</b>",
-        "• <code>کار</code> · <code>تحصیل</code> · <code>شغل</code> · <code>کیف پول</code> · <code>بانک</code>",
-        "• <code>کمد</code> · <code>آرایشگاه</code> · <code>زیبایی</code> · <code>کلینیک</code> · <code>فروشگاه</code>",
-        "• <code>دوئل</code> · <code>دزدی</code> · <code>ازدواج</code> · <code>طلاق</code> · <code>رابطه</code> · <code>خیانت</code>",
     ]
 
     return "\n".join(lines), photo
@@ -145,7 +131,7 @@ async def _show_profile(message: Message | None, player: Player) -> None:
         message,
         text=caption,
         photo=photo,
-        reply_markup=await _profile_markup(player),
+        reply_markup=None,
         force_media=True,
     )
 
@@ -533,15 +519,15 @@ async def cmd_beauty(message: Message) -> None:
             "💎 <b>به کلینیک فوق تخصصی زیبایی و جراحی پلاستیک تیرامیکس خوش آمدید!</b>\n\n"
             f"💵 هزینه جراحی کامل چهره: <b>{tiramix.SURGERY_FEES:,}</b> سکه\n\n"
             "برای جراحی و تغییر چشم و دهان از فرمول زیر استفاده کنید:\n"
-            "<code>زیبایی [چشم 1 تا 3] [رنگ] [لبخند 1 تا 4]</code>\n"
+            "<code>زیبایی [چشم 1 تا 4] [رنگ] [لبخند 1 تا 4]</code>\n"
             "<i>رنگ‌های مجاز: آبی، سبز، عسلی، بنفش، مشکی</i>\n"
             "<i>مثال: زیبایی 2 آبی 1</i>"
         )
         parts = (message.text or "").strip().split()
         if len(parts) >= 4:
-            e_num = parts[1]
+            e_num = parts[1] if parts[1] in ("1", "2", "3", "4") else "1"
             col_fa = parts[2]
-            m_num = parts[3]
+            m_num = parts[3] if parts[3] in ("1", "2", "3", "4") else "1"
             color_map = {"آبی": "blue", "سبز": "green", "عسلی": "amber", "بنفش": "violet", "مشکی": "black"}
             col_key = color_map.get(col_fa, "blue")
             e_key = f"eyes{e_num}_1"

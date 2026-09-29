@@ -257,11 +257,6 @@ async def test_recreation_restriction_for_regular_users_and_admin(_db) -> None:
     assert reg_player is not None
     assert reg_player.onboarding_completed == 1
 
-    # Check profile markup for regular player: NO act:create button!
-    reg_markup = await profile._profile_markup(reg_player)
-    reg_cb_data = [b.callback_data for row in reg_markup.inline_keyboard for b in row]
-    assert "act:create" not in reg_cb_data
-
     # Regular player tries /create command -> REJECTED
     reg_state = FSMContext(storage=storage, key=StorageKey(bot_id=1, chat_id=reg_user_id, user_id=reg_user_id))
     msg_create = MutableMessage(text="/create", user=reg_user)
@@ -285,11 +280,6 @@ async def test_recreation_restriction_for_regular_users_and_admin(_db) -> None:
     owner_player = await game.load_player(owner_user_id)
     assert owner_player is not None
     assert owner_player.onboarding_completed == 1
-
-    # Check profile markup for owner: HAS act:create button!
-    owner_markup = await profile._profile_markup(owner_player)
-    owner_cb_data = [b.callback_data for row in owner_markup.inline_keyboard for b in row]
-    assert "act:create" in owner_cb_data
 
     # Owner runs /create -> ALLOWED into wizard!
     owner_state = FSMContext(storage=storage, key=StorageKey(bot_id=1, chat_id=owner_user_id, user_id=owner_user_id))

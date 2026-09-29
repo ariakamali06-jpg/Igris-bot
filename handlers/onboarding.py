@@ -575,8 +575,7 @@ async def cb_mouth(call: CallbackQuery, state: FSMContext) -> None:
         f"🎓 <b>سطح سواد:</b> {player.education_title}\n"
         f"💼 <b>شغل:</b> {player.job}\n"
         f"💰 <b>کیف پول:</b> ۰ سکه | 🏦 <b>بانک:</b> ۰ سکه\n\n"
-        "✨ <b>زندگی شما در شهر تیرامیکس رسماً آغاز شد!</b>\n"
-        "با دستورات <code>کار</code>، <code>تحصیل</code>، <code>شغل</code>، <code>بانک</code> و <code>فروشگاه</code> شهر را فتح کنید."
+        "✨ <b>زندگی شما در شهر تیرامیکس رسماً آغاز شد!</b>"
     )
 
     chat_id = call.message.chat.id if isinstance(call.message, Message) else user.id

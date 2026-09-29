@@ -233,7 +233,7 @@ async def test_back_to_card_from_inventory_restores_photo(player) -> None:
     assert call.alerts == [], f"callback errored: {call.alerts}"
     assert card.photo is not None, "the card must come back as a photo"
     assert card.text is None
-    assert _has_button(card.reply_markup, "Inventory") or _has_button(card.reply_markup, "کوله‌پشتی")
+    assert card.reply_markup is None or len(card.reply_markup.inline_keyboard) == 0
 
 
 async def test_back_to_card_from_photo_panel_keeps_photo(player) -> None:
@@ -325,11 +325,8 @@ async def test_duel_decline_on_photo_message_does_not_crash(player) -> None:
 
 async def test_profile_markup_contains_all_four_buttons(player) -> None:
     markup = await profile._profile_markup(player)
-    labels = [b.text for row in markup.inline_keyboard for b in row]
-    assert any("Inventory" in x or "کوله‌پشتی" in x for x in labels)
-    assert any("Shop" in x or "فروشگاه" in x for x in labels)
-    assert any("Work" in x or "کار" in x for x in labels)
-    assert any("Balance" in x or "موجودی" in x for x in labels)
+    # The profile card strictly displays no inline buttons per user design
+    assert len(markup.inline_keyboard) == 0
 
 
 def test_card_is_posted_as_photo_not_text() -> None:  # noqa: D401
