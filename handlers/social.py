@@ -67,69 +67,6 @@ async def cmd_steal(message: Message) -> None:
 
 
 # ---------------------------------------------------------------------------
-# 2. PvP: Duel (دوئل)
-# ---------------------------------------------------------------------------
-
-@router.message(CommandOrText(["duel_bet"], {"دوئل", "فایت", "مبارزه"}))
-async def cmd_duel_social(message: Message) -> None:
-    user = message.from_user
-    if user is None:
-        return
-
-    reply = message.reply_to_message
-    if reply is None or reply.from_user is None:
-        await message.reply(
-            "⚔️ <b>دوئل خیابانی تیرامیکس</b>\n\n"
-            "روی پیام حریف ریپلای بزنید و بنویسید: <code>دوئل [مبلغ شرط]</code>\n"
-            "<i>مثال: دوئل 200</i>"
-        )
-        return
-
-    target_user = reply.from_user
-    if target_user.id == user.id:
-        await message.reply("❌ نمی‌توانید با خودتان دوئل کنید!")
-        return
-
-    parts = (message.text or "").strip().split()
-    stake = 100
-    if len(parts) >= 2 and parts[1].isdigit():
-        stake = max(50, min(10000, int(parts[1])))
-
-    try:
-        p1 = await hydrate(user.id, user.full_name, user.username)
-        p2 = await hydrate(target_user.id, target_user.full_name, target_user.username)
-
-        c1, _ = await economy.balances(p1.user_id)
-        c2, _ = await economy.balances(p2.user_id)
-        if c1 < stake or c2 < stake:
-            await message.reply(f"❌ موجودی یکی از طرفین برای شرط‌بندی <b>{stake:,}</b> سکه کافی نیست!")
-            return
-
-        # Power calculation: Level + ATK + DEF + Education*5 + Luck
-        power1 = p1.level * 10 + p1.atk * 2 + p1.defense + p1.education_level * 5 + random.randint(1, 30)
-        power2 = p2.level * 10 + p2.atk * 2 + p2.defense + p2.education_level * 5 + random.randint(1, 30)
-
-        if power1 >= power2:
-            winner, loser = p1, p2
-        else:
-            winner, loser = p2, p1
-
-        await economy.spend(loser.user_id, credits=stake, kind=economy.ActivityKind.DUEL_STAKE)
-        await economy.grant(winner.user_id, credits=stake, kind=economy.ActivityKind.DUEL_PAYOUT)
-
-        text = (
-            f"⚔️🔥 <b>دوئل نفس‌گیر در میدان مرکزی تیرامیکس!</b>\n\n"
-            f"مبارزه بین <b>{p1.display_name}</b> و <b>{p2.display_name}</b> سر مبلغ <b>{stake:,}</b> سکه!\n\n"
-            f"🏆 پیروز میدان: <b>{winner.display_name}</b> 🎉\n"
-            f"💀 بازنده: <b>{loser.display_name}</b>\n"
-            f"💰 مبلغ <b>{stake:,}</b> سکه به برنده پرداخت شد!"
-        )
-        await message.reply(text)
-    except Exception as exc:  # noqa: BLE001
-        await answer_error(exc, message=message)
-
-
-# ---------------------------------------------------------------------------
 # 3. Marriage (ازدواج)
 # ---------------------------------------------------------------------------
 

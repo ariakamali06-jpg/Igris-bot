@@ -46,10 +46,10 @@ class Strike:
     def line(self, names: dict[int, str]) -> str:
         attacker = names[self.attacker_id]
         defender = names[self.defender_id]
-        verb = "💥 CRITICAL" if self.critical else "hit"
+        verb = "💥 ضربه مهلک و بحرانی زد به" if self.critical else "⚔️ حمله کرد به"
         return (
-            f"R{self.round} · {attacker} {verb} {defender} "
-            f"for {self.damage} ({self.defender_hp} HP left)"
+            f"🔹 راند {self.round}: <b>{attacker}</b> {verb} <b>{defender}</b> "
+            f"(💥 {self.damage} دمیج | 🩸 {self.defender_hp} جان باقی‌مانده)"
         )
 
 
@@ -124,12 +124,12 @@ def simulate(a: Fighter, b: Fighter, seed: int) -> BattleResult:
 
         a_hp, b_hp = hp[a.user_id], hp[b.user_id]
         if a_hp == b_hp:
-            label = f"Round {round_no}: deadlock — {a.name} {a_hp} vs {b.name} {b_hp}"
+            label = f"راند {round_no}: نبرد برابر — {a.name} ({a_hp} جان) در برابر {b.name} ({b_hp} جان)"
         else:
             leader = a if a_hp > b_hp else b
             label = (
-                f"Round {round_no}: {leader.name} controls the exchange "
-                f"({max(a_hp, b_hp)} vs {min(a_hp, b_hp)})"
+                f"راند {round_no}: {leader.name} نبض مبارزه را در دست گرفت "
+                f"({max(a_hp, b_hp)} در برابر {min(a_hp, b_hp)})"
             )
         result.rounds.append(label)
 
