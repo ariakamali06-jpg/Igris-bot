@@ -10,13 +10,14 @@ from __future__ import annotations
 
 from aiogram import Dispatcher
 
-from handlers import duels, economy, onboarding, profile, raids, shop, social
+from handlers import admin, duels, economy, onboarding, profile, raids, shop, social
 from handlers.diagnostics import CallbackDiagnosticsMiddleware
 from handlers.gatekeeper import OnboardingGateMiddleware
 
 
 def register_routers(dp: Dispatcher) -> None:
     """Attach every feature router to the dispatcher (stable order)."""
+    dp.include_router(admin.router)
     dp.include_router(onboarding.router)
     dp.include_router(profile.router)
     dp.include_router(economy.router)

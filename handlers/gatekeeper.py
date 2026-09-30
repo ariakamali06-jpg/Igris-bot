@@ -14,7 +14,7 @@ from aiogram.types import (
     TelegramObject,
 )
 
-from handlers.common import hydrate
+from handlers.common import hydrate, is_admin_or_owner
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +37,8 @@ class OnboardingGateMiddleware(BaseMiddleware):
 
             # In group and supergroup chats:
             if chat.type in ("group", "supergroup"):
+                if is_admin_or_owner(user.id):
+                    return await handler(event, data)
                 player = await hydrate(user.id, user.full_name, user.username)
                 if player.onboarding_completed != 1:
                     # Resolve bot username for deep link

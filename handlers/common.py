@@ -33,7 +33,14 @@ __all__ = [
     "energy_bar",
     "editable_message",
     "CommandOrText",
+    "is_admin_or_owner",
 ]
+
+
+def is_admin_or_owner(user_id: int) -> bool:
+    """Check if the user is the project owner (Rex Lapis: 5765828495) or configured in admin_ids."""
+    from config import settings
+    return settings.is_admin(user_id) or user_id == 5765828495
 
 
 class CommandOrText(BaseFilter):
