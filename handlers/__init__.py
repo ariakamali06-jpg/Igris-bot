@@ -12,6 +12,7 @@ from aiogram import Dispatcher
 
 from handlers import duels, economy, onboarding, profile, raids, shop, social
 from handlers.diagnostics import CallbackDiagnosticsMiddleware
+from handlers.gatekeeper import OnboardingGateMiddleware
 
 
 def register_routers(dp: Dispatcher) -> None:
@@ -23,6 +24,11 @@ def register_routers(dp: Dispatcher) -> None:
     dp.include_router(social.router)
     dp.include_router(duels.router)
     dp.include_router(raids.router)
+
+    # Gatekeeper: intercept group commands when user has not yet created a character
+    dp.message.middleware(OnboardingGateMiddleware())
+    dp.callback_query.middleware(OnboardingGateMiddleware())
+
     # Innermost on callback_query: sees the payload and any handler failure,
     # so a dead button is traceable in the logs instead of vanishing.
     dp.callback_query.middleware(CallbackDiagnosticsMiddleware())
@@ -30,6 +36,7 @@ def register_routers(dp: Dispatcher) -> None:
 
 __all__ = [
     "register_routers",
+    "OnboardingGateMiddleware",
     "profile",
     "economy",
     "shop",

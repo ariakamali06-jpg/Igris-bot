@@ -12,6 +12,7 @@ from aiogram.types import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     Message,
+    User,
 )
 
 from config import settings
@@ -26,6 +27,7 @@ from handlers.common import (
 from handlers.panel import photo_bytes, render_panel
 from handlers.profile import _send_profile
 from services import game
+from services.channels import channel_join_markup, get_missing_channels
 
 logger = logging.getLogger(__name__)
 router = Router(name="onboarding")
@@ -109,6 +111,45 @@ MOUTH_LABELS = {
 # Entry Point: /start, /create
 # ---------------------------------------------------------------------------
 
+async def _start_name_wizard(target: Message, state: FSMContext, user: User, is_edit: bool = False) -> None:
+    """Initialize the FSM state and display the first wizard step (name selection)."""
+    await state.clear()
+    await state.set_state(OnboardingState.waiting_for_name)
+
+    tg_name = (user.first_name or "مسافر")[:24]
+    buttons = [
+        [
+            InlineKeyboardButton(
+                text=f"👤 استفاده از نام تلگرام: {tg_name}",
+                callback_data="ob:name_tg",
+            )
+        ]
+    ]
+    text = (
+        "🍁 <b>به ایستگاه قطار شهر تیرامیکس خوش آمدی!</b>\n\n"
+        "صدای باران پاییزی روی سنگ‌فرش‌های خیابان و بوی قهوه گرم کافه‌های شهر حسابی دلنشینه...\n"
+        "تو مسافر جدید تیرامیکسی؛ شهری مدرن، پرجنب‌وجوش و پر از فرصت برای ساختن آینده و شهرت!\n\n"
+        "برای سفارشی‌سازی و صدور شناسنامه شهروندی، مشخصاتت رو با هم کامل می‌کنیم.\n\n"
+        "🏷️ <b>مرحله اول: نام شهروندی کاراکترت چیه؟</b>\n"
+        "می‌تونی اسمت رو در چت بنویسی یا با دکمه زیر از نام تلگرامت استفاده کنی:"
+    )
+    markup = InlineKeyboardMarkup(inline_keyboard=buttons)
+    if is_edit:
+        try:
+            await target.edit_text(text, reply_markup=markup)
+            if hasattr(target, "message_id"):
+                await state.update_data(tracked_msg_ids=[target.message_id])
+            return
+        except Exception:
+            pass
+
+    sent = await target.reply(text, reply_markup=markup)
+    tracked = [target.message_id]
+    if hasattr(sent, "message_id"):
+        tracked.append(sent.message_id)
+    await state.update_data(tracked_msg_ids=tracked)
+
+
 @router.message(CommandOrText(["start", "create", "new_char"], {"شروع", "استارت", "شخصیت جدید", "ساخت", "تغییر چهره"}))
 async def cmd_start(message: Message, state: FSMContext) -> None:
     user = message.from_user
@@ -132,33 +173,69 @@ async def cmd_start(message: Message, state: FSMContext) -> None:
                 )
                 return
 
-        await state.clear()
-        await state.set_state(OnboardingState.waiting_for_name)
+        # Check mandatory channel subscriptions before entering wizard
+        bot = getattr(message, "bot", None)
+        missing = await get_missing_channels(bot, user.id)
+        if missing:
+            markup = channel_join_markup(missing)
+            channel_lines = "\n".join(
+                f"🔹 <b>{ch.get('name', 'کانال')}:</b> <a href=\"{ch.get('url')}\">{ch.get('username')}</a>"
+                for ch in missing
+            )
+            text = (
+                "🍁 <b>به بازی شبیه‌ساز زندگی تیرامیکس (Igris Life) خوش آمدید!</b>\n\n"
+                "مسافر گرامی، قطار به ایستگاه شهر تیرامیکس نزدیک می‌شود...\n"
+                "برای ورود به شهر، ساخت کاراکتر و دریافت شناسنامه شهروندی، ابتدا باید در ۳ کانال رسمی زیر عضو شوید:\n\n"
+                f"{channel_lines}\n\n"
+                "<i>ابتدا در کانال‌های بالا عضو شوید، سپس دکمه «تایید عضویت و ساخت کاراکتر» را لمس کنید:</i>"
+            )
+            sent = await message.reply(text, reply_markup=markup, disable_web_page_preview=True)
+            tracked = [message.message_id]
+            if hasattr(sent, "message_id"):
+                tracked.append(sent.message_id)
+            await state.update_data(tracked_msg_ids=tracked)
+            return
 
-        tg_name = (user.first_name or "مسافر")[:24]
-        buttons = [
-            [
-                InlineKeyboardButton(
-                    text=f"👤 استفاده از نام تلگرام: {tg_name}",
-                    callback_data="ob:name_tg",
-                )
-            ]
-        ]
-        text = (
-            "🍁 <b>به ایستگاه قطار شهر تیرامیکس خوش آمدی!</b>\n\n"
-            "صدای باران پاییزی روی سنگ‌فرش‌های خیابان و بوی قهوه گرم کافه‌های شهر حسابی دلنشینه...\n"
-            "تو مسافر جدید تیرامیکسی؛ شهری مدرن، پرجنب‌وجوش و پر از فرصت برای ساختن آینده و شهرت!\n\n"
-            "برای سفارشی‌سازی و صدور شناسنامه شهروندی، مشخصاتت رو با هم کامل می‌کنیم.\n\n"
-            "🏷️ <b>مرحله اول: نام شهروندی کاراکترت چیه؟</b>\n"
-            "می‌تونی اسمت رو در چت بنویسی یا با دکمه زیر از نام تلگرامت استفاده کنی:"
-        )
-        sent = await message.reply(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons))
-        tracked = [message.message_id]
-        if hasattr(sent, "message_id"):
-            tracked.append(sent.message_id)
-        await state.update_data(tracked_msg_ids=tracked)
+        await _start_name_wizard(message, state, user)
     except Exception as exc:  # noqa: BLE001
         await answer_error(exc, message=message)
+
+
+@router.callback_query(F.data == "ob:check_channels")
+async def cb_check_channels(call: CallbackQuery, state: FSMContext) -> None:
+    """Verify channel memberships when user clicks the verification button."""
+    user = call.from_user
+    if user is None:
+        return
+    bot = getattr(call, "bot", None)
+    missing = await get_missing_channels(bot, user.id)
+    if missing:
+        missing_names = "، ".join(ch.get("name", "کانال") for ch in missing)
+        await call.answer(f"⚠️ هنوز در {missing_names} عضو نشده‌اید!", show_alert=True)
+        channel_lines = "\n".join(
+            f"🔹 <b>{ch.get('name', 'کانال')}:</b> <a href=\"{ch.get('url')}\">{ch.get('username')}</a>"
+            for ch in missing
+        )
+        text = (
+            "⚠️ <b>عضویت شما در کانال‌ها هنوز کامل نشده است!</b>\n\n"
+            "برای ورود به شهر و ساخت کاراکتر، باید در تمام کانال‌های زیر عضو باشید:\n\n"
+            f"{channel_lines}\n\n"
+            "<i>لطفاً عضویت خود را تکمیل کرده و دوباره دکمه زیر را لمس کنید:</i>"
+        )
+        markup = channel_join_markup(missing)
+        msg = editable_message(call)
+        if msg:
+            try:
+                await msg.edit_text(text, reply_markup=markup, disable_web_page_preview=True)
+            except Exception:
+                pass
+        return
+
+    await call.answer("✅ عضویت در کانال‌ها با موفقیت تأیید شد! 🎉")
+    msg = editable_message(call)
+    target = msg if msg is not None else call.message
+    if isinstance(target, Message):
+        await _start_name_wizard(target, state, user, is_edit=True)
 
 
 @router.callback_query(F.data.in_({"act:create", "panel:create"}))
@@ -170,31 +247,35 @@ async def cb_start_creation(call: CallbackQuery, state: FSMContext) -> None:
     if player.onboarding_completed == 1 and not is_admin_or_owner(user.id):
         await call.answer("⚠️ هویت شما قبلاً ثبت شده و قفل است!", show_alert=True)
         return
-    await call.answer()
-    await state.clear()
-    await state.set_state(OnboardingState.waiting_for_name)
 
-    tg_name = (user.first_name or "مسافر")[:24]
-    buttons = [
-        [
-            InlineKeyboardButton(
-                text=f"👤 استفاده از نام تلگرام: {tg_name}",
-                callback_data="ob:name_tg",
-            )
-        ]
-    ]
-    text = (
-        "🍁 <b>به ایستگاه قطار شهر تیرامیکس خوش آمدی!</b>\n\n"
-        "صدای باران پاییزی روی سنگ‌فرش‌های خیابان و بوی قهوه گرم کافه‌های شهر حسابی دلنشینه...\n"
-        "تو مسافر جدید تیرامیکسی؛ شهری مدرن، پرجنب‌وجوش و پر از فرصت برای ساختن آینده و شهرت!\n\n"
-        "برای سفارشی‌سازی و صدور شناسنامه شهروندی، مشخصاتت رو با هم کامل می‌کنیم.\n\n"
-        "🏷️ <b>مرحله اول: نام شهروندی کاراکترت چیه؟</b>\n"
-        "می‌تونی اسمت رو در چت بنویسی یا با دکمه زیر از نام تلگرامت استفاده کنی:"
-    )
+    bot = getattr(call, "bot", None)
+    missing = await get_missing_channels(bot, user.id)
+    if missing:
+        await call.answer("⚠️ ابتدا باید در کانال‌های رسمی بازی عضو شوید!", show_alert=True)
+        channel_lines = "\n".join(
+            f"🔹 <b>{ch.get('name', 'کانال')}:</b> <a href=\"{ch.get('url')}\">{ch.get('username')}</a>"
+            for ch in missing
+        )
+        text = (
+            "🍁 <b>به بازی شبیه‌ساز زندگی تیرامیکس (Igris Life) خوش آمدید!</b>\n\n"
+            "برای ورود به شهر و ساخت کاراکتر، ابتدا باید در ۳ کانال رسمی زیر عضو شوید:\n\n"
+            f"{channel_lines}\n\n"
+            "<i>ابتدا در کانال‌های بالا عضو شوید، سپس دکمه «تایید عضویت و ساخت کاراکتر» را لمس کنید:</i>"
+        )
+        markup = channel_join_markup(missing)
+        msg = editable_message(call)
+        if msg:
+            try:
+                await msg.edit_text(text, reply_markup=markup, disable_web_page_preview=True)
+            except Exception:
+                pass
+        return
+
+    await call.answer()
     msg = editable_message(call)
-    await render_panel(msg, text=text, reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons))
-    if msg and hasattr(msg, "message_id"):
-        await state.update_data(tracked_msg_ids=[msg.message_id])
+    target = msg if msg is not None else call.message
+    if isinstance(target, Message):
+        await _start_name_wizard(target, state, user, is_edit=True)
 
 
 # ---------------------------------------------------------------------------

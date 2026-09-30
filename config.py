@@ -39,6 +39,29 @@ class Settings(BaseSettings):
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
     dry_run: bool = Field(default=False, alias="DRY_RUN")
 
+    # --- Channels & Sponsorship ---------------------------------------------
+    force_channel_join: bool = Field(default=True, alias="FORCE_CHANNEL_JOIN")
+    required_channels: list[dict[str, str]] = Field(
+        default_factory=lambda: [
+            {
+                "name": "کار و وار (ربات ایگریس)",
+                "url": "https://t.me/kar_O_war",
+                "username": "@kar_O_war",
+            },
+            {
+                "name": "API CONFIGG",
+                "url": "https://t.me/APICONFIGG",
+                "username": "@APICONFIGG",
+            },
+            {
+                "name": "فرمول وان فارسی",
+                "url": "https://t.me/formula_one_farsi",
+                "username": "@formula_one_farsi",
+            },
+        ],
+        alias="REQUIRED_CHANNELS",
+    )
+
     # Paths
     db_path: Path = Field(default=ROOT_DIR / "data" / "game.db", alias="DB_PATH")
     assets_dir: Path = Field(
@@ -173,6 +196,20 @@ class Settings(BaseSettings):
             return [
                 int(part) for part in text.replace(";", ",").split(",") if part.strip()
             ]
+        return value
+
+    @field_validator("required_channels", mode="before")
+    @classmethod
+    def _parse_required_channels(cls, value: object) -> object:
+        if isinstance(value, str):
+            text = value.strip()
+            if not text:
+                return []
+            if text.startswith("["):
+                try:
+                    return json.loads(text)
+                except Exception:
+                    pass
         return value
 
     @field_validator("db_path", "assets_dir", "manifest_path", "cache_dir", mode="before")
