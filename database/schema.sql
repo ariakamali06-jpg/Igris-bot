@@ -44,6 +44,9 @@ CREATE TABLE IF NOT EXISTS players (
     children_count     INTEGER NOT NULL DEFAULT 0,
     is_pregnant_until  INTEGER NOT NULL DEFAULT 0,
     is_jailed_until    INTEGER NOT NULL DEFAULT 0,
+    shield_until       INTEGER NOT NULL DEFAULT 0,
+    pet_level          INTEGER NOT NULL DEFAULT 0,
+    affair_count       INTEGER NOT NULL DEFAULT 0,
     bank_balance       INTEGER NOT NULL DEFAULT 0,
     loan_amount        INTEGER NOT NULL DEFAULT 0,
     loan_due           INTEGER NOT NULL DEFAULT 0,
@@ -92,7 +95,8 @@ CREATE TABLE IF NOT EXISTS items (
     layer_key         TEXT    NOT NULL,
     description       TEXT    NOT NULL DEFAULT '',
     shop_pool         TEXT    NOT NULL DEFAULT 'rotating'
-                      CHECK (shop_pool IN ('rotating', 'permanent', 'starter')),
+                      CHECK (shop_pool IN ('rotating', 'permanent',
+                                           'starter', 'blackmarket')),
     UNIQUE (slot, layer_key)
 );
 
@@ -249,9 +253,266 @@ INSERT OR IGNORE INTO constants (key, value) VALUES
 -- -----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS clans (
     clan_id     INTEGER PRIMARY KEY AUTOINCREMENT,
-    group_id    INTEGER NOT NULL,
+    group_id    INTEGER NOT NULL DEFAULT 0,
     name        TEXT    NOT NULL UNIQUE,
-    leader_id   INTEGER NOT NULL REFERENCES players (user_id),
+    leader_id   INTEGER NOT NULL REFERENCES players(user_id),
     treasury    INTEGER NOT NULL DEFAULT 0 CHECK (treasury >= 0),
     created_at  INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
 );
+
+-- -----------------------------------------------------------------------------
+-- Ocean port phase 1 — passive economy: properties (املاک) and hired crew (نیرو).
+-- One row per owned asset; income accrues once per property_income_interval.
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS properties (
+    owner_id     INTEGER NOT NULL REFERENCES players (user_id) ON DELETE CASCADE,
+    kind         TEXT    NOT NULL CHECK (kind IN ('property', 'worker')),
+    name         TEXT    NOT NULL,
+    level        INTEGER NOT NULL DEFAULT 1 CHECK (level >= 1),
+    last_collect INTEGER NOT NULL DEFAULT 0,
+    acquired_at  INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (owner_id, kind, name)
+);
+
+-- Daily contracts (قرارداد). ``day`` is the contract-window index so a new
+-- day simply starts a fresh snapshot; progress is recounted from the ledger.
+CREATE TABLE IF NOT EXISTS contracts (
+    user_id  INTEGER NOT NULL REFERENCES players (user_id) ON DELETE CASCADE,
+    code     TEXT    NOT NULL,
+    progress INTEGER NOT NULL DEFAULT 0 CHECK (progress >= 0),
+    day      INTEGER NOT NULL DEFAULT 0,
+    done     INTEGER NOT NULL DEFAULT 0 CHECK (done IN (0, 1)),
+    PRIMARY KEY (user_id, code)
+);
+
+-- Exchange (بورس): hourly deterministic price series + player positions.
+CREATE TABLE IF NOT EXISTS market_prices (
+    asset TEXT    NOT NULL,
+    hour  INTEGER NOT NULL,
+    price REAL    NOT NULL CHECK (price > 0),
+    PRIMARY KEY (asset, hour)
+);
+
+CREATE TABLE IF NOT EXISTS holdings (
+    user_id    INTEGER NOT NULL REFERENCES players (user_id) ON DELETE CASCADE,
+    asset      TEXT    NOT NULL,
+    units      REAL    NOT NULL DEFAULT 0 CHECK (units >= 0),
+    updated_at INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (user_id, asset)
+);
+
+CREATE TABLE IF NOT EXISTS market_bets (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    INTEGER NOT NULL REFERENCES players (user_id) ON DELETE CASCADE,
+    amount     INTEGER NOT NULL DEFAULT 0 CHECK (amount >= 0),
+    hour       INTEGER NOT NULL,
+    status     TEXT    NOT NULL DEFAULT 'pending'
+               CHECK (status IN ('pending', 'won', 'lost', 'push')),
+    payout     INTEGER NOT NULL DEFAULT 0 CHECK (payout >= 0),
+    created_at INTEGER NOT NULL DEFAULT 0,
+    settled_at INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_market_bets_user ON market_bets (user_id, status);
+
+-- Lottery (قرعه): single-row pot state plus per-round ticket counts.
+CREATE TABLE IF NOT EXISTS lottery_state (
+    id             INTEGER PRIMARY KEY CHECK (id = 1),
+    pot            INTEGER NOT NULL DEFAULT 0 CHECK (pot >= 0),
+    next_draw_at   INTEGER NOT NULL DEFAULT 0,
+    round          INTEGER NOT NULL DEFAULT 0,
+    last_winner_id INTEGER,
+    last_draw_at   INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS lottery_tickets (
+    user_id INTEGER NOT NULL REFERENCES players (user_id) ON DELETE CASCADE,
+    round   INTEGER NOT NULL,
+    tickets INTEGER NOT NULL DEFAULT 0 CHECK (tickets >= 0),
+    PRIMARY KEY (user_id, round)
+);
+
+-- Gift codes (هدیه): one row per code, plus per-user redemptions so a code
+-- can never be claimed twice by the same player.
+CREATE TABLE IF NOT EXISTS gift_codes (
+    code       TEXT    PRIMARY KEY,
+    credits    INTEGER NOT NULL CHECK (credits >= 0),
+    max_uses   INTEGER NOT NULL DEFAULT 1 CHECK (max_uses >= 1),
+    used       INTEGER NOT NULL DEFAULT 0 CHECK (used >= 0),
+    expires_at INTEGER NOT NULL DEFAULT 0,
+    created_by INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS gift_redemptions (
+    code       TEXT    NOT NULL,
+    user_id    INTEGER NOT NULL,
+    claimed_at INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (code, user_id)
+);
+
+-- -----------------------------------------------------------------------------
+-- Ocean port phase 2 — crash round (ریسک). The stake is escrowed at start;
+-- ``crash_point`` is the hidden multiplier where the wire snaps, and
+-- ``started_at`` makes the live multiplier a pure function of elapsed time.
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS risk_rounds (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     INTEGER NOT NULL REFERENCES players (user_id) ON DELETE CASCADE,
+    chat_id     INTEGER NOT NULL DEFAULT 0,
+    stake       INTEGER NOT NULL CHECK (stake >= 0),
+    crash_point REAL    NOT NULL CHECK (crash_point > 0),
+    status      TEXT    NOT NULL DEFAULT 'active'
+                CHECK (status IN ('active', 'cashed', 'crashed', 'expired')),
+    payout      INTEGER NOT NULL DEFAULT 0 CHECK (payout >= 0),
+    started_at  INTEGER NOT NULL DEFAULT 0,
+    resolved_at INTEGER
+);
+
+CREATE INDEX IF NOT EXISTS idx_risk_rounds_user ON risk_rounds (user_id, status);
+
+-- 3-digit safe (قفل): one live lock per player, attempts counted until the
+-- lock opens (payout) or jams (stake forfeited). The code never leaves the row.
+CREATE TABLE IF NOT EXISTS safe_locks (
+    user_id     INTEGER PRIMARY KEY REFERENCES players (user_id) ON DELETE CASCADE,
+    stake       INTEGER NOT NULL CHECK (stake >= 0),
+    code        TEXT    NOT NULL,
+    attempts    INTEGER NOT NULL DEFAULT 0 CHECK (attempts >= 0),
+    status      TEXT    NOT NULL DEFAULT 'active'
+                CHECK (status IN ('active', 'opened', 'failed')),
+    payout      INTEGER NOT NULL DEFAULT 0 CHECK (payout >= 0),
+    created_at  INTEGER NOT NULL DEFAULT 0,
+    resolved_at INTEGER
+);
+
+-- Tic-tac-toe (دوز): ``board`` is 9 characters ('.', 'X', 'O') read left to
+-- right, top to bottom; both stakes are escrowed before the first mark lands.
+CREATE TABLE IF NOT EXISTS xo_games (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    chat_id       INTEGER NOT NULL,
+    challenger_id INTEGER NOT NULL REFERENCES players (user_id) ON DELETE CASCADE,
+    opponent_id   INTEGER NOT NULL REFERENCES players (user_id) ON DELETE CASCADE,
+    stake         INTEGER NOT NULL DEFAULT 0 CHECK (stake >= 0),
+    status        TEXT    NOT NULL DEFAULT 'pending'
+                  CHECK (status IN ('pending', 'active', 'declined', 'expired',
+                                    'cancelled', 'resolved')),
+    board         TEXT    NOT NULL DEFAULT '.........',
+    turn_id       INTEGER,
+    winner_id     INTEGER,
+    created_at    INTEGER NOT NULL DEFAULT 0,
+    updated_at    INTEGER NOT NULL DEFAULT 0,
+    resolved_at   INTEGER
+);
+
+CREATE INDEX IF NOT EXISTS idx_xo_games_chat_status ON xo_games (chat_id, status);
+
+-- Penalty (دروازه): the keeper commits a hidden save first, then the shooter
+-- picks a shot; both stay NULL until their owner presses a button.
+CREATE TABLE IF NOT EXISTS penalty_rounds (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    chat_id      INTEGER NOT NULL,
+    shooter_id   INTEGER NOT NULL REFERENCES players (user_id) ON DELETE CASCADE,
+    keeper_id    INTEGER NOT NULL REFERENCES players (user_id) ON DELETE CASCADE,
+    stake        INTEGER NOT NULL DEFAULT 0 CHECK (stake >= 0),
+    status       TEXT    NOT NULL DEFAULT 'pending'
+                 CHECK (status IN ('pending', 'keeper_pick', 'shooter_pick',
+                                   'declined', 'expired', 'cancelled',
+                                   'resolved')),
+    keeper_pick  TEXT,
+    shooter_pick TEXT,
+    winner_id    INTEGER,
+    created_at   INTEGER NOT NULL DEFAULT 0,
+    updated_at   INTEGER NOT NULL DEFAULT 0,
+    resolved_at  INTEGER
+);
+
+CREATE INDEX IF NOT EXISTS idx_penalty_chat_status ON penalty_rounds (chat_id, status);
+
+-- ---------------------------------------------------------------------------
+-- Ocean port phase 3 — بازارچه (player-to-player listings).
+-- The item row is ESCROWED out of ``inventory`` while a listing is active
+-- and only lands in the buyer's inventory when the sale resolves, so a
+-- listing can never sell something that was also sold elsewhere.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS bazaar_listings (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    seller_id   INTEGER NOT NULL
+                REFERENCES players (user_id) ON DELETE CASCADE,
+    buyer_id    INTEGER
+                REFERENCES players (user_id) ON DELETE SET NULL,
+    item_id     TEXT    NOT NULL
+                REFERENCES items (id) ON DELETE CASCADE,
+    price       INTEGER NOT NULL CHECK (price > 0),
+    status      TEXT    NOT NULL DEFAULT 'active'
+                CHECK (status IN ('active', 'sold', 'cancelled')),
+    created_at  INTEGER NOT NULL DEFAULT 0,
+    resolved_at INTEGER
+);
+
+CREATE INDEX IF NOT EXISTS idx_bazaar_status ON bazaar_listings (status);
+
+-- ---------------------------------------------------------------------------
+-- Ocean port phase 3 — حیوان نبرد (pet duels).
+-- The challenger's stake is ESCROWED at creation (ledger ref ``pet:stake``)
+-- so a fight can always be settled or refunded inside one db.write() txn.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS pet_challenges (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    challenger_id INTEGER NOT NULL
+                  REFERENCES players (user_id) ON DELETE CASCADE,
+    target_id     INTEGER NOT NULL
+                  REFERENCES players (user_id) ON DELETE CASCADE,
+    amount        INTEGER NOT NULL CHECK (amount > 0),
+    chat_id       INTEGER NOT NULL DEFAULT 0,
+    status        TEXT    NOT NULL DEFAULT 'pending'
+                  CHECK (status IN ('pending', 'resolved', 'declined',
+                                    'expired', 'cancelled')),
+    winner_id     INTEGER,
+    created_at    INTEGER NOT NULL DEFAULT 0,
+    expires_at    INTEGER NOT NULL DEFAULT 0,
+    resolved_at   INTEGER
+);
+
+CREATE INDEX IF NOT EXISTS idx_pet_challenges_pair
+    ON pet_challenges (challenger_id, target_id, status);
+
+-- ---------------------------------------------------------------------------
+-- Ocean port phase 4 — chat activity counted toward the next روزانه claim.
+-- Bumped by the group-activity middleware; reset to 0 when paid out.
+-- No FK to players on purpose: lurkers may count before /start.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS chat_activity (
+    user_id    INTEGER PRIMARY KEY,
+    messages   INTEGER NOT NULL DEFAULT 0,
+    updated_at INTEGER NOT NULL DEFAULT 0
+);
+
+-- ---------------------------------------------------------------------------
+-- Ocean port phase 4 — جام (group cup rounds). Entry fees are escrowed on
+-- join and only leave the wallet as prizes (cup:win) or refunds
+-- (cup:refund), so an under-attended round can always pay everyone back.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS cup_rounds (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    chat_id    INTEGER NOT NULL,
+    status     TEXT    NOT NULL DEFAULT 'open'
+               CHECK (status IN ('open', 'settled', 'cancelled')),
+    entry_fee  INTEGER NOT NULL CHECK (entry_fee > 0),
+    created_at INTEGER NOT NULL DEFAULT 0,
+    closes_at  INTEGER NOT NULL DEFAULT 0,
+    settled_at INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS cup_entries (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    round_id   INTEGER NOT NULL
+               REFERENCES cup_rounds (id) ON DELETE CASCADE,
+    user_id    INTEGER NOT NULL
+               REFERENCES players (user_id) ON DELETE CASCADE,
+    goals      INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL DEFAULT 0,
+    UNIQUE (round_id, user_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_cup_rounds_chat
+    ON cup_rounds (chat_id, status);

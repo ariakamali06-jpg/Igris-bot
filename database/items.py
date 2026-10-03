@@ -806,6 +806,31 @@ ITEMS: tuple[ItemDef, ...] = (
         shop_pool="permanent",
         description="A blazing celestial aura of absolute power.",
     ),
+    # --- Ocean port phase 3: کاسب (بازار سیاه) ------------------------------
+    # ``shop_pool="blackmarket"`` keeps these OUT of the daily boutique
+    # rotation — the fence is their only storefront.
+    ItemDef(
+        id="thief_kit",
+        name="ابزار سرقت",
+        slot=Slot.ACCESSORY,
+        rarity=Rarity.RARE,
+        atk=2,
+        drip=1,
+        price_credits=2500,
+        shop_pool="blackmarket",
+        description="+۲۰٪ شانس در دستبرد بانک، تا وقتی توی کیفته.",
+    ),
+    ItemDef(
+        id="guard_item",
+        name="نگهبان شخصی",
+        slot=Slot.ACCESSORY,
+        rarity=Rarity.EPIC,
+        defense=8,
+        drip=2,
+        price_credits=4000,
+        shop_pool="blackmarket",
+        description="هکر، قاتل و اخاذ رو ازت دور نگه می‌داره — سپر جانی.",
+    ),
 )
 
 ITEMS_BY_ID: dict[str, ItemDef] = {item.id: item for item in ITEMS}

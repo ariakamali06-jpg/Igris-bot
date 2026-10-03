@@ -10,7 +10,30 @@ from __future__ import annotations
 
 from aiogram import Dispatcher
 
-from handlers import admin, duels, economy, onboarding, profile, raids, shop, social
+from handlers import (
+    admin,
+    bazaar,
+    blackmarket,
+    casino,
+    contracts,
+    cup,
+    duels,
+    economy,
+    lottery,
+    market,
+    onboarding,
+    penalty,
+    pets,
+    profile,
+    properties,
+    raids,
+    risk,
+    security,
+    shop,
+    social,
+    underworld,
+    xo,
+)
 from handlers.diagnostics import CallbackDiagnosticsMiddleware
 from handlers.gatekeeper import OnboardingGateMiddleware
 
@@ -25,6 +48,24 @@ def register_routers(dp: Dispatcher) -> None:
     dp.include_router(social.router)
     dp.include_router(duels.router)
     dp.include_router(raids.router)
+    # Ocean port phase 1 — Persian trigger words never overlap the routers above.
+    dp.include_router(properties.router)
+    dp.include_router(contracts.router)
+    dp.include_router(market.router)
+    dp.include_router(security.router)
+    dp.include_router(lottery.router)
+    # Ocean port phase 2 — arcade money games; words never overlap routers above.
+    dp.include_router(casino.router)
+    dp.include_router(risk.router)
+    dp.include_router(xo.router)
+    dp.include_router(penalty.router)
+    # Ocean port phase 3 — underworld trades & attacks; own words only.
+    dp.include_router(blackmarket.router)
+    dp.include_router(bazaar.router)
+    dp.include_router(underworld.shadow_router)
+    dp.include_router(underworld.extort_router)
+    dp.include_router(pets.router)
+    dp.include_router(cup.router)
 
     # Gatekeeper: intercept group commands when user has not yet created a character
     dp.message.middleware(OnboardingGateMiddleware())
@@ -43,5 +84,19 @@ __all__ = [
     "shop",
     "duels",
     "raids",
+    "properties",
+    "contracts",
+    "market",
+    "security",
+    "lottery",
+    "casino",
+    "risk",
+    "xo",
+    "penalty",
+    "blackmarket",
+    "bazaar",
+    "underworld",
+    "pets",
+    "cup",
     "CallbackDiagnosticsMiddleware",
 ]

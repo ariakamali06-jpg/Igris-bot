@@ -117,6 +117,35 @@ class ActivityKind(StrEnum):
     CLINIC = "clinic"
     SALON = "salon"
     CLAN = "clan"
+    # --- Ocean port phase 1 -------------------------------------------------
+    PROPERTY_BUY = "property_buy"
+    PROPERTY_UPGRADE = "property_upgrade"
+    PROPERTY_COLLECT = "property_collect"
+    CONTRACT = "contract"
+    MARKET_BUY = "market_buy"
+    MARKET_SELL = "market_sell"
+    MARKET_BET = "market_bet"
+    SHIELD = "shield"
+    BANK_ROBBERY = "bank_robbery"
+    LOTTERY = "lottery"
+    GIFT = "gift"
+    # --- Ocean port phase 2 -------------------------------------------------
+    SLOT = "slot"
+    RPS = "rps"
+    RISK = "risk"
+    GUESS = "guess"
+    SAFE = "safe"
+    ARCADE_STAKE = "arcade_stake"
+    ARCADE_PAYOUT = "arcade_payout"
+    ARCADE_RAKE = "arcade_rake"
+    ARCADE_REFUND = "arcade_refund"
+    # --- Ocean port phase 3 -------------------------------------------------
+    BLACKMARKET = "blackmarket"
+    BAZAAR = "bazaar"
+    SHADOW = "shadow"
+    EXTORT = "extort"
+    PET = "pet"
+    CUP = "cup"
 
 
 _SLOT_LABELS: dict[Slot, str] = {

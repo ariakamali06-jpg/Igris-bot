@@ -12,7 +12,7 @@ import asyncio
 import html
 import logging
 
-from aiogram.filters import BaseFilter
+from aiogram.filters import BaseFilter, CommandObject
 from aiogram.types import CallbackQuery, Message
 
 from models import Player
@@ -32,6 +32,7 @@ __all__ = [
     "message_error",
     "energy_bar",
     "editable_message",
+    "extract_args",
     "CommandOrText",
     "is_admin_or_owner",
 ]
@@ -102,6 +103,19 @@ def fmt(value: int) -> str:
     if value >= 10_000:
         return f"{value / 1_000:.1f}k"
     return f"{value:,}"
+
+
+def extract_args(message: Message, command: CommandObject | None = None) -> list[str]:
+    """Whitespace-separated arguments after the command word.
+
+    Works for both ``/work 5`` (aiogram parses ``command.args``) and plain
+    Persian triggers like ``کار 5`` (the command word is simply token 0).
+    """
+    if command and command.args:
+        return list(command.args.split())
+    text = (message.text or "").strip()
+    parts = text.split()
+    return list(parts[1:]) if len(parts) > 1 else []
 
 
 async def hydrate(user_id: int, display_name: str, username: str | None) -> Player:

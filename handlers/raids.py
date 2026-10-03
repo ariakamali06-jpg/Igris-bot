@@ -140,6 +140,12 @@ class GroupActivityMiddleware(BaseMiddleware):
                 logger.exception("raid counter failed for chat %s", chat.id)
                 spawn = None
 
+            try:
+                # Phase 4: every group message feeds the روزانه chat bonus.
+                await economy.bump_chat_activity(user.id)
+            except Exception:  # noqa: BLE001 - reward counting must never break handlers
+                logger.exception("chat-activity counter failed for %s", user.id)
+
             if spawn is not None:
                 bot = data.get("bot")
                 if bot is not None:

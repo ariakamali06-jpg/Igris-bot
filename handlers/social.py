@@ -308,7 +308,12 @@ async def cmd_affair(message: Message) -> None:
 
     reply = message.reply_to_message
     if reply is None or reply.from_user is None:
-        await message.reply("🤫 برای برقراری رابطه پنهانی، روی پیام پارتنر خیانت ریپلای بزنید و بنویسید <code>خیانت</code>!")
+        usage = "🤫 برای برقراری رابطه پنهانی، روی پیام پارتنر خیانت ریپلای بزنید و بنویسید <code>خیانت</code>!"
+        try:
+            record = await tiramix.affair_record()
+        except Exception:  # noqa: BLE001 - the record must never block usage
+            record = ""
+        await message.reply(f"{usage}\n\n{record}".rstrip())
         return
 
     partner_user = reply.from_user

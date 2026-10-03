@@ -10,6 +10,7 @@ import random
 import time
 from typing import Any
 
+from config import settings
 from database.connection import db
 from models.enums import ActivityKind
 from models.player import Player
@@ -379,6 +380,16 @@ async def attempt_theft(thief: Player, victim: Player) -> dict[str, Any]:
             "message": f"⏳ پلیس شهر تیرامیکس به شما مشکوک است! برای سرقت بعدی باید <b>{rem_min} دقیقه</b> صبر کنید.",
         }
 
+    # سپر ضدسرقت: the victim's active cover turns the attempt into a clean
+    # miss — no loot, no jail, no fine for the thief (Ocean port phase 1).
+    if victim.shield_until > now:
+        return {
+            "success": False,
+            "blocked": "shield",
+            "message": f"🛡️ <b>سپر ضدسرقت {victim.display_name} کار کرد!</b>\n\n"
+                       "دستت به جیب نرسید و بی‌سر و صدا عقب کشیدی؛ نه زندان، نه جریمه.",
+        }
+
     victim_cash, _ = await economy.balances(victim.user_id)
     if victim_cash < 50:
         return {
@@ -650,13 +661,43 @@ async def attempt_affair(cheater: Player, partner: Player, victim_spouse: Player
                        f"هم‌اکنون همسر می‌تواند با دستور <code>طلاق</code> دادخواست جدایی دهد!",
         }
     else:
-        # Secret kept safe
+        # Secret kept safe — count it toward the city's cheater record.
+        async with db.write() as conn:
+            await conn.execute(
+                "UPDATE players SET affair_count = affair_count + 1 "
+                "WHERE user_id = ?",
+                (cheater.user_id,),
+            )
         return {
             "success": True,
             "busted": False,
             "message": f"🤫 <b>ملاقات مخفیانه بدون ردپا انجام شد!</b>\n\n"
                        f"همسر متوجه هیچ سرنخی نشد.",
         }
+
+
+async def affair_record() -> str:
+    """رکورد خیانتکارها — the leaderboard shown with ``خیانت`` (phase 4)."""
+    async with db.read() as conn:
+        cursor = await conn.execute(
+            "SELECT display_name, affair_count FROM players "
+            "WHERE affair_count > 0 "
+            "ORDER BY affair_count DESC, user_id LIMIT ?",
+            (settings.affair_record_top,),
+        )
+        rows = await cursor.fetchall()
+        await cursor.close()
+    if not rows:
+        return (
+            "🏆 <b>رکورد خیانتکارها:</b> "
+            "هنوز کسی ردپایی از خودش باقی نذاشته."
+        )
+    lines = [
+        f"{index}. {row['display_name']} — "
+        f"<b>{row['affair_count']}</b> خیانت مخفی"
+        for index, row in enumerate(rows, 1)
+    ]
+    return "🏆 <b>رکورد خیانتکارها:</b>\n" + "\n".join(lines)
 
 
 # ---------------------------------------------------------------------------

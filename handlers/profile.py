@@ -87,6 +87,13 @@ async def _profile_panel(player: Player) -> tuple[str, bytes]:
         if clan_info:
             clan_name = f"🛡 {clan_info['name']}"
 
+    pet_status = f"لول {player.pet_level}" if player.pet_level > 0 else "ندارد"
+    shield_status = (
+        f"فعال ({int((player.shield_until - now) // 60)} دقیقه)"
+        if player.shield_until > now
+        else "غیرفعال"
+    )
+
     lines = [
         f"🍁 <b>شناسنامه شهروندی شهر تیرامیکس</b>",
         "",
@@ -98,6 +105,8 @@ async def _profile_panel(player: Player) -> tuple[str, bytes]:
         f"💰 <b>کیف پول:</b> <b>{credits:,}</b> سکه | 🏦 <b>بانک:</b> <b>{player.bank_balance:,}</b> سکه",
         f"🛡 <b>کلن:</b> {clan_name} | ⚖️ <b>وضعیت قضایی:</b> {jail_status}",
         f"⚔️ قدرت: <b>{player.atk}</b> · 🛡 دفاع: <b>{player.defense}</b> · 💎 استایل: <b>{player.drip}</b>",
+        f"🐺 <b>حیوان:</b> {pet_status} | 🤫 <b>خیانت مخفی:</b> {player.affair_count}",
+        f"🛡 <b>سپر ضدسرقت:</b> {shield_status}",
     ]
 
     return "\n".join(lines), photo

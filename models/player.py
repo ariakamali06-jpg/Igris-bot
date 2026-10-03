@@ -80,6 +80,9 @@ class Player:
     children_count: int = 0
     is_pregnant_until: int = 0
     is_jailed_until: int = 0
+    shield_until: int = 0
+    pet_level: int = 0
+    affair_count: int = 0
     bank_balance: int = 0
     loan_amount: int = 0
     loan_due: int = 0

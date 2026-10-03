@@ -210,8 +210,29 @@ class ActivityResult:
 _DAY_SECONDS = 86_400
 
 
+async def bump_chat_activity(user_id: int, *, amount: int = 1) -> None:
+    """Count group messages toward the next روزانه chat bonus (phase 4).
+
+    Called from the group-activity middleware for every real group message;
+    the counter is paid out and reset inside :func:`claim_daily`.
+    """
+    async with db.write() as conn:
+        await conn.execute(
+            "INSERT INTO chat_activity (user_id, messages, updated_at) "
+            "VALUES (?, ?, ?) "
+            "ON CONFLICT(user_id) DO UPDATE SET "
+            "messages = messages + excluded.messages, "
+            "updated_at = excluded.updated_at",
+            (user_id, amount, now()),
+        )
+
+
 async def claim_daily(user_id: int, drip: int) -> ActivityResult:
-    """One reward per rolling 24h. Drip adds a small bonus multiplier."""
+    """One reward per rolling 24h. Drip adds a small bonus multiplier.
+
+    Phase 4: the pending chat-activity balance rides along with this payout
+    and is reset, so talking in the group fattens the daily bag.
+    """
     bonus = 1.0 + drip_discount(drip)  # charisma makes the daily bag fatter
     credits = int(settings.daily_claim_credits * bonus)
     shards = settings.daily_claim_shards
@@ -237,6 +258,25 @@ async def claim_daily(user_id: int, drip: int) -> ActivityResult:
         await conn.execute(
             "UPDATE players SET last_daily = ? WHERE user_id = ?", (current, user_id)
         )
+
+        # Chat bonus: counted messages x config rate, capped, then reset.
+        cursor = await conn.execute(
+            "SELECT messages FROM chat_activity WHERE user_id = ?", (user_id,)
+        )
+        chat_row = await cursor.fetchone()
+        await cursor.close()
+        chat_messages = int(chat_row["messages"]) if chat_row else 0
+        chat_bonus = min(chat_messages, settings.chat_reward_cap) * (
+            settings.chat_reward_per_message
+        )
+        if chat_messages > 0:
+            await conn.execute(
+                "UPDATE chat_activity SET messages = 0, updated_at = ? "
+                "WHERE user_id = ?",
+                (current, user_id),
+            )
+
+        credits += chat_bonus
         await mutate(
             conn,
             user_id,
@@ -246,10 +286,17 @@ async def claim_daily(user_id: int, drip: int) -> ActivityResult:
             ref="daily",
         )
 
+    detail = f"+{credits:,} سکه و +{shards} شارد روح به حسابت اضافه شد."
+    if chat_bonus > 0:
+        detail += (
+            f"\n💬 پاداش فعالیت چت: {chat_messages} پیام "
+            f"→ +{chat_bonus:,} سکه"
+        )
+
     return ActivityResult(
         True,
         "حقوق روزانه دریافت شد! 🎁",
-        f"+{credits:,} سکه و +{shards} شارد روح به حسابت اضافه شد.",
+        detail,
         credits_delta=credits,
         shards_delta=shards,
         exp_gained=settings.daily_exp,

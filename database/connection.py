@@ -92,6 +92,7 @@ class Database:
         script = SCHEMA_PATH.read_text(encoding="utf-8")
         assert self._write_conn is not None
         await self._write_conn.executescript(script)
+        await self._widen_items_pool()
 
         # Migrate columns for players table
         cursor = await self._write_conn.execute("PRAGMA table_info(players)")
@@ -112,6 +113,9 @@ class Database:
             ("children_count", "INTEGER", "0"),
             ("is_pregnant_until", "INTEGER", "0"),
             ("is_jailed_until", "INTEGER", "0"),
+            ("shield_until", "INTEGER", "0"),
+            ("pet_level", "INTEGER", "0"),
+            ("affair_count", "INTEGER", "0"),
             ("bank_balance", "INTEGER", "0"),
             ("loan_amount", "INTEGER", "0"),
             ("loan_due", "INTEGER", "0"),
@@ -155,6 +159,64 @@ class Database:
                 FOREIGN KEY (clan_id) REFERENCES clans(clan_id),
                 FOREIGN KEY (user_id) REFERENCES players(user_id)
             )
+            """
+        )
+
+    async def _widen_items_pool(self) -> None:
+        """Phase-3 migration: legacy ``items`` CHECK lacks the black-market pool.
+
+        SQLite cannot ``ALTER`` a CHECK constraint, so rebuild the table —
+        it is code-owned (``database/items.py``) and re-seeded on startup, so
+        no player data lives here. Runs with foreign keys off; the table is
+        recreated under its original name, so ``REFERENCES items`` clauses in
+        ``inventory``/``bazaar_listings`` stay valid.
+        """
+        assert self._write_conn is not None
+        cursor = await self._write_conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'items'"
+        )
+        row = await cursor.fetchone()
+        await cursor.close()
+        ddl = str(row["sql"]) if row and row["sql"] else ""
+        if not ddl or "blackmarket" in ddl:
+            return  # fresh install or already migrated
+        logger.info("migrating items table: widening the shop_pool CHECK")
+        await self._write_conn.executescript(
+            """
+            PRAGMA foreign_keys = OFF;
+            CREATE TABLE items_v2 (
+                id                TEXT    PRIMARY KEY,
+                name              TEXT    NOT NULL,
+                slot              TEXT    NOT NULL
+                                  CHECK (slot IN ('head', 'body', 'legs',
+                                                  'weapon', 'accessory', 'aura')),
+                rarity            TEXT    NOT NULL
+                                  CHECK (rarity IN ('common', 'rare',
+                                                    'epic', 'legendary')),
+                atk               INTEGER NOT NULL DEFAULT 0,
+                defense           INTEGER NOT NULL DEFAULT 0,
+                drip              INTEGER NOT NULL DEFAULT 0,
+                price_credits     INTEGER NOT NULL DEFAULT 0
+                                  CHECK (price_credits >= 0),
+                price_soul_shards INTEGER NOT NULL DEFAULT 0
+                                  CHECK (price_soul_shards >= 0),
+                layer_key         TEXT    NOT NULL,
+                description       TEXT    NOT NULL DEFAULT '',
+                shop_pool         TEXT    NOT NULL DEFAULT 'rotating'
+                                  CHECK (shop_pool IN ('rotating', 'permanent',
+                                                       'starter', 'blackmarket')),
+                UNIQUE (slot, layer_key)
+            );
+            INSERT INTO items_v2 (id, name, slot, rarity, atk, defense, drip,
+                                  price_credits, price_soul_shards, layer_key,
+                                  description, shop_pool)
+                SELECT id, name, slot, rarity, atk, defense, drip,
+                       price_credits, price_soul_shards, layer_key,
+                       description, shop_pool
+                FROM items;
+            DROP TABLE items;
+            ALTER TABLE items_v2 RENAME TO items;
+            PRAGMA foreign_keys = ON;
             """
         )
 
