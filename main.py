@@ -38,7 +38,7 @@ logger = logging.getLogger("main")
 
 async def _start_health_server() -> asyncio.Server | None:
     """Tiny HTTP server so Railway / Cloud deployment health checks pass."""
-    port_str = os.environ.get("PORT", "7860")
+    port_str = os.environ.get("PORT")
     if not port_str:
         return None
     try:
