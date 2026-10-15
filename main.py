@@ -92,6 +92,14 @@ async def on_startup(bot: Bot) -> None:
     me = await bot.get_me()
     logger.info("bot online as @%s", me.username)
 
+    try:
+        wh = await bot.get_webhook_info()
+        if wh.url:
+            logger.info("Removing legacy webhook '%s' for polling mode...", wh.url)
+            await bot.delete_webhook(drop_pending_updates=False)
+    except Exception as exc:
+        logger.warning("Could not check/delete webhook: %s", exc)
+
 
 async def on_shutdown() -> None:
     await db.close()
