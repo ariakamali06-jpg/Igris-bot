@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+
 import pytest
 from aiogram import Bot, Dispatcher
 from aiogram.types import Chat, Message, Update, User
@@ -37,11 +38,11 @@ async def test_persian_plain_text_triggers(monkeypatch):
     monkeypatch.setattr(Message, "reply", fake_reply)
     monkeypatch.setattr(Message, "reply_photo", fake_reply_photo)
 
-    bot = Bot(token="987654321:AAFakeTokenForLocalTesting123456789")
+    bot = Bot(token="123456789:AABBCCDDEEFFGGHHIIJJKKLLMMNNOOPPQQR")
 
     chat = Chat(id=123, type="private")
     user = User(id=123, is_bot=False, first_name="Aria", username="aria")
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     # 1. Test "پروفایل" (Profile)
     msg1 = Message(message_id=1, date=now, chat=chat, from_user=user, text="پروفایل")

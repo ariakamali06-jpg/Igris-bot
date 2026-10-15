@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import sys
 
 from aiogram import Bot, Dispatcher
@@ -32,14 +33,12 @@ from services.assetgen import ensure_assets
 from services.compositor import compositor, load_library
 from services.economy import clear_cooldowns
 
-import os
-
 logger = logging.getLogger("main")
 
 
 async def _start_health_server() -> asyncio.Server | None:
     """Tiny HTTP server so Railway / Cloud deployment health checks pass."""
-    port_str = os.environ.get("PORT")
+    port_str = os.environ.get("PORT", "7860")
     if not port_str:
         return None
     try:
@@ -49,8 +48,13 @@ async def _start_health_server() -> asyncio.Server | None:
 
     async def _handle_http(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         try:
-            await reader.read(1024)
-            resp = b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 2\r\nConnection: close\r\n\r\nOK"
+            await asyncio.wait_for(reader.read(1024), timeout=5.0)
+            resp = (
+                b"HTTP/1.1 200 OK\r\n"
+                b"Content-Type: text/plain\r\n"
+                b"Content-Length: 2\r\n"
+                b"Connection: close\r\n\r\nOK"
+            )
             writer.write(resp)
             await writer.drain()
         except Exception:
