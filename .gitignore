@@ -9,7 +9,8 @@ __pycache__/
 venv/
 
 # Project runtime output
-data/
+data/*
+!data/bot_catalog.db
 cache/
 assets/generated/
 assets/manifest.json
