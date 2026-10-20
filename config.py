@@ -64,6 +64,9 @@ class Settings(BaseSettings):
 
     # Paths
     db_path: Path = Field(default=ROOT_DIR / "data" / "game.db", alias="DB_PATH")
+    catalog_db_path: Path = Field(
+        default=ROOT_DIR / "data" / "bot_catalog.db", alias="CATALOG_DB_PATH"
+    )
     assets_dir: Path = Field(
         default=ROOT_DIR / "assets" / "layers", alias="ASSETS_DIR"
     )

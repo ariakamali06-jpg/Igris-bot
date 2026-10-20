@@ -52,7 +52,6 @@ _INVENTORY_PAGE_SIZE = 6
 
 PROFILE_COMMANDS = {"پروفایل", "من", "کارت", "کاراکتر", "مشخصات", "profile", "me", "card"}
 INVENTORY_COMMANDS = {
-    "کمد",
     "کوله",
     "کوله پشتی",
     "کوله_پشتی",
@@ -60,7 +59,6 @@ INVENTORY_COMMANDS = {
     "اینونتوری",
     "inventory",
     "inv",
-    "wardrobe",
 }
 
 

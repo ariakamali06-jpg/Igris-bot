@@ -161,6 +161,38 @@ class Database:
             )
             """
         )
+        await self._write_conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS player_avatar (
+                user_id          INTEGER PRIMARY KEY REFERENCES players (user_id) ON DELETE CASCADE,
+                skin_tone        INTEGER NOT NULL DEFAULT -1,
+                is_plus_size     INTEGER NOT NULL DEFAULT 0,
+                active_set_id    INTEGER DEFAULT NULL,
+                equipped_var_ids TEXT    NOT NULL DEFAULT '[]',
+                updated_at       INTEGER NOT NULL DEFAULT 0
+            )
+            """
+        )
+        await self._write_conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS player_wardrobe (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id      INTEGER NOT NULL REFERENCES players (user_id) ON DELETE CASCADE,
+                set_id       INTEGER NOT NULL,
+                set_name     TEXT    NOT NULL,
+                gender       TEXT    NOT NULL,
+                item_count   INTEGER NOT NULL,
+                var_ids      TEXT    NOT NULL,
+                is_plus_size INTEGER NOT NULL DEFAULT 0,
+                price_paid   INTEGER NOT NULL DEFAULT 0,
+                acquired_at  INTEGER NOT NULL DEFAULT 0,
+                UNIQUE (user_id, set_id)
+            )
+            """
+        )
+        await self._write_conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_wardrobe_user ON player_wardrobe (user_id)"
+        )
 
     async def _widen_items_pool(self) -> None:
         """Phase-3 migration: legacy ``items`` CHECK lacks the black-market pool.

@@ -14,6 +14,7 @@ from handlers import (
     admin,
     bazaar,
     blackmarket,
+    boutique,
     casino,
     contracts,
     cup,
@@ -45,6 +46,7 @@ def register_routers(dp: Dispatcher) -> None:
     dp.include_router(profile.router)
     dp.include_router(economy.router)
     dp.include_router(shop.router)
+    dp.include_router(boutique.router)
     dp.include_router(social.router)
     dp.include_router(duels.router)
     dp.include_router(raids.router)
@@ -82,6 +84,7 @@ __all__ = [
     "profile",
     "economy",
     "shop",
+    "boutique",
     "duels",
     "raids",
     "properties",

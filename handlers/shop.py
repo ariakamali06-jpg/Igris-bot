@@ -121,7 +121,10 @@ async def _shop_page(player: Player, page: int, category: str = "all") -> tuple[
     if nav:
         buttons.append(nav)
     buttons.append(
-        [InlineKeyboardButton(text="🏠 کارت من", callback_data="act:me")]
+        [
+            InlineKeyboardButton(text="👗 بوتیک مد روزانه", callback_data="btq:cat:female"),
+            InlineKeyboardButton(text="🏠 کارت من", callback_data="act:me"),
+        ]
     )
 
     return "\n".join(lines), InlineKeyboardMarkup(inline_keyboard=buttons)
