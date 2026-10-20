@@ -38,6 +38,7 @@ class Settings(BaseSettings):
     )
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
     dry_run: bool = Field(default=False, alias="DRY_RUN")
+    webapp_url: str = Field(default="", alias="WEBAPP_URL")
 
     # --- Channels & Sponsorship ---------------------------------------------
     force_channel_join: bool = Field(default=True, alias="FORCE_CHANNEL_JOIN")

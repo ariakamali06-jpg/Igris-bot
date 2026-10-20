@@ -10,6 +10,7 @@ Provides:
 from __future__ import annotations
 
 import contextlib
+import json
 import logging
 from typing import Any
 
@@ -23,8 +24,10 @@ from aiogram.types import (
     InlineKeyboardMarkup,
     InputMediaPhoto,
     Message,
+    WebAppInfo,
 )
 
+from config import settings
 from models.player import Player
 from services import avatar, game
 
@@ -35,6 +38,7 @@ router = Router(name="boutique")
 BOUTIQUE_COMMANDS = {"بوتیک", "ویترین", "شاپ_لباس", "boutique", "fashion"}
 WARDROBE_COMMANDS = {"کمد", "کمد_لباس", "لباسهام", "wardrobe", "closet"}
 AVATAR_COMMANDS = {"آواتار", "ظاهر", "پوست", "avatar"}
+CUSTOMIZER_COMMANDS = {"کاستومایز", "شخصی_سازی", "طراحی_کاراکتر", "مینی_اپ", "customizer", "app"}
 
 GENDER_LABELS = {
     "female": "🚺 دخترانه",
@@ -276,6 +280,15 @@ async def _build_wardrobe_card(
         InlineKeyboardButton(text="❌ درآوردن لباس", callback_data=f"wdr:unequip:{idx}"),
     ]
 
+    if settings.webapp_url:
+        options_row.insert(
+            0,
+            InlineKeyboardButton(
+                text="📱 مینی‌اپ شخصی‌سازی",
+                web_app=WebAppInfo(url=settings.webapp_url),
+            ),
+        )
+
     bottom_row = [
         InlineKeyboardButton(text="🛍 رفتن به بوتیک", callback_data="btq:cat:female"),
         InlineKeyboardButton(text="🚪 بستن کمد", callback_data="btq:close"),
@@ -401,7 +414,115 @@ async def handle_avatar_command(message: Message) -> None:
             ],
         ]
     )
+    if settings.webapp_url:
+        markup.inline_keyboard.insert(
+            0,
+            [
+                InlineKeyboardButton(
+                    text="📱 مینی‌اپ شخصی‌سازی کاراکتر",
+                    web_app=WebAppInfo(url=settings.webapp_url),
+                )
+            ],
+        )
     await message.reply_photo(photo=photo_payload, caption=caption, reply_markup=markup)
+
+
+@router.message(Command("customizer", "app"))
+@router.message(F.text.lower().in_(CUSTOMIZER_COMMANDS))
+async def handle_customizer_command(message: Message) -> None:
+    """Launch or guide user to the character customizer Mini App."""
+    if not message.from_user:
+        return
+    user_id = message.from_user.id
+    await game.ensure_player(
+        user_id=user_id,
+        username=message.from_user.username or "",
+        display_name=message.from_user.full_name or "مسافر",
+    )
+    render_url = await avatar.get_player_render_url(user_id)
+    photo_payload = await _render_photo_payload(render_url, "avatar.png")
+
+    caption = (
+        "👑 <b>مینی‌اپ شخصی‌سازی و تجهیز کاراکتر ایگریس</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "در این بخش می‌توانید آواتار خود را با بیش از ۹,۰۰۰ قطعه در ۵ ناحیه بدنه "
+        "(سر، بالاتنه، پایین‌تنه، کفش و اکسسوری) به صورت زنده طراحی و ست کنید.\n\n"
+        "✨ کلیه تغییرات بدون تاخیر روی ماکت اعمال شده و با زدن دکمه ذخیره، "
+        "آواتار شما در ربات ثبت می‌گردد."
+    )
+
+    buttons: list[list[InlineKeyboardButton]] = []
+    if settings.webapp_url:
+        buttons.append(
+            [
+                InlineKeyboardButton(
+                    text="📱 باز کردن مینی‌اپ شخصی‌سازی",
+                    web_app=WebAppInfo(url=settings.webapp_url),
+                )
+            ]
+        )
+    buttons.append(
+        [
+            InlineKeyboardButton(text="👕 کمد لباس من", callback_data="wdr:view:0"),
+            InlineKeyboardButton(text="🛍 ویترین بوتیک", callback_data="btq:cat:female"),
+        ]
+    )
+    buttons.append([InlineKeyboardButton(text="🚪 بستن", callback_data="btq:close")])
+
+    markup = InlineKeyboardMarkup(inline_keyboard=buttons)
+    await message.reply_photo(photo=photo_payload, caption=caption, reply_markup=markup)
+
+
+@router.message(F.web_app_data)
+async def handle_customizer_webapp_data(message: Message) -> None:
+    """Handle character customizer Mini App submission."""
+    if not message.from_user or not message.web_app_data:
+        return
+    user_id = message.from_user.id
+    try:
+        raw_data = message.web_app_data.data
+        data = json.loads(raw_data)
+        var_ids = [int(x) for x in data.get("items", [])]
+        skin_idx = int(data.get("skin", 1))
+        body = str(data.get("body", "slim"))
+        is_plus = 1 if body == "plus" else 0
+
+        # Skin tone ID: slim 1..5 -> -1..-5, plus 1..6 -> -7..-12 or -6
+        if is_plus:
+            skin_map = {1: -7, 2: -8, 3: -9, 4: -10, 5: -11, 6: -6}
+            skin_tone_id = skin_map.get(skin_idx, -7)
+        else:
+            skin_map = {1: -1, 2: -2, 3: -3, 4: -4, 5: -5}
+            skin_tone_id = skin_map.get(skin_idx, -1)
+
+        await avatar.save_custom_avatar(
+            user_id=user_id,
+            var_ids=var_ids,
+            skin_tone=skin_tone_id,
+            is_plus_size=is_plus,
+        )
+
+        render_url = await avatar.get_player_render_url(user_id)
+        photo_payload = await _render_photo_payload(render_url, "custom_avatar.png")
+
+        caption = (
+            "✨ <b>استایل جدید کاراکتر شما با موفقیت ثبت شد!</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            f"👕 <b>تعداد قطعات بر تن:</b> {len(var_ids)} قلم\n"
+            f"🧍 <b>فرم بدنه:</b> {'پلاس' if is_plus else 'اسلیم'}\n\n"
+            "استایل شما در تمامی مبارزات، رویدادها و پروفایل عمومی بازی "
+            "با این ظاهر نمایش داده می‌شود."
+        )
+        markup = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="👕 کمد لباس", callback_data="wdr:view:0")],
+                [InlineKeyboardButton(text="🚪 بستن", callback_data="btq:close")],
+            ]
+        )
+        await message.reply_photo(photo=photo_payload, caption=caption, reply_markup=markup)
+    except Exception as exc:
+        logger.warning("Error processing customizer web_app_data: %s", exc)
+        await message.reply("❌ در پردازش و ذخیره استایل شما مشکلی پیش آمد.")
 
 
 # -----------------------------------------------------------------------------

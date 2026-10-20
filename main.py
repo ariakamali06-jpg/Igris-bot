@@ -23,7 +23,7 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.exceptions import TelegramConflictError
 
-from config import settings
+from config import ROOT_DIR, settings
 from database.connection import db
 from database.seed import seed_catalog
 from handlers import register_routers
@@ -46,9 +46,29 @@ async def _start_health_server() -> asyncio.Server | None:
     except ValueError:
         return None
 
+    webapp_path = ROOT_DIR / "tools" / "customizer_webapp.html"
+
     async def _handle_http(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         try:
-            await asyncio.wait_for(reader.read(1024), timeout=5.0)
+            line = await asyncio.wait_for(reader.read(1024), timeout=5.0)
+            req_str = line.decode("utf-8", errors="ignore")
+            # If requesting customizer mini-app, webapp, or root browser view
+            is_webapp_req = (
+                "GET /customizer" in req_str
+                or "GET /webapp" in req_str
+                or ("GET / " in req_str and "Mozilla" in req_str)
+            )
+            if is_webapp_req and webapp_path.exists():
+                html_bytes = webapp_path.read_bytes()
+                headers = (
+                    f"HTTP/1.1 200 OK\r\n"
+                    f"Content-Type: text/html; charset=utf-8\r\n"
+                    f"Content-Length: {len(html_bytes)}\r\n"
+                    f"Connection: close\r\n\r\n"
+                ).encode()
+                writer.write(headers + html_bytes)
+                await writer.drain()
+                return
             resp = (
                 b"HTTP/1.1 200 OK\r\n"
                 b"Content-Type: text/plain\r\n"

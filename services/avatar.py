@@ -306,12 +306,47 @@ async def unequip(user_id: int) -> None:
         )
 
 
+async def save_custom_avatar(
+    user_id: int,
+    var_ids: list[int],
+    skin_tone: int = -1,
+    is_plus_size: int = 0,
+) -> dict[str, Any]:
+    """Save player custom avatar composition from customizer / Mini App."""
+    await get_player_avatar(user_id)  # ensure row exists
+    now_ts = int(time.time())
+    async with db.write() as conn:
+        await conn.execute(
+            """
+            UPDATE player_avatar
+            SET equipped_var_ids = ?,
+                skin_tone = ?,
+                is_plus_size = ?,
+                updated_at = ?
+            WHERE user_id = ?
+            """,
+            (json.dumps(var_ids), skin_tone, is_plus_size, now_ts, user_id),
+        )
+    return {
+        "user_id": user_id,
+        "equipped_var_ids": var_ids,
+        "skin_tone": skin_tone,
+        "is_plus_size": is_plus_size,
+    }
+
+
 async def get_player_render_url(user_id: int, width: int | None = None) -> str:
     """Generate the full render URL for the player's active avatar."""
     avatar = await get_player_avatar(user_id)
     skin_tone = avatar["skin_tone"]
+    is_plus = avatar.get("is_plus_size", 0)
     equipped = avatar["equipped_var_ids"]
-    full_vars = equipped + [skin_tone]
+    if is_plus:
+        plus_head_map = {-7: -13, -8: -14, -9: -15, -10: -16, -11: -17, -6: -12}
+        head_id = plus_head_map.get(skin_tone, -13)
+        full_vars = equipped + [skin_tone, head_id]
+    else:
+        full_vars = equipped + [skin_tone]
     return get_render_url(full_vars, width=width)
 
 
