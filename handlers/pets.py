@@ -1,4 +1,11 @@
-"""حیوان — pet shop, upgrades and the reply-based street battle."""
+"""هندلرهای نگهداری، ارتقا و نبردهای خیابانی حیوانات خانگی (Pets) در تیرامیکس.
+
+شامل:
+- خرید و به سرپرستی گرفتن اولین حیوان
+- ارتقای سطح و لول آپ حیوان خانگی برای افزایش قدرت مبارزه
+- چالش نبرد و شرط‌بندی خیابانی با حیوان دیگر بازیکنان
+- پذیرش، رد یا لغو چالش نبرد
+"""
 
 from __future__ import annotations
 
@@ -9,7 +16,13 @@ from aiogram.filters import CommandObject
 from aiogram.types import Message
 
 from config import settings
-from handlers.common import CommandOrText, answer_error, extract_args, hydrate
+from handlers.common import (
+    CommandOrText,
+    answer_error,
+    extract_args,
+    hydrate,
+    resolve_target_player,
+)
 from models import Player
 from services import economy, pets
 from services.game import GameError
@@ -26,26 +39,27 @@ _DECLINE_ACTIONS = {"رد", "decline", "نه"}
 _CANCEL_ACTIONS = {"لغو", "cancel"}
 
 _USAGE = (
-    "🐺 <b>حیوان خیابان</b>\n"
-    "• <code>حیوان</code> — وضعیت و قوانین\n"
-    "• <code>حیوان خرید</code> — خرید اولین حیوان\n"
-    "• <code>حیوان ارتقا</code> — یک لول بالاتر\n"
-    "• <code>حیوان نبرد [مبلغ]</code> — چالش (ریپلای حریف)\n"
-    "• <code>حیوان نبرد</code> — قبول چالش (ریپلای چالش)\n"
-    "• <code>حیوان نبرد رد</code> / <code>حیوان نبرد لغو</code>"
+    "🐺 <b>سیستم حیوانات خیابانی شهر تیرامیکس</b>\n\n"
+    "• <code>حیوان</code> — مشاهده وضعیت، لول و قدرت حیوان فعلی\n"
+    "• <code>حیوان خرید</code> — خرید و نگهداری اولین حیوان\n"
+    "• <code>حیوان ارتقا</code> — ارتقای سطح حیوان برای افزایش قدرت مبارزه\n"
+    "• <code>حیوان نبرد [مبلغ]</code> — دعوت به چالش نبرد (در ریپلای به حریف)\n"
+    "• <code>حیوان نبرد</code> — پذیرش چالش ارسال‌شده (در ریپلای به پیام چالش)\n"
+    "• <code>حیوان نبرد رد</code> / <code>حیوان نبرد لغو</code> — رد یا پس‌گرفتن چالش"
 )
 
 
-async def _reply_target(message: Message) -> Player:
-    reply = message.reply_to_message
-    target = reply.from_user if reply else None
+async def _reply_target(message: Message, token: str = "") -> Player:
+    """شناسایی حریف مبارزه حیوانات از طریق ریپلای، آیدی یا یوزرنیم."""
+    target = await resolve_target_player(message, token)
     if target is None:
-        raise GameError("روی پیام طرف ریپلای کن.")
-    return await hydrate(target.id, target.full_name, target.username)
+        raise GameError("روی پیام حریف ریپلای کنید یا آیدی/یوزرنیم او را بنویسید.")
+    return target
 
 
 @router.message(CommandOrText(["pet"], words=PET_WORDS))
 async def cmd_pet(message: Message, command: CommandObject | None = None) -> None:
+    """مدیریت فرامین و تعاملات مربوط به حیوان خانگی بازیکن."""
     user = message.from_user
     if user is None:
         return
@@ -59,6 +73,7 @@ async def cmd_pet(message: Message, command: CommandObject | None = None) -> Non
 
 
 async def _dispatch(message: Message, player: Player, args: list[str]) -> dict:
+    """هدایت دستور حیوان به متدهای متناسب در سرویس بازی."""
     if not args:
         return await pets.status(player)
 
@@ -67,9 +82,7 @@ async def _dispatch(message: Message, player: Player, args: list[str]) -> dict:
         economy.require_ready(player.user_id, "pet_buy", settings.cooldown_pet)
         return await pets.buy(player)
     if action in _UPGRADE_ACTIONS:
-        economy.require_ready(
-            player.user_id, "pet_upgrade", settings.cooldown_pet
-        )
+        economy.require_ready(player.user_id, "pet_upgrade", settings.cooldown_pet)
         return await pets.upgrade(player)
     if action in _BATTLE_ACTIONS:
         return await _battle(message, player, args[1:])
@@ -77,6 +90,7 @@ async def _dispatch(message: Message, player: Player, args: list[str]) -> dict:
 
 
 async def _battle(message: Message, player: Player, rest: list[str]) -> dict:
+    """پردازش مراحل چالش، رد، لغو یا پذیرش نبرد خیابانی حیوانات."""
     if rest:
         sub = rest[0].casefold()
         if sub in _DECLINE_ACTIONS:

@@ -21,7 +21,7 @@ import logging
 import secrets
 
 from aiogram import F, Router
-from aiogram.filters import Command, CommandObject
+from aiogram.filters import CommandObject
 from aiogram.types import (
     CallbackQuery,
     InlineKeyboardButton,
@@ -37,6 +37,7 @@ from handlers.common import (
     editable_message,
     esc,
     hydrate,
+    resolve_target_player,
 )
 from handlers.panel import render_panel
 from models import ActivityKind, Player
@@ -69,21 +70,8 @@ def _parse_stake(args: str) -> tuple[int | None, str]:
 
 
 async def _resolve_target(message: Message, token: str) -> Player | None:
-    """Find the challenged player via reply or numeric id.
-
-    Telegram's API cannot resolve a bare ``@username`` to an id without a
-    member lookup that requires the id in the first place, so the supported
-    paths are: reply to the target, or pass their numeric user id.
-    """
-    if message.reply_to_message and message.reply_to_message.from_user:
-        target_user = message.reply_to_message.from_user
-        return await hydrate(target_user.id, target_user.full_name, target_user.username)
-
-    cleaned = token.lstrip("@")
-    if cleaned.isdigit():
-        user_id = int(cleaned)
-        return await hydrate(user_id, f"Player {user_id}", None)
-    return None
+    """شناسایی حریف مبارزه از طریق ریپلای، آیدی عددی یا نام کاربری دیتابیس."""
+    return await resolve_target_player(message, token)
 
 
 def _parse_stake_text(text: str) -> tuple[int | None, str]:
@@ -102,7 +90,13 @@ def _parse_stake_text(text: str) -> tuple[int | None, str]:
     return stake, " ".join(rest)
 
 
-@router.message(CommandOrText(["duel", "fight"], words={"دوئل", "فایت", "مبارزه", "چالش"}, prefix_words=("دوئل", "مبارزه", "چالش", "duel", "فایت")))
+@router.message(
+    CommandOrText(
+        ["duel", "fight"],
+        words={"دوئل", "فایت", "مبارزه", "چالش"},
+        prefix_words=("دوئل", "مبارزه", "چالش", "duel", "فایت"),
+    )
+)
 async def cmd_duel(message: Message, command: CommandObject | None = None) -> None:
     user = message.from_user
     if user is None:
@@ -113,7 +107,8 @@ async def cmd_duel(message: Message, command: CommandObject | None = None) -> No
         stake = stake_arg if stake_arg is not None else settings.duel_min_bet
         if not settings.duel_min_bet <= stake <= settings.duel_max_bet:
             raise GameError(
-                f"مبلغ شرط باید بین {settings.duel_min_bet:,} تا {settings.duel_max_bet:,} سکه باشد."
+                f"مبلغ شرط باید بین {settings.duel_min_bet:,} تا "
+                f"{settings.duel_max_bet:,} سکه باشد."
             )
 
         challenger = await hydrate(user.id, user.full_name, user.username)
@@ -128,17 +123,22 @@ async def cmd_duel(message: Message, command: CommandObject | None = None) -> No
             )
             return
         if opponent.user_id == challenger.user_id:
-            raise GameError("نمی‌تونی با خودت دوئل کنی چوک!")
+            raise GameError("شما نمی‌توانید با خودتان دوئل کنید!")
 
         # Check challenger balance
         c1, _ = await economy.balances(challenger.user_id)
         if c1 < stake:
-            raise GameError(f"موجودی شما برای این شرط‌بندی کافی نیست! (موجودی شما: {c1:,} سکه)")
+            raise GameError(
+                f"موجودی شما برای این شرط‌بندی کافی نیست! (موجودی شما: {c1:,} سکه)"
+            )
 
         # Check opponent balance
         c2, _ = await economy.balances(opponent.user_id)
         if c2 < stake:
-            raise GameError(f"موجودی {esc(opponent.display_tag)} برای این شرط‌بندی کافی نیست! (موجودی حریف: {c2:,} سکه)")
+            raise GameError(
+                f"موجودی {esc(opponent.display_tag)} برای این شرط‌بندی کافی نیست! "
+                f"(موجودی حریف: {c2:,} سکه)"
+            )
 
         economy.require_ready(user.id, "duel", settings.cooldown_duel)
 
@@ -181,9 +181,11 @@ async def cmd_duel(message: Message, command: CommandObject | None = None) -> No
             ]
         )
         await message.reply(
-            f"⚔️ <b>{esc(challenger.display_tag)}</b>، شما <b>{esc(opponent.display_tag)}</b> را به مبارزه طلبیدید!\n\n"
+            f"⚔️ <b>{esc(challenger.display_tag)}</b>، شما "
+            f"<b>{esc(opponent.display_tag)}</b> را به مبارزه طلبیدید!\n\n"
             f"💰 مبلغ شرط: <b>{stake:,}</b> سکه هر نفر | مجموع پات: <b>{stake * 2:,}</b> سکه\n"
-            f"⏳ {esc(opponent.display_tag)}، شما تا ۱۰ دقیقه فرصت دارید این دوئل را <b>قبول</b> یا <b>رد</b> کنید.",
+            f"⏳ {esc(opponent.display_tag)}، شما تا ۱۰ دقیقه فرصت دارید این دوئل را "
+            f"<b>قبول</b> یا <b>رد</b> کنید.",
             reply_markup=markup,
         )
     except Exception as exc:  # noqa: BLE001
@@ -388,7 +390,10 @@ async def cb_decline(call: CallbackQuery) -> None:
             await call.answer("چالش دوئل توسط شما رد شد.")
             await render_panel(
                 editable_message(call),
-                text=f"🚫 چالش دوئل #{duel_id} توسط <b>{esc(user.full_name)}</b> رد شد و مبلغ شرط مسترد گردید.",
+                text=(
+                    f"🚫 چالش دوئل #{duel_id} توسط <b>{esc(user.full_name)}</b> رد شد "
+                    "و مبلغ شرط مسترد گردید."
+                ),
             )
         else:
             await call.answer("چالش دوئل توسط شما لغو شد.")
@@ -427,9 +432,11 @@ async def _render_round(
         payout = int(log["payout"])
         body += (
             f"\n\n🏆 <b>{esc(winner_name)} پیروز میدان شد!</b> 🎉\n"
-            f"💰 پات مسابقه: <b>{log['stake'] * 2:,}</b> سکه → جایزه واریزی: <b>{payout:,}</b> سکه\n"
+            f"💰 پات مسابقه: <b>{log['stake'] * 2:,}</b> سکه → "
+            f"جایزه واریزی: <b>{payout:,}</b> سکه\n"
             f"🏛 کارمزد شهرداری تیرامیکس: {settings.duel_house_rake:.0%}\n"
-            f"🎖 پاداش تجربه: <b>{settings.duel_exp_win}</b> EXP به برنده و <b>{settings.duel_exp_loss}</b> EXP به بازنده"
+            f"🎖 پاداش تجربه: <b>{settings.duel_exp_win}</b> EXP به برنده و "
+            f"<b>{settings.duel_exp_loss}</b> EXP به بازنده"
         )
         markup = InlineKeyboardMarkup(
             inline_keyboard=[

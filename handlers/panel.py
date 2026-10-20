@@ -25,6 +25,7 @@ instead of dying quietly.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 from typing import Any
 
@@ -142,8 +143,16 @@ async def _try_edit(message: Message, text: str | None, photo: bytes | None,
     # If Telegram rejects with "no text" or "no caption", swap and retry immediately!
     first_fn = message.edit_caption if is_photo_msg else message.edit_text
     second_fn = message.edit_text if is_photo_msg else message.edit_caption
-    first_kw = {"caption": text, "reply_markup": reply_markup} if is_photo_msg else {"text": text or "", "reply_markup": reply_markup}
-    second_kw = {"text": text or "", "reply_markup": reply_markup} if is_photo_msg else {"caption": text, "reply_markup": reply_markup}
+    first_kw = (
+        {"caption": text, "reply_markup": reply_markup}
+        if is_photo_msg
+        else {"text": text or "", "reply_markup": reply_markup}
+    )
+    second_kw = (
+        {"text": text or "", "reply_markup": reply_markup}
+        if is_photo_msg
+        else {"caption": text, "reply_markup": reply_markup}
+    )
 
     try:
         await first_fn(**first_kw)
@@ -151,10 +160,8 @@ async def _try_edit(message: Message, text: str | None, photo: bytes | None,
     except TelegramBadRequest as exc:
         err = str(exc).lower()
         if "message is not modified" in err:
-            try:
+            with contextlib.suppress(Exception):
                 await message.edit_reply_markup(reply_markup=reply_markup)
-            except Exception:
-                pass
             return True
         if "there is no text" in err or "there is no caption" in err:
             try:

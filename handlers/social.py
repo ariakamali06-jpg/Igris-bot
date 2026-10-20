@@ -1,12 +1,21 @@
-"""Tiramix Social Interactions: Theft, Duel, Marriage, Divorce (with random group Judge), Intimacy, Affairs and Clans."""
+"""تعاملات اجتماعی شهروندان تیرامیکس.
+
+شامل:
+- سرقت و جیب‌بری خیابانی (Theft)
+- خواستگاری و ازدواج رسمی (Marriage)
+- دادخواست طلاق و دادگاه خانواده با قاضی تصادفی (Divorce & Judge)
+- روابط عاطفی و زاد و ولد (Intimacy & Childbirth)
+- خیانت و افشاگری روابط پنهانی (Affair)
+- تشکیل کلن‌ها و سندیکاهای شهری (Clans)
+"""
 
 from __future__ import annotations
 
 import logging
-import random
 import time
 
 from aiogram import F, Router
+from aiogram.filters import CommandObject
 from aiogram.types import (
     CallbackQuery,
     InlineKeyboardButton,
@@ -17,91 +26,101 @@ from aiogram.types import (
 from handlers.common import (
     CommandOrText,
     answer_error,
-    esc,
+    extract_args,
     hydrate,
+    resolve_target_player,
 )
-from services import economy, game, tiramix
+from services import game, tiramix
 
 logger = logging.getLogger(__name__)
 router = Router(name="social")
 
-# In-memory proposal and divorce pending storage
+# حافظه موقت درخواست‌های جاری ازدواج و طلاق
 # {target_id: {"proposer_id": int, "proposer_name": str, "timestamp": int}}
 PENDING_MARRIAGES: dict[int, dict] = {}
-# {spouse_id: {"requester_id": int, "requester_name": str, "group_id": int, "judge_id": int, "judge_name": str}}
+# {spouse_id: {"requester_id": int, "requester_name": str, "group_id": int}}
 PENDING_DIVORCES: dict[int, dict] = {}
 
 
 # ---------------------------------------------------------------------------
-# 1. Crime: Theft (دزدی)
+# ۱. سرقت و جیب‌بری خیابانی (Theft)
 # ---------------------------------------------------------------------------
 
+
 @router.message(CommandOrText(["steal", "robbery"], {"دزدی", "جیب‌بری", "خفت‌گیری"}))
-async def cmd_steal(message: Message) -> None:
+async def cmd_steal(message: Message, command: CommandObject | None = None) -> None:
+    """تلاش برای سرقت پول نقد شهروند با ریسک حبس در بازداشتگاه یا جریمه نقدی."""
     user = message.from_user
     if user is None:
         return
 
-    reply = message.reply_to_message
-    if reply is None or reply.from_user is None:
+    args = extract_args(message, command)
+    token = args[0] if args else ""
+    target_player = await resolve_target_player(message, token)
+
+    if target_player is None:
         await message.reply(
-            "🥷 <b>دستور دزدی و جیب‌بری</b>\n\n"
-            "برای سرقت از یک شهروند، باید روی پیام او ریپلای بزنید و بنویسید <code>دزدی</code>!\n"
-            "⚠️ <i>هشدار: در صورت شکست، دادگاه شما را ۵ برابر مبلغ جریمه نقدی یا ۳۰ دقیقه زندانی می‌کند!</i>"
+            "🥷 <b>دستور دزدی و جیب‌بری خیابانی</b>\n\n"
+            "روی پیام قربانی ریپلای کنید یا آیدی/یوزرنیم او را بنویسید: <code>دزدی</code>\n"
+            "⚠️ <i>هشدار: در صورت شکست، جریمه نقدی ۵ برابری یا حبس در انتظارتان است!</i>"
         )
         return
 
-    target_user = reply.from_user
-    if target_user.is_bot:
-        await message.reply("❌ نمی‌توانید از ربات‌ها دزدی کنید!")
+    if target_player.user_id == user.id:
+        await message.reply("❌ دست توی جیب خودت می‌کنی؟ نمی‌تونی از خودت دزدی کنی!")
         return
 
     try:
         thief = await hydrate(user.id, user.full_name, user.username)
-        victim = await hydrate(target_user.id, target_user.full_name, target_user.username)
-
-        res = await tiramix.attempt_theft(thief, victim)
+        res = await tiramix.attempt_theft(thief, target_player)
         await message.reply(res["message"])
     except Exception as exc:  # noqa: BLE001
         await answer_error(exc, message=message)
 
 
 # ---------------------------------------------------------------------------
-# 3. Marriage (ازدواج)
+# ۲. خواستگاری و پیوند ازدواج (Marriage)
 # ---------------------------------------------------------------------------
 
+
 @router.message(CommandOrText(["marry", "propose"], {"ازدواج", "خواستگاری", "عقد"}))
-async def cmd_marriage(message: Message) -> None:
+async def cmd_marriage(message: Message, command: CommandObject | None = None) -> None:
+    """ارسال درخواست رسمی خواستگاری و ثبت عقد شهروندی در تیرامیکس."""
     user = message.from_user
     if user is None:
         return
 
-    reply = message.reply_to_message
-    if reply is None or reply.from_user is None:
+    args = extract_args(message, command)
+    token = args[0] if args else ""
+    target_player = await resolve_target_player(message, token)
+
+    if target_player is None:
         await message.reply(
             "💍 <b>ثبت ازدواج رسمی در شهر تیرامیکس</b>\n\n"
-            "روی پیام عشق یا همسر آینده‌ات ریپلای بزن و بنویس <code>ازدواج</code>!\n"
+            "روی پیام عشق آینده‌تان ریپلای بزنید یا آیدی/یوزرنیم او را وارد کنید:\n"
+            "<code>ازدواج</code>\n"
             "⚠️ <i>شرط: هر دو طرف باید حداقل به لول ۳ رسیده باشند.</i>"
         )
         return
 
-    target_user = reply.from_user
-    if target_user.id == user.id:
+    if target_player.user_id == user.id:
         await message.reply("❌ خودشیفتگی حدی داره! نمی‌تونی با خودت ازدواج کنی! 😂")
         return
 
     try:
         proposer = await hydrate(user.id, user.full_name, user.username)
-        partner = await hydrate(target_user.id, target_user.full_name, target_user.username)
+        partner = target_player
 
         if proposer.spouse_id:
-            await message.reply("❌ شما متأهل هستید! تیرامیکس تک‌همسری است.")
+            await message.reply("❌ شما متأهل هستید! قوانین تیرامیکس تک‌همسری است.")
             return
         if partner.spouse_id:
-            await message.reply(f"❌ {partner.display_name} متأهل است و تعهد دارد!")
+            await message.reply(f"❌ {partner.display_name} در حال حاضر متأهل و متعهد است!")
             return
         if proposer.level < 3 or partner.level < 3:
-            await message.reply("⚠️ برای ثبت ازدواج رسمی، هر دو طرف باید حداقل به <b>لول ۳</b> رسیده باشند.")
+            await message.reply(
+                "⚠️ برای ثبت ازدواج رسمی، هر دو طرف باید حداقل به <b>لول ۳</b> رسیده باشند."
+            )
             return
 
         PENDING_MARRIAGES[partner.user_id] = {
@@ -112,14 +131,21 @@ async def cmd_marriage(message: Message) -> None:
 
         buttons = [
             [
-                InlineKeyboardButton(text="💍 بله! با افتخار می‌پذیرم 💐", callback_data=f"marry:yes:{proposer.user_id}"),
-                InlineKeyboardButton(text="❌ متاسفم، خیر", callback_data=f"marry:no:{proposer.user_id}"),
+                InlineKeyboardButton(
+                    text="💍 بله! با افتخار می‌پذیرم 💐",
+                    callback_data=f"marry:yes:{proposer.user_id}",
+                ),
+                InlineKeyboardButton(
+                    text="❌ متاسفم، خیر",
+                    callback_data=f"marry:no:{proposer.user_id}",
+                ),
             ]
         ]
         text = (
-            f"💐💍 <b>پیشنهاد ازدواج رسمی در شهر تیرامیکس!</b>\n\n"
-            f"کاربر <b>{proposer.display_name}</b> رسماً از شما (<b>{partner.display_name}</b>) خواستگاری کرد!\n\n"
-            f"آیا این پیوند مقدس را می‌پذیرید؟"
+            "💐💍 <b>پیشنهاد ازدواج رسمی در شهر تیرامیکس!</b>\n\n"
+            f"کاربر <b>{proposer.display_name}</b> رسماً از شما "
+            f"(<b>{partner.display_name}</b>) خواستگاری کرد!\n\n"
+            "آیا این پیوند مقدس را می‌پذیرید؟"
         )
         await message.reply(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons))
     except Exception as exc:  # noqa: BLE001
@@ -128,6 +154,7 @@ async def cmd_marriage(message: Message) -> None:
 
 @router.callback_query(F.data.startswith("marry:"))
 async def cb_marry_response(call: CallbackQuery) -> None:
+    """پاسخ به پیشنهاد ازدواج با تایید یا رد از طرف مخاطب."""
     parts = call.data.split(":")
     decision = parts[1]
     proposer_id = int(parts[2])
@@ -161,11 +188,13 @@ async def cb_marry_response(call: CallbackQuery) -> None:
 
 
 # ---------------------------------------------------------------------------
-# 4. Divorce & Random Group Judge (طلاق و قاضی تصادفی)
+# ۳. دادخواست طلاق و دادگاه خانواده (Divorce & Judge)
 # ---------------------------------------------------------------------------
+
 
 @router.message(CommandOrText(["divorce"], {"طلاق", "جدایی"}))
 async def cmd_divorce(message: Message) -> None:
+    """ثبت دادخواست طلاق توافقی یا ارجاع پرونده به دادگاه خانواده گروه."""
     user = message.from_user
     if user is None:
         return
@@ -188,22 +217,29 @@ async def cmd_divorce(message: Message) -> None:
 
         buttons = [
             [
-                InlineKeyboardButton(text="📜 قبول طلاق توافقی", callback_data=f"div:agree:{player.user_id}"),
-                InlineKeyboardButton(text="⚖️ ارجاع پرونده به دادگاه گروه!", callback_data=f"div:court:{player.user_id}"),
+                InlineKeyboardButton(
+                    text="📜 قبول طلاق توافقی",
+                    callback_data=f"div:agree:{player.user_id}",
+                ),
+                InlineKeyboardButton(
+                    text="⚖️ ارجاع پرونده به دادگاه گروه!",
+                    callback_data=f"div:court:{player.user_id}",
+                ),
             ]
         ]
         text = (
-            f"💔 <b>دادخواست رسمی طلاق در تیرامیکس</b>\n\n"
-            f"همسر شما (<b>{player.display_name}</b>) تقاضای جدایی و طلاق کرده است!\n\n"
-            f"آیا با جدایی توافقی موافقید یا پرونده برای حکم نهایی به <b>دادگاه خانواده تیرامیکس</b> با قاضی تصادفی ارجاع شود؟"
+            "💔 <b>دادخواست رسمی طلاق در تیرامیکس</b>\n\n"
+            f"همسر شما (<b>{player.display_name}</b>) تقاضای جدایی کرده است!\n\n"
+            "آیا با جدایی توافقی موافقید یا پرونده به <b>دادگاه خانواده تیرامیکس</b> ارجاع شود؟"
         )
         await message.reply(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons))
     except Exception as exc:  # noqa: BLE001
         await answer_error(exc, message=message)
 
 
-@router.callback_query(F.data.startswith("div:"))
+@router.callback_query(F.data.startswith("div:") | F.data.startswith("divorce:"))
 async def cb_divorce_response(call: CallbackQuery) -> None:
+    """پردازش پاسخ همسر: پذیرش توافقی یا تشکیل دادگاه با قاضی بی‌طرف."""
     parts = call.data.split(":")
     action = parts[1]
     requester_id = int(parts[2])
@@ -219,26 +255,33 @@ async def cb_divorce_response(call: CallbackQuery) -> None:
         PENDING_DIVORCES.pop(user.id, None)
     elif action == "court":
         await call.answer("تشکیل دادگاه خانواده تیرامیکس... ⚖️")
-        # Appoint random judge from group
-        # Pick the user who clicked as a party, and requester as party, judge can be anyone in chat
-        # If bot cannot list members, we announce in chat and first impartial member to vote acts as Judge!
         judge_prompt = (
-            f"⚖️🏛 <b>دادگاه رسمی تیرامیکس تشکیل شد!</b>\n\n"
+            "⚖️🏛 <b>دادگاه رسمی تیرامیکس تشکیل شد!</b>\n\n"
             f"مدعی: <b>{user.full_name}</b> | همسر: کاربر <code>{requester_id}</code>\n"
-            f"به علت عدم توافق، <b>هر یک از اعضای بی‌طرف حاضر در گروه</b> می‌تواند به عنوان قاضی پرونده حکم صادر کند!\n\n"
-            f"جناب قاضی، لطفاً رای نهایی را صادر بفرمایید:"
+            "به علت عدم توافق، <b>اولین عضو بی‌طرف حاضر در گروه</b> قاضی پرونده است!\n\n"
+            "جناب قاضی، لطفاً رای نهایی پرونده را صادر بفرمایید:"
         )
         judge_buttons = [
             [
-                InlineKeyboardButton(text="📜 تایید طلاق و جدایی قطعی", callback_data=f"judge:divorce:{user.id}:{requester_id}"),
-                InlineKeyboardButton(text="❌ رد طلاق (ادامه زندگی مشترک)", callback_data=f"judge:reject:{user.id}:{requester_id}"),
+                InlineKeyboardButton(
+                    text="📜 تایید طلاق و جدایی قطعی",
+                    callback_data=f"judge:divorce:{user.id}:{requester_id}",
+                ),
+                InlineKeyboardButton(
+                    text="❌ رد طلاق (ادامه زندگی مشترک)",
+                    callback_data=f"judge:reject:{user.id}:{requester_id}",
+                ),
             ]
         ]
-        await call.message.edit_text(judge_prompt, reply_markup=InlineKeyboardMarkup(inline_keyboard=judge_buttons))
+        await call.message.edit_text(
+            judge_prompt,
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=judge_buttons),
+        )
 
 
 @router.callback_query(F.data.startswith("judge:"))
 async def cb_judge_verdict(call: CallbackQuery) -> None:
+    """ثبت حکم قطعی قاضی گروه در پرونده طلاق شهروندان."""
     parts = call.data.split(":")
     verdict = parts[1]
     p1_id = int(parts[2])
@@ -257,25 +300,29 @@ async def cb_judge_verdict(call: CallbackQuery) -> None:
     if verdict == "divorce":
         await tiramix.divorce_citizens(p1_id, p2_id)
         verdict_text = (
-            f"⚖️ <b>حکم نهایی دادگاه صادر شد!</b>\n\n"
-            f"جناب قاضی (<b>{judge_user.full_name}</b>) پس از بررسی پرونده، <b>حکم طلاق و جدایی قطعی</b> را صادر کرد.\n"
-            f"طرفین از این لحظه رسماً مجرد هستند."
+            "⚖️ <b>حکم نهایی دادگاه صادر شد!</b>\n\n"
+            f"جناب قاضی (<b>{judge_user.full_name}</b>) پرونده را بررسی و "
+            "<b>حکم طلاق و جدایی قطعی</b> صادر کرد.\n"
+            "طرفین از این لحظه رسماً مجرد هستند."
         )
     else:
         verdict_text = (
-            f"⚖️ <b>حکم نهایی دادگاه صادر شد!</b>\n\n"
-            f"جناب قاضی (<b>{judge_user.full_name}</b>) دادخواست طلاق را <b>رد</b> کرد و طرفین را به صلح و سازش در زندگی مشترک فراخواند! 🕊💐"
+            "⚖️ <b>حکم نهایی دادگاه صادر شد!</b>\n\n"
+            f"جناب قاضی (<b>{judge_user.full_name}</b>) دادخواست طلاق را <b>رد</b> کرد "
+            "و طرفین را به صلح و سازش در زندگی مشترک فراخواند! 🕊💐"
         )
 
     await call.message.edit_text(verdict_text)
 
 
 # ---------------------------------------------------------------------------
-# 5. Intimacy & Childbirth (سکس / رابطه)
+# ۴. روابط عاطفی و زاد و ولد (Intimacy & Childbirth)
 # ---------------------------------------------------------------------------
+
 
 @router.message(CommandOrText(["sex", "intimacy"], {"سکس", "رابطه", "عشق‌بازی"}))
 async def cmd_intimacy(message: Message) -> None:
+    """برقراری رابطه عاطفی میان زوجین قانونی با شانس بارداری و فرزندآوری."""
     user = message.from_user
     if user is None:
         return
@@ -297,21 +344,26 @@ async def cmd_intimacy(message: Message) -> None:
 
 
 # ---------------------------------------------------------------------------
-# 6. Affair (خیانت)
+# ۵. خیانت و روابط پنهانی (Affair)
 # ---------------------------------------------------------------------------
+
 
 @router.message(CommandOrText(["affair"], {"خیانت", "رابطه_پنهانی"}))
 async def cmd_affair(message: Message) -> None:
+    """تلاش فرد متأهل برای برقراری رابطه پنهانی با فرد دیگر با ریسک رسوایی."""
     user = message.from_user
     if user is None:
         return
 
     reply = message.reply_to_message
     if reply is None or reply.from_user is None:
-        usage = "🤫 برای برقراری رابطه پنهانی، روی پیام پارتنر خیانت ریپلای بزنید و بنویسید <code>خیانت</code>!"
+        usage = (
+            "🤫 برای برقراری رابطه پنهانی، روی پیام پارتنر خیانت ریپلای بزنید و بنویسید "
+            "<code>خیانت</code>!"
+        )
         try:
             record = await tiramix.affair_record()
-        except Exception:  # noqa: BLE001 - the record must never block usage
+        except Exception:  # noqa: BLE001
             record = ""
         await message.reply(f"{usage}\n\n{record}".rstrip())
         return
@@ -340,11 +392,13 @@ async def cmd_affair(message: Message) -> None:
 
 
 # ---------------------------------------------------------------------------
-# 7. Clans & Syndicates (کلن)
+# ۶. کلن‌ها و سندیکاهای شهری (Clans)
 # ---------------------------------------------------------------------------
+
 
 @router.message(CommandOrText(["clan"], {"کلن", "گروه", "سندیکا"}))
 async def cmd_clan(message: Message) -> None:
+    """مدیریت عضویت، خزانه و تأسیس کلن‌ها و سندیکاهای تیرامیکس."""
     user = message.from_user
     if user is None:
         return
@@ -352,7 +406,11 @@ async def cmd_clan(message: Message) -> None:
     parts = (message.text or "").strip().split()
     try:
         player = await hydrate(user.id, user.full_name, user.username)
-        if len(parts) >= 3 and parts[0] in ("ساخت", "تاسیس") and parts[1] in ("کلن", "گروه", "سندیکا"):
+        if (
+            len(parts) >= 3
+            and parts[0] in ("ساخت", "تاسیس")
+            and parts[1] in ("کلن", "گروه", "سندیکا")
+        ):
             clan_name = " ".join(parts[2:])
             res = await tiramix.create_new_clan(player, message.chat.id, clan_name)
             await message.reply(res["message"])
@@ -379,7 +437,7 @@ async def cmd_clan(message: Message) -> None:
         text = (
             "🛡️ <b>سیستم کلن‌ها و سندیکاهای شهری تیرامیکس</b>\n\n"
             "شما در حال حاضر در هیچ کلنی عضویت ندارید.\n\n"
-            "📌 برای تأسیس یک کلن جدید (هزینه: ۵,۰۰۰ سکه):\n"
+            "📌 برای تأسیس یک کلن جدید (هزینه: ۲۵,۰۰۰ سکه):\n"
             "<code>کلن ساخت [نام کلن]</code>\n"
             "<i>مثال: کلن ساخت گرگ‌های شب</i>"
         )
@@ -388,7 +446,7 @@ async def cmd_clan(message: Message) -> None:
         await answer_error(exc, message=message)
 
 
-# Aliases for external callers and tests
+# متغیرهای سازگاری با کدهای تست و فراخوانی‌های خارجی
 cb_marry = cb_marry_response
 cmd_marry = cmd_marriage
 cmd_clan_create = cmd_clan

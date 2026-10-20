@@ -3,9 +3,32 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 from pathlib import Path
 
+import pytest
+
 from services import catalog
+
+
+@pytest.fixture(autouse=True)
+def ensure_catalog_seeded():
+    """Ensure catalog has mock items if running against a fresh test database."""
+    catalog.init_catalog_schema()
+    items = catalog.get_items_by_category("clothing_top", limit=1)
+    if not items:
+        with sqlite3.connect(catalog.DB_PATH) as conn:
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO catalog_items
+                (item_id, var_id, name, category, subcategory, gender, set_name, image_id)
+                VALUES
+                (1, 101, 'Test Hair', 'hair', 'hair_front', 'unisex', 'Set 1', 'img1'),
+                (2, 102, 'Test Top', 'clothing_top', 'shirt', 'unisex', 'Set 1', 'img2'),
+                (3, 103, 'Test Boots', 'shoes', 'boots', 'unisex', 'Set 1', 'img3')
+                """
+            )
+            conn.commit()
 
 
 def test_init_catalog_schema():

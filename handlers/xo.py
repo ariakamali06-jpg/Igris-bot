@@ -34,6 +34,7 @@ from handlers.common import (
     esc,
     extract_args,
     hydrate,
+    resolve_target_player,
 )
 from handlers.panel import render_panel
 from models import ActivityKind, Player
@@ -74,14 +75,8 @@ _USAGE = (
 
 
 async def _resolve_target(message: Message, token: str) -> Player | None:
-    """Opponent via reply (preferred) or a numeric id — same as the duel pit."""
-    if message.reply_to_message and message.reply_to_message.from_user:
-        target = message.reply_to_message.from_user
-        return await hydrate(target.id, target.full_name, target.username)
-    cleaned = token.lstrip("@")
-    if cleaned.isdigit():
-        return await hydrate(int(cleaned), f"Player {cleaned}", None)
-    return None
+    """شناسایی حریف در دوز از طریق ریپلای، آیدی عددی یا نام کاربری در دیتابیس."""
+    return await resolve_target_player(message, token)
 
 
 @router.message(CommandOrText(["xo"], words=XO_WORDS))

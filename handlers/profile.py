@@ -23,6 +23,7 @@ from config import settings
 from handlers.common import (
     CommandOrText,
     answer_error,
+    avatar_png_to_card_jpeg,
     card_bytes,
     editable_message,
     esc,
@@ -64,24 +65,7 @@ async def _profile_markup(player: Player) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[])
 
 
-def avatar_png_to_card_jpeg(png_bytes: bytes) -> bytes:
-    """
-    کامپوزیت تصویر شفاف آواتار اوراسکایز روی پس‌زمینه دارک و تبدیل به فرمت استاندارد JPEG.
-
-    این تبدیل برای سازگاری کامل با کلاینت‌های تلگرام و نمایش روان و بدون لگ کارت شناسنامه
-    انجام می‌شود تا تصویر آواتار بازیکن بدون حاشیه‌های ناخواسته رندر گردد.
-    """
-    import io
-
-    from PIL import Image
-
-    avatar_img = Image.open(io.BytesIO(png_bytes)).convert("RGBA")
-    w, h = avatar_img.size
-    bg = Image.new("RGBA", (w, h), (18, 20, 29, 255))
-    bg.alpha_composite(avatar_img)
-    buf = io.BytesIO()
-    bg.convert("RGB").save(buf, format="JPEG", quality=92, optimize=True)
-    return buf.getvalue()
+# تابع avatar_png_to_card_jpeg از ماژول مشترک handlers.common تامین می‌شود.
 
 
 async def _profile_panel(player: Player) -> tuple[str, bytes]:

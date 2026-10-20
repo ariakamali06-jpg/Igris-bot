@@ -17,7 +17,6 @@ import logging
 import time
 
 from aiogram import BaseMiddleware, F, Router
-from aiogram.filters import Command
 from aiogram.types import (
     BufferedInputFile,
     CallbackQuery,
@@ -79,19 +78,32 @@ def _raid_markup(raid_id: int) -> InlineKeyboardMarkup:
 
 
 async def _boss_card(spawn: raids.SpawnResult) -> bytes:
-    """Render the boss portrait off-loop using the normal compositor."""
-    request = RenderRequest(
-        display_name=spawn.boss_name,
-        username=None,
-        level=1 + spawn.max_hp // 200,
-        atk=spawn.max_hp,          # HUD "power" reads as the boss's threat
-        defense=0,
-        drip=0,
-        loadout=dict(_BOSS_LOADOUT),
-        background="sanctum_abyss",
-        body="base_aegis",
-    )
-    return await asyncio.to_thread(render_card, request)
+    """رندر کارت گرافیکی باس خیابانی با فال‌بک امن و توضیحات کامل."""
+    try:
+        request = RenderRequest(
+            display_name=spawn.boss_name,
+            username=None,
+            level=1 + spawn.max_hp // 200,
+            atk=spawn.max_hp,  # نمایش قدرت باس به عنوان سطح تهدید
+            defense=0,
+            drip=0,
+            loadout=dict(_BOSS_LOADOUT),
+            background="sanctum_abyss",
+            body="base_aegis",
+        )
+        return await asyncio.to_thread(render_card, request)
+    except Exception as exc:
+        logger.warning("boss card render failed: %s, using fallback", exc)
+        import io
+
+        from PIL import Image, ImageDraw
+
+        img = Image.new("RGB", (640, 800), (18, 20, 29))
+        draw = ImageDraw.Draw(img)
+        draw.rectangle([20, 20, 620, 780], outline=(230, 50, 70), width=4)
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=90)
+        return buf.getvalue()
 
 
 async def _send_spawn(bot, chat_id: int, spawn: raids.SpawnResult) -> None:

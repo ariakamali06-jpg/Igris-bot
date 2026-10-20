@@ -1,9 +1,15 @@
-"""/daily, /work, /heist and the mini-casino (dice, coinflip).
+"""هندلرهای اقتصاد، مشاغل، بانک، تحصیل و سیستم راهنمای جامع شهر تیرامیکس.
 
-Each command follows the same shape: cooldown gate → domain call → one
-rendered reply.  Bets are parsed from the command args with hard clamps from
-config, and every outcome (win or loss) already committed its ledger row
-before we format the message, so chat text can never disagree with balances.
+شامل:
+- پاداش روزانه و حقوق شهروندی (/daily)
+- شیفت کاری و کسب درآمد بر اساس شغل (/work)
+- تحصیل و ارتقای مدرک دانشگاهی (/study)
+- کاریابی و استخدام در مشاغل تخصصی (/job)
+- خدمات بانک مرکزی، سپرده‌گذاری و وام (/bank)
+- بررسی موجودی کیف پول و گاوصندوق (/balance)
+- کارنامه آمار، انرژی و مشخصات کاراکتر (/stats)
+- سرقت‌های برنامه‌ریزی‌شده و بازی‌های شانس (/heist, /dice, /coinflip)
+- سیستم راهنمای جامع و منوی کلیدهای میانبر تیرامیکس (/help)
 """
 
 from __future__ import annotations
@@ -11,11 +17,18 @@ from __future__ import annotations
 import logging
 
 from aiogram import F, Router
-from aiogram.filters import Command, CommandObject
+from aiogram.filters import CommandObject
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
 from config import settings
-from handlers.common import CommandOrText, answer_error, energy_bar, esc, hydrate
+from handlers.common import (
+    CommandOrText,
+    answer_error,
+    energy_bar,
+    esc,
+    extract_args,
+    hydrate,
+)
 from services import economy
 from services.game import GameError, exp_to_next
 
@@ -24,6 +37,7 @@ router = Router(name="economy")
 
 
 def _activity_card(result: economy.ActivityResult) -> str:
+    """قالب‌بندی کارت نتایج فعالیت‌های اقتصادی و تغییرات موجودی و اکس‌پی."""
     icon = "✅" if result.success else "❌"
     lines = [f"{icon} <b>{esc(result.headline)}</b>"]
     if result.detail:
@@ -42,14 +56,6 @@ def _activity_card(result: economy.ActivityResult) -> str:
     return "\n".join(lines)
 
 
-def _extract_args(message: Message, command: CommandObject | None = None) -> list[str]:
-    if command and command.args:
-        return list(command.args.split())
-    text = (message.text or "").strip()
-    parts = text.split()
-    return list(parts[1:]) if len(parts) > 1 else []
-
-
 DAILY_WORDS = {"روزانه", "جایزه", "پاداش", "حقوق", "daily", "claim"}
 WORK_WORDS = {"کار", "شغل", "شیفت", "work", "shift"}
 BAL_WORDS = {"موجودی", "پول", "سکه", "کیف", "کیف پول", "حساب", "balance", "bal", "wallet", "money"}
@@ -58,12 +64,13 @@ HELP_WORDS = {"راهنما", "کمک", "آموزش", "اموزش", "دستور�
 
 
 # ---------------------------------------------------------------------------
-# /daily
+# پاداش روزانه و حقوق شهروندی (/daily)
 # ---------------------------------------------------------------------------
 
 
 @router.message(CommandOrText(["daily", "claim"], DAILY_WORDS))
 async def cmd_daily(message: Message) -> None:
+    """دریافت حقوق و پاداش دوره‌ای ۲۴ ساعته با احتساب بانس استایل (DRIP)."""
     user = message.from_user
     if user is None:
         return
@@ -81,18 +88,20 @@ async def cmd_daily(message: Message) -> None:
 
 
 # ---------------------------------------------------------------------------
-# /work
+# شیفت کاری و اشتغال (/work)
 # ---------------------------------------------------------------------------
 
 
 @router.message(CommandOrText(["work", "shift"], WORK_WORDS))
 async def cmd_work(message: Message) -> None:
+    """حضور در شیفت کاری و دریافت دستمزد ساعتی متناسب با عنوان شغلی بازیکن."""
     user = message.from_user
     if user is None:
         return
     try:
         player = await hydrate(user.id, user.full_name, user.username)
         from services import tiramix
+
         res = await tiramix.execute_work(player)
         await message.reply(res["message"])
     except Exception as exc:  # noqa: BLE001
@@ -100,17 +109,20 @@ async def cmd_work(message: Message) -> None:
 
 
 # ---------------------------------------------------------------------------
-# /study & education
+# تحصیل و ارتقای مدرک دانشگاهی (/study)
 # ---------------------------------------------------------------------------
+
 
 @router.message(CommandOrText(["study", "edu"], {"تحصیل", "درس", "دانشگاه", "مدرک", "کلاس"}))
 async def cmd_study(message: Message) -> None:
+    """حضور در کلاس‌های دانشگاه تیرامیکس جهت ارتقای مدرک تحصیلی و دسترسی به مشاغل عالی."""
     user = message.from_user
     if user is None:
         return
     try:
         player = await hydrate(user.id, user.full_name, user.username)
         from services import tiramix
+
         res = await tiramix.execute_study(player)
         await message.reply(res["message"])
     except Exception as exc:  # noqa: BLE001
@@ -118,11 +130,13 @@ async def cmd_study(message: Message) -> None:
 
 
 # ---------------------------------------------------------------------------
-# /job & career
+# اداره کار و انتخاب شغل (/job)
 # ---------------------------------------------------------------------------
 
+
 @router.message(CommandOrText(["job", "career"], {"شغل", "کارها", "استخدام"}))
-async def cmd_job(message: Message) -> None:
+async def cmd_job(message: Message, command: CommandObject | None = None) -> None:
+    """مشاهده لیست مشاغل باز متناسب با تحصیلات یا استخدام در یک موقعیت کاری جدید."""
     user = message.from_user
     if user is None:
         return
@@ -130,7 +144,7 @@ async def cmd_job(message: Message) -> None:
         player = await hydrate(user.id, user.full_name, user.username)
         from services import tiramix
 
-        args = _extract_args(message)
+        args = extract_args(message, command)
         if args:
             wanted_job = " ".join(args)
             res = await tiramix.set_player_job(player, wanted_job)
@@ -139,13 +153,15 @@ async def cmd_job(message: Message) -> None:
 
         unlocked_jobs = tiramix.list_available_jobs(player.education_level)
         lines = [
-            f"💼 <b>اداره کار و استخدام مرکزی شهر تیرامیکس</b>\n",
+            "💼 <b>اداره کار و استخدام مرکزی شهر تیرامیکس</b>\n",
             f"👤 شغل فعلی شما: <b>{player.job}</b>",
             f"🎓 مدرک تحصیلی: <b>{player.education_title}</b>\n",
             "📋 <b>فرصت‌های شغلی متناسب با مدرک شما:</b>",
         ]
         for j in unlocked_jobs:
-            lines.append(f"• <b>{j['title']}</b>: ساعتی <b>{j['wage']:,}</b> سکه\n  <i>{j['desc']}</i>")
+            lines.append(
+                f"• <b>{j['title']}</b>: ساعتی <b>{j['wage']:,}</b> سکه\n  <i>{j['desc']}</i>"
+            )
 
         lines.append("\n💡 <i>برای استخدام در یک شغل، نام آن را بنویسید:</i>")
         lines.append("<code>شغل [نام شغل]</code>")
@@ -157,11 +173,13 @@ async def cmd_job(message: Message) -> None:
 
 
 # ---------------------------------------------------------------------------
-# /bank & loans
+# بانک مرکزی، گاوصندوق و وام (/bank)
 # ---------------------------------------------------------------------------
 
+
 @router.message(CommandOrText(["bank"], {"بانک", "وام", "سپرده", "صندوق"}))
-async def cmd_bank(message: Message) -> None:
+async def cmd_bank(message: Message, command: CommandObject | None = None) -> None:
+    """خدمات مالی بانک مرکزی شامل واریز به گاوصندوق ضدسرقت، برداشت و دریافت وام."""
     user = message.from_user
     if user is None:
         return
@@ -169,11 +187,15 @@ async def cmd_bank(message: Message) -> None:
         player = await hydrate(user.id, user.full_name, user.username)
         from services import tiramix
 
-        args = _extract_args(message)
+        args = extract_args(message, command)
         creds, _ = await economy.balances(player.user_id)
 
         if not args:
-            loan_info = f"بدهی فعال: <b>{player.loan_amount:,}</b> سکه" if player.loan_amount > 0 else "بدون بدهی معوق ✅"
+            loan_info = (
+                f"بدهی فعال: <b>{player.loan_amount:,}</b> سکه"
+                if player.loan_amount > 0
+                else "بدون بدهی معوق ✅"
+            )
             text = (
                 "🏦 <b>بانک مرکزی شهر تیرامیکس (سیستم امن ضدسرقت)</b>\n\n"
                 f"💵 موجودی نقد در جیب: <b>{creds:,}</b> سکه\n"
@@ -190,7 +212,9 @@ async def cmd_bank(message: Message) -> None:
 
         action = args[0].lower()
         if len(args) < 2 or not args[1].isdigit():
-            await message.reply("⚠️ لطفاً مبلغ را به عدد وارد کنید.\nمثال: <code>بانک واریز 500</code>")
+            await message.reply(
+                "⚠️ لطفاً مبلغ را به عدد وارد کنید.\nمثال: <code>بانک واریز 500</code>"
+            )
             return
 
         amount = int(args[1])
@@ -213,12 +237,13 @@ async def cmd_bank(message: Message) -> None:
 
 
 # ---------------------------------------------------------------------------
-# /heist
+# سرقت سازمان‌یافته (/heist)
 # ---------------------------------------------------------------------------
 
 
 @router.message(CommandOrText(["heist", "rob"], prefix_words=("سرقت", "heist")))
 async def cmd_heist(message: Message, command: CommandObject | None = None) -> None:
+    """عملیات سرقت پرریسک با پول پیش‌پرداخت، با شانس برد تقویت‌شده بر اساس استایل."""
     user = message.from_user
     if user is None:
         return
@@ -226,7 +251,7 @@ async def cmd_heist(message: Message, command: CommandObject | None = None) -> N
         economy.require_ready(user.id, "heist", settings.cooldown_heist)
         player = await hydrate(user.id, user.full_name, user.username)
 
-        args = _extract_args(message, command)
+        args = extract_args(message, command)
         if not args or not args[0].isdigit():
             raise GameError(
                 f"نحوه استفاده: <code>سرقت [مبلغ]</code> یا <code>/heist [مبلغ]</code>\n"
@@ -241,21 +266,26 @@ async def cmd_heist(message: Message, command: CommandObject | None = None) -> N
 
 
 # ---------------------------------------------------------------------------
-# Casino
+# کازینوی مینی‌گیم‌ها (تاس و شیر یا خط)
 # ---------------------------------------------------------------------------
 
 
 @router.message(CommandOrText(["dice"], prefix_words=("تاس", "dice")))
 async def cmd_dice(message: Message, command: CommandObject | None = None) -> None:
+    """شرط‌بندی روی مجموع تاس‌های دوتایی (بالا ۸+ یا پایین ۶-)."""
     await _casino_command(message, command, game="dice")
 
 
-@router.message(CommandOrText(["coinflip", "flip"], prefix_words=("سکه", "شیرخط", "شیر یا خط", "coinflip")))
+@router.message(
+    CommandOrText(["coinflip", "flip"], prefix_words=("سکه", "شیرخط", "شیر یا خط", "coinflip"))
+)
 async def cmd_coinflip(message: Message, command: CommandObject | None = None) -> None:
+    """شرط‌بندی روی شیر یا خط سکه ۵۰/۵۰."""
     await _casino_command(message, command, game="coinflip")
 
 
 async def _casino_command(message: Message, command: CommandObject | None, game: str) -> None:
+    """پردازش متمرکز بازی‌های شرط‌بندی سبک با تعهد فوری تراکنش به لجر مالی."""
     user = message.from_user
     if user is None:
         return
@@ -263,24 +293,38 @@ async def _casino_command(message: Message, command: CommandObject | None, game:
         economy.require_ready(user.id, "casino", settings.cooldown_casino)
         player = await hydrate(user.id, user.full_name, user.username)
 
-        args = _extract_args(message, command)
+        args = extract_args(message, command)
         if game == "dice":
             pick_raw = args[1].lower() if len(args) > 1 else ""
-            pick = "high" if pick_raw in ("high", "بالا", "بزرگ") else ("low" if pick_raw in ("low", "پایین", "کوچک") else pick_raw)
+            if pick_raw in ("high", "بالا", "بزرگ"):
+                pick = "high"
+            elif pick_raw in ("low", "پایین", "کوچک"):
+                pick = "low"
+            else:
+                pick = pick_raw
+
             if len(args) < 2 or not args[0].isdigit() or pick not in ("high", "low"):
                 raise GameError(
-                    f"نحوه استفاده: <code>تاس [شرط] بالا|پایین</code> یا <code>/dice [bet] high|low</code>\n"
-                    f"بالا (۸ به بالا) · پایین (۶ به پایین) — مجموع ۷ همیشه بازنده است.\n"
+                    "نحوه استفاده: <code>تاس [شرط] بالا|پایین</code> یا "
+                    "<code>/dice [bet] high|low</code>\n"
+                    "بالا (۸ به بالا) · پایین (۶ به پایین) — مجموع ۷ همیشه بازنده است.\n"
                     f"مبلغ شرط: {settings.casino_min_bet:,} تا {settings.casino_max_bet:,} سکه."
                 )
             bet = economy.validate_bet(int(args[0]))
             result = await economy.casino_dice(player.user_id, bet, pick)
         else:
             pick_raw = args[1].lower() if len(args) > 1 else ""
-            pick = "heads" if pick_raw in ("heads", "شیر") else ("tails" if pick_raw in ("tails", "خط") else pick_raw)
+            if pick_raw in ("heads", "شیر"):
+                pick = "heads"
+            elif pick_raw in ("tails", "خط"):
+                pick = "tails"
+            else:
+                pick = pick_raw
+
             if len(args) < 2 or not args[0].isdigit() or pick not in ("heads", "tails"):
                 raise GameError(
-                    f"نحوه استفاده: <code>سکه [شرط] شیر|خط</code> یا <code>/coinflip [bet] heads|tails</code>\n"
+                    "نحوه استفاده: <code>سکه [شرط] شیر|خط</code> یا "
+                    "<code>/coinflip [bet] heads|tails</code>\n"
                     f"مبلغ شرط: {settings.casino_min_bet:,} تا {settings.casino_max_bet:,} سکه."
                 )
             bet = economy.validate_bet(int(args[0]))
@@ -292,19 +336,24 @@ async def _casino_command(message: Message, command: CommandObject | None, game:
 
 
 # ---------------------------------------------------------------------------
-# /balance, /stats
+# کیف پول و کارنامه مشخصات (/balance, /stats)
 # ---------------------------------------------------------------------------
 
 
 @router.message(CommandOrText(["balance", "bal", "wallet", "money"], BAL_WORDS))
 async def cmd_balance(message: Message) -> None:
+    """مشاهده موجودی نقد، حساب بانکی، شارد و وضعیت شغلی شهروند."""
     user = message.from_user
     if user is None:
         return
     try:
         player = await hydrate(user.id, user.full_name, user.username)
         credits, shards = await economy.balances(player.user_id)
-        loan_line = f"\n⚠️ بدهی وام بانکی: <b>{player.loan_amount:,}</b> سکه" if player.loan_amount > 0 else ""
+        loan_line = (
+            f"\n⚠️ بدهی وام بانکی: <b>{player.loan_amount:,}</b> سکه"
+            if player.loan_amount > 0
+            else ""
+        )
         await message.reply(
             f"💰 <b>وضعیت مالی شهروندی {esc(player.display_tag)}</b>\n\n"
             f"💵 موجودی نقد (کیف پول): <b>{credits:,}</b> سکه\n"
@@ -319,6 +368,7 @@ async def cmd_balance(message: Message) -> None:
 
 @router.message(CommandOrText(["stats", "level"], STATS_WORDS))
 async def cmd_stats(message: Message) -> None:
+    """نمایش مشخصات فیزیکی، نوار انرژی، قدرت، دفاع، استایل و پیشرفت لول."""
     user = message.from_user
     if user is None:
         return
@@ -330,7 +380,8 @@ async def cmd_stats(message: Message) -> None:
             f"⚡ {energy_bar(player.energy, stats.max_energy)} "
             f"{player.energy}/{stats.max_energy} "
             f"(+{settings.energy_regen_per_minute:g}/دقیقه)\n"
-            f"⚔️ قدرت: <b>{player.atk}</b> · 🛡 دفاع: <b>{player.defense}</b> · 💎 استایل: <b>{player.drip}</b>\n"
+            f"⚔️ قدرت: <b>{player.atk}</b> · 🛡 دفاع: <b>{player.defense}</b> · "
+            f"💎 استایل: <b>{player.drip}</b>\n"
             f"✨ پیشرفت: <b>{player.exp}/{exp_to_next(player.level)}</b> EXP تا لول بعدی"
         )
     except Exception as exc:  # noqa: BLE001
@@ -338,12 +389,13 @@ async def cmd_stats(message: Message) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Quick action buttons (posted under the character card)
+# کلیدهای اقدام سریع متصل به شناسنامه
 # ---------------------------------------------------------------------------
 
 
 @router.callback_query(F.data == "act:work")
 async def cb_work(call: CallbackQuery) -> None:
+    """کلیک دکمه سریع کار در زیر کارت پروفایل."""
     user = call.from_user
     if user is None:
         return
@@ -360,6 +412,7 @@ async def cb_work(call: CallbackQuery) -> None:
 
 @router.callback_query(F.data == "act:daily")
 async def cb_daily(call: CallbackQuery) -> None:
+    """کلیک دکمه سریع دریافت جایزه روزانه زیر کارت پروفایل."""
     user = call.from_user
     if user is None:
         return
@@ -377,6 +430,7 @@ async def cb_daily(call: CallbackQuery) -> None:
 
 
 def _help_markup() -> InlineKeyboardMarkup:
+    """چیدمان دکمه‌های شیشه‌ای صفحه اصلی راهنمای بازی."""
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
@@ -410,72 +464,64 @@ _HELP_MAIN_TEXT = (
 _HELP_CMDS_TEXT = (
     "📜 <b>فهرست کامل دستورات شهر تیرامیکس:</b>\n\n"
     "👤 <b>کاراکتر و کمد لباس:</b>\n"
-    "• <code>پروفایل</code> یا <code>کارت</code> یا <code>/me</code> — شناسنامه شهروندی و کارت گرافیکی\n"
-    "• <code>کمد</code> یا <code>کوله</code> یا <code>/inventory</code> — کمد لباس و تعویض تجهیزات با دکمه\n"
+    "• <code>پروفایل</code> یا <code>کارت</code> — شناسنامه شهروندی و کارت گرافیکی\n"
+    "• <code>کمد</code> یا <code>کوله</code> — کمد لباس و تعویض تجهیزات با دکمه\n"
     "• <code>آمار</code> یا <code>/stats</code> — ارقام لول، انرژی، قدرت، دفاع و استایل\n\n"
     "💼 <b>آموزش، شغل و درآمد:</b>\n"
     "• <code>کار</code> یا <code>/work</code> — شیفت کاری و دریافت درآمد بر اساس شغل\n"
     "• <code>تحصیل</code> یا <code>/study</code> — ارتقای مدرک تحصیلی در دانشگاه تیرامیکس\n"
-    "• <code>شغل</code> یا <code>/job</code> — مشاهده فرصت‌های شغلی متناسب با مدرک یا استخدام (مثال: <code>شغل کارمند</code>)\n"
-    "• <code>کیف پول</code> یا <code>موجودی</code> یا <code>/balance</code> — موجودی نقد و بانکی\n"
+    "• <code>شغل</code> یا <code>/job</code> — مشاهده فرصت‌های شغلی یا استخدام\n"
+    "• <code>کیف پول</code> یا <code>موجودی</code> — موجودی نقد و بانکی\n"
     "• <code>بانک</code> یا <code>/bank</code> — خدمات بانک مرکزی (واریز، برداشت و وام)\n"
     "• <code>روزانه</code> یا <code>/daily</code> — دریافت حقوق و جایزه ۲۴ ساعته\n\n"
     "✂️ <b>خدمات شهری و ظاهر:</b>\n"
     "• <code>آرایشگاه</code> — سالن پیرایش مو (<code>آرایشگاه [مدل 1 تا 5] [رنگ]</code>)\n"
-    "• <code>زیبایی</code> — جراحی چهره (<code>زیبایی [چشم 1 تا 4] [رنگ] [لبخند 1 تا 4]</code>)\n"
+    "• <code>زیبایی</code> — جراحی چهره (<code>زیبایی [چشم 1 تا 4] [رنگ] [لبخند]</code>)\n"
     "• <code>کلینیک</code> — مراجعه به درمانگاه شهر برای درمان بیماری‌ها و نقاهت\n"
     "• <code>فروشگاه</code> یا <code>/shop</code> — بوتیک لباس، شلوار، کلاه و اکسسوری\n\n"
     "💍 <b>روابط، خانواده و طلاق:</b>\n"
-    "• <code>ازدواج</code> (در ریپلای به پیام) — پیشنهاد پیوند و تشکیل زندگی مشترک\n"
-    "• <code>رابطه</code> یا <code>سکس</code> — رابطه با همسر (کول‌داون ۸ ساعته با شانس فرزندآوری)\n"
-    "• <code>خیانت</code> (در ریپلای به شخص دیگر) — رابطه پنهانی با ریسک رسوایی بر اساس هوش و سواد\n"
-    "• <code>طلاق</code> — جدایی؛ در صورت توافقی انجام می‌شود، وگرنه یک قاضی تصادفی از گروه حکم می‌دهد!\n\n"
+    "• <code>ازدواج</code> (در ریپلای یا آیدی) — پیشنهاد پیوند و تشکیل زندگی مشترک\n"
+    "• <code>رابطه</code> یا <code>سکس</code> — رابطه با همسر با شانس فرزندآوری\n"
+    "• <code>خیانت</code> (در ریپلای به شخص دیگر) — رابطه پنهانی با ریسک رسوایی\n"
+    "• <code>طلاق</code> — جدایی؛ توافقی یا با حکم قاضی تصادفی از گروه!\n\n"
     "⚔️ <b>جرم، دوئل و کلن‌ها:</b>\n"
-    "• <code>دزدی</code> (در ریپلای به پیام شخص) — غارت ۳۵٪ تا ۸۵٪ موجودی نقد (با ریسک زندان یا جریمه ۵ برابری)\n"
-    "• <code>دوئل [مبلغ]</code> (در ریپلای به پیام شخص) — مبارزه تن به تن بر سر سکه بر اساس لول و سواد\n"
-    "• <code>کلن</code> — وضعیت کلن و عضویت، یا <code>کلن تاسیس [نام]</code> برای تشکیل سندیکای جدید\n"
+    "• <code>دزدی</code> (ریپلای یا آیدی) — غارت ۳۵٪ تا ۸۵٪ موجودی نقد\n"
+    "• <code>دوئل [مبلغ]</code> (ریپلای یا آیدی) — مبارزه تن به تن بر سر سکه\n"
+    "• <code>کلن</code> — وضعیت کلن، یا <code>کلن ساخت [نام]</code> برای تأسیس سندیکا\n"
     "• <code>باس</code> یا <code>/boss</code> — حمله گروهی به غول‌های خیابانی شهر\n\n"
     "🏙 <b>املاک، بورس و قرارداد:</b>\n"
-    "• <code>املاک</code> — خرید/ارتقا/وصول ملک و درآمد منفعل\n"
-    "• <code>نیرو</code> — استخدام نیروهای شهر\n"
-    "• <code>قرارداد</code> — ماموریت‌های شهری و پاداش انجام\n"
-    "• <code>بورس</code> — لیست ارزها، خرید/فروش و شرط روی نوسان\n"
-    "• <code>سپر خرید</code> — بیمه ضدسرقت برای مدت محدود\n"
-    "• <code>دستبرد [مبلغ]</code> — سرقت از بانک مرکزی\n"
-    "• <code>قرعه</code> — لاتاری با جایزه دوره‌ای\n"
-    "• <code>هدیه [کد]</code> — فعال‌سازی کد هدیه\n\n"
+    "• <code>املاک</code> — خرید، ارتقا و وصول درآمد منفعل املاک\n"
+    "• <code>قرارداد</code> — ماموریت‌های شهری و جوایز نقدی\n"
+    "• <code>بورس</code> — لیست ارزها، خرید و فروش و سرمایه‌گذاری\n"
+    "• <code>سپر خرید</code> — بیمه ضدسرقت برای مدت مشخص\n"
+    "• <code>قرعه</code> — لاتاری با جوایز دوره‌ای تیرامیکس\n\n"
     "🎰 <b>بازی‌های شهر:</b>\n"
     "• <code>کازینو [مبلغ]</code> — اسلات شانس\n"
-    "• <code>قل‌سنگ [مبلغ] سنگ|کاغذ|قیچی</code> — بازی خانه‌ای\n"
     "• <code>ریسک [مبلغ]</code> — انفجار با کش‌اوت دستی\n"
-    "• <code>شانس [مبلغ] [عدد]</code> — حدس عدد\n"
-    "• <code>قفل [مبلغ]</code> — شکستن گاوصندوق سه‌رقمی\n"
-    "• <code>دوز</code> — ایکس‌او آنلاین با دعوت ریپلایی\n"
-    "• <code>دروازه</code> — پنالتی پشت‌درب\n\n"
+    "• <code>تاس [مبلغ] بالا|پایین</code> — شرط‌بندی روی مجموع تاس‌ها\n"
+    "• <code>سکه [مبلغ] شیر|خط</code> — شیر یا خط ۵۰/۵۰\n"
+    "• <code>دوز</code> — ایکس‌او آنلاین دونفره\n"
+    "• <code>دروازه</code> — پنالتی فوتبال خیابانی\n\n"
     "🕳 <b>بازار سیاه و تبهکاری:</b>\n"
     "• <code>کاسب</code> — بساط زیرپل: نگهبان و ابزار سرقت\n"
-    "• <code>بازارچه</code> — فروش/خرید کالا بین بازیکنان\n"
-    "• <code>سایه هکر</code> / <code>سایه قاتل</code> (ریپلای) — اجیر کردن سایه\n"
-    "• <code>اخاذی</code> (ریپلای) — زورگیری خیابانی\n"
-    "• <code>حیوان</code> — خرید/ارتقا و <code>حیوان نبرد [مبلغ]</code>\n\n"
-    "🏆 <b>جام و پاداش‌ها:</b>\n"
-    "• <code>جام</code> · <code>جام ثبت</code> · <code>جام نتایج</code> — مسابقه گروهی\n"
-    "• <code>روزانه</code> — شامل پاداش فعالیت چت گروه هم می‌شود\n"
-    "• <code>خیانت</code> بدون ریپلای — رکورد خیانتکارهای شهر"
+    "• <code>بازارچه</code> — فروش و خرید کالا بین شهروندان\n"
+    "• <code>سایه هکر</code> / <code>سایه قاتل</code> — اجیر کردن سایه‌های تاریک\n"
+    "• <code>اخاذی</code> — زورگیری خیابانی از شهروندان\n"
+    "• <code>حیوان</code> — خرید، ارتقا و نبرد حیوانات خانگی"
 )
 
 
 _HELP_COMBAT_TEXT = (
     "⚔️ <b>راهنمای مبارزات، دوئل و جرایم شهری</b>\n\n"
     "🔥 <b>دوئل خیابانی:</b>\n"
-    "روی پیام هر کاربری در گروه ریپلای بزنید و بنویسید:\n"
+    "روی پیام هر کاربری در گروه ریپلای بزنید یا آیدی او را بنویسید:\n"
     "<code>دوئل 100</code>\n"
     "مبلغ شرط در صندوق امانی قرار می‌گیرد و حریف ۱۰ دقیقه فرصت پذیرش دارد. "
     "برنده بر اساس لول، سطح سواد، قدرت و شانس مشخص شده و کل پات را دریافت می‌کند!\n\n"
     "🥷 <b>سرقت و جیب‌بری:</b>\n"
     "روی پیام شخص ریپلای بزنید و بنویسید <code>دزدی</code>!\n"
     "در صورت موفقیت بین ۳۵٪ تا ۸۵٪ موجودی نقدی قربانی را تصاحب می‌کنید. "
-    "اما در صورت شکست، پلیس شهر شما را دستگیر کرده و به بازداشتگاه (قفل تمام دستورات) می‌برد "
+    "اما در صورت شکست، پلیس شهر شما را دستگیر کرده و به بازداشتگاه می‌برد "
     "یا جریمه نقدی معادل ۵ برابر مبلغ تلاش دزدی اعمال می‌شود!\n\n"
     "🚨 <b>باس‌های گروهی (Raids):</b>\n"
     "با فعالیت در گروه باس‌های غول‌پیکر ظاهر می‌شوند و پاداش حمله بر اساس دمیج تقسیم می‌شود."
@@ -484,11 +530,13 @@ _HELP_COMBAT_TEXT = (
 
 @router.message(CommandOrText(["help"], HELP_WORDS))
 async def cmd_help(message: Message) -> None:
+    """ارسال منوی راهنمای جامع و کلیدهای میانبر تیرامیکس."""
     await message.reply(_HELP_MAIN_TEXT, reply_markup=_help_markup())
 
 
 @router.callback_query(F.data.in_(("act:help", "help:main")))
 async def cb_help_main(call: CallbackQuery) -> None:
+    """نمایش صفحه اصلی منوی راهنما در کال‌بک شیشه‌ای."""
     await call.answer()
     message = call.message
     if isinstance(message, Message):
@@ -503,6 +551,7 @@ async def cb_help_main(call: CallbackQuery) -> None:
 
 @router.callback_query(F.data == "help:cmds")
 async def cb_help_cmds(call: CallbackQuery) -> None:
+    """نمایش لیست تفصیلی تمام دستورات شهری تیرامیکس."""
     await call.answer()
     message = call.message
     if isinstance(message, Message):
@@ -522,6 +571,7 @@ async def cb_help_cmds(call: CallbackQuery) -> None:
 
 @router.callback_query(F.data == "help:combat")
 async def cb_help_combat(call: CallbackQuery) -> None:
+    """نمایش راهنمای مبارزات خیابانی، دوئل و دزدی تیرامیکس."""
     await call.answer()
     message = call.message
     if isinstance(message, Message):

@@ -1,19 +1,23 @@
-"""Shared handler plumbing: player hydration, card rendering, error surface.
+"""ابزارها و لوله‌کشی‌های مشترک هندلرهای بات تیرامیکس.
 
-Every handler funnels domain failures (:class:`GameError` and subclasses)
-through :func:`answer_error`, so players get a readable line instead of a
-traceback, and Telegram never sees an unhandled exception for expected
-conditions (broke, on cooldown, out of energy).
+شامل:
+- استخراج هویت و لودینگ بازیکن (hydrate)
+- رندرینگ آواتار شفاف ۴ برابری اوراسکایز روی پس‌زمینه دارک (card_bytes)
+- مدیریت یکپارچه خطاها و کول‌داون‌های بازی (answer_error)
+- فیلترهای استاندارد فرامین متنی و اسلش (CommandOrText)
+- شناسایی بازیکن هدف بر اساس ریپلای، آیدی یا یوزرنیم (resolve_target_player)
 """
 
 from __future__ import annotations
 
 import asyncio
 import html
+import io
 import logging
 
 from aiogram.filters import BaseFilter, CommandObject
 from aiogram.types import CallbackQuery, Message
+from PIL import Image
 
 from models import Player
 from services import economy
@@ -28,6 +32,8 @@ __all__ = [
     "ensure_player",
     "hydrate",
     "card_bytes",
+    "avatar_png_to_card_jpeg",
+    "resolve_target_player",
     "answer_error",
     "message_error",
     "energy_bar",
@@ -39,13 +45,14 @@ __all__ = [
 
 
 def is_admin_or_owner(user_id: int) -> bool:
-    """Check if the user is the project owner (Rex Lapis: 5765828495) or configured in admin_ids."""
+    """بررسی اینکه آیا کاربر مالک اصلی پروژه (Rex Lapis) یا ادمین سرور است."""
     from config import settings
+
     return settings.is_admin(user_id) or user_id == 5765828495
 
 
 class CommandOrText(BaseFilter):
-    """Reliable filter matching both /commands and plain text / Persian words."""
+    """فیلتر هوشمند و دوگانه تلگرام برای پذیرش همزمان دستورات اسلش و کلمات متنی فارسی."""
 
     def __init__(
         self,
@@ -71,33 +78,22 @@ class CommandOrText(BaseFilter):
                 return True
         if first_token in self.words or text.lower() in self.words:
             return True
-        if self.prefix_words and text.lower().startswith(self.prefix_words):
-            return True
-        return False
+        return bool(self.prefix_words and text.lower().startswith(self.prefix_words))
 
 
 def editable_message(call: CallbackQuery) -> Message | None:
-    """The callback's message when it is a real, editable :class:`Message`.
-
-    ``CallbackQuery.message`` is typed ``Message | InaccessibleMessage``;
-    inaccessible messages have no text/caption to edit, so handlers must
-    skip UI swaps for them instead of crashing.
-
-    Content type is the caller's problem to solve through
-    :mod:`handlers.panel` — a photo message is re-titled with ``edit_caption``,
-    never ``edit_text``.
-    """
+    """استخراج پیام معتبر و قابل ویرایش از کال‌بک کوئری تلگرام."""
     message = call.message
     return message if isinstance(message, Message) else None
 
 
 def esc(text: str | None) -> str:
-    """HTML-escape untrusted text (usernames, display names)."""
+    """ایمن‌سازی و اسکیپ کاراکترهای خطرناک HTML در متون ورودی کاربران."""
     return html.escape(text or "")
 
 
 def fmt(value: int) -> str:
-    """12.4k / 1.2M style grouping for chat-facing numbers."""
+    """فرمت‌بندی زیبای ارقام اقتصادی (مثلاً 1.2M یا 15k)."""
     if value >= 1_000_000:
         return f"{value / 1_000_000:.1f}M"
     if value >= 10_000:
@@ -106,11 +102,7 @@ def fmt(value: int) -> str:
 
 
 def extract_args(message: Message, command: CommandObject | None = None) -> list[str]:
-    """Whitespace-separated arguments after the command word.
-
-    Works for both ``/work 5`` (aiogram parses ``command.args``) and plain
-    Persian triggers like ``کار 5`` (the command word is simply token 0).
-    """
+    """استخراج آرگومان‌های ارسالی بعد از کلمه کلیدی دستور (چه با اسلش چه فارسی)."""
     if command and command.args:
         return list(command.args.split())
     text = (message.text or "").strip()
@@ -119,14 +111,92 @@ def extract_args(message: Message, command: CommandObject | None = None) -> list
 
 
 async def hydrate(user_id: int, display_name: str, username: str | None) -> Player:
-    """Load (or lazily create) the player behind a Telegram user."""
+    """بارگذاری یا ثبت تنبل (Lazy Load) اطلاعات بازیکن بر اساس مشخصات کاربر تلگرام."""
     return await ensure_player(user_id, display_name, username)
 
 
+def avatar_png_to_card_jpeg(png_bytes: bytes) -> bytes:
+    """کامپوزیت تصویر شفاف آواتار اوراسکایز روی پس‌زمینه دارک نئونی و تبدیل به فرمت استاندارد JPEG.
+
+    این تبدیل تضمین می‌کند تصویر بدون پس‌زمینه اوراسکایز، با کیفیت بالا (Quality 92)
+    و هماهنگ با پس‌زمینه نئونی شهر تیرامیکس (18, 20, 29) روی تمامی کلاینت‌های تلگرام رندر شود.
+    """
+    avatar_img = Image.open(io.BytesIO(png_bytes)).convert("RGBA")
+    w, h = avatar_img.size
+    bg = Image.new("RGBA", (w, h), (18, 20, 29, 255))
+    bg.alpha_composite(avatar_img)
+    buffer = io.BytesIO()
+    bg.convert("RGB").save(buffer, format="JPEG", quality=92, optimize=True)
+    return buffer.getvalue()
+
+
 async def card_bytes(player: Player) -> bytes:
-    """Render the character card off-loop (CPU-bound PIL work)."""
+    """رندر کارت شناسنامه و آواتار کاراکتر با کامپوزیت روی پس‌زمینه دارک.
+
+    ابتدا تلاش می‌کند تصویر شفاف ۴ برابری زنده اوراسکایز بازیکن را با لباس‌های فعلی کمد دریافت کند.
+    در صورت بروز هرگونه تایم‌اوت یا اختلال اینترنت، فوراً به رندرر محلی (Fallback) سوئیچ می‌کند
+    تا کاربر هیچ‌وقت با پیام خطا یا تصویر ناقص مواجه نشود.
+    """
+    try:
+        from services import avatar
+
+        render_url = await avatar.get_player_render_url(player.user_id)
+        if render_url:
+            png_bytes = await avatar.fetch_upscaled_avatar(render_url, scale=4)
+            if png_bytes:
+                return avatar_png_to_card_jpeg(png_bytes)
+    except Exception as exc:
+        logger.debug(
+            "card_bytes: everskies render failed for user %s: %s",
+            player.user_id,
+            exc,
+        )
+
+    # فال‌بک امن به کامپوزیتور آفلاین محلی
     request = render_request(player)
     return await asyncio.to_thread(render_card, request)
+
+
+async def resolve_target_player(
+    message: Message,
+    token: str = "",
+) -> Player | None:
+    """شناسایی هوشمند بازیکن هدف در تعاملات چندنفره (دوئل، دزدی، روابط، اخاذی، حیوانات).
+
+    اولویت تشخیص:
+    ۱. ریپلای روی پیام کاربر مقصد در گروه.
+    ۲. ارسال شناسه عددی کاربری تلگرام (User ID).
+    ۳. ارسال نام کاربری تلگرام (با یا بدون @) و جستجوی دیتابیس شهروندان تیرامیکس.
+    """
+    # ۱. اگر پیام روی کاربر دیگری ریپلای شده باشد
+    if message.reply_to_message and message.reply_to_message.from_user:
+        target_user = message.reply_to_message.from_user
+        return await hydrate(target_user.id, target_user.full_name, target_user.username)
+
+    # ۲. اعتبارسنجی توکن متنی
+    cleaned = token.lstrip("@").strip()
+    if not cleaned:
+        return None
+
+    if cleaned.isdigit():
+        user_id = int(cleaned)
+        return await hydrate(user_id, f"Player {user_id}", None)
+
+    # ۳. جستجو بر اساس یوزرنیم در پایگاه داده
+    from database.connection import db
+    from services.game import _load_player
+
+    async with db.read() as conn:
+        cursor = await conn.execute(
+            "SELECT user_id, display_name FROM players WHERE LOWER(username) = LOWER(?) LIMIT 1",
+            (cleaned,),
+        )
+        row = await cursor.fetchone()
+        await cursor.close()
+        if row:
+            return await _load_player(conn, row["user_id"], row["display_name"])
+
+    return None
 
 
 async def answer_error(
@@ -135,36 +205,28 @@ async def answer_error(
     callback: CallbackQuery | None = None,
     message: Message | None = None,
 ) -> None:
-    """Surface a domain error to the player.
+    """مدیریت و نمایش استاندارد خطاهای بازی به بازیکن به صورت روان و شفاف.
 
-    Telegram accepts **only the first** ``answerCallbackQuery`` for a given
-    callback id; every later one is dropped with ``query id is invalid``.
-    Handlers ack instantly to clear the button spinner, so an error raised
-    after that ack cannot be reported through the callback — the user would
-    see nothing at all and conclude the button is dead.
-
-    Therefore, when the callback was already acked we write the error into the
-    chat (and, if the message is an editable panel, into the panel itself), and
-    always log the traceback so the failure is debuggable.
+    خطاهای بازی و اتمام انرژی/کول‌داون به شکلی مدیریت می‌شوند که کاربر پیامی واضح دریافت کند
+    و بات در مواجهه با خطاهای متداول هرگز کرش نکند.
     """
     text = _error_text(exc)
     if message is not None:
         await message.reply(text)
     elif callback is not None:
-        message = editable_message(callback)
-        if message is not None:
-            await message.reply(text)
+        msg = editable_message(callback)
+        if msg is not None:
+            await msg.reply(text)
         else:
-            # Nothing editable — an alert is the only channel left, and it
-            # only lands if this is the very first answer.
             try:
                 await callback.answer(text, show_alert=True)
-            except Exception:  # noqa: BLE001 - already acked; nothing to do
+            except Exception:  # noqa: BLE001 - در صورت پاسخ قبلی نادیده گرفته می‌شود
                 logger.debug("callback alert dropped (already answered)", exc_info=True)
     logger.warning("surfaced domain error to chat: %s", exc, exc_info=exc)
 
 
 def _error_text(exc: Exception) -> str:
+    """تبدیل خطاهای اقتصادی، منطقی و کول‌داون به متن پیام‌های استاندارد."""
     if isinstance(exc, economy.OnCooldown):
         minutes, seconds = divmod(int(exc.remaining), 60)
         clock = f"{minutes}m {seconds:02d}s" if minutes else f"{seconds}s"
@@ -175,9 +237,11 @@ def _error_text(exc: Exception) -> str:
 
 
 async def message_error(exc: Exception, message: Message) -> None:
+    """ارسال سریع پیام خطا در پاسخ به پیام کاربر."""
     await message.reply(_error_text(exc))
 
 
 def energy_bar(energy: int, max_energy: int, width: int = 10) -> str:
+    """رسم گرافیکی نوار انرژی کاراکتر با کاراکترهای بصری."""
     filled = round(width * energy / max(1, max_energy))
     return "▮" * filled + "▯" * (width - filled)
