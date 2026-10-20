@@ -66,9 +66,9 @@ async def _setup_db():
 
 
 async def test_cdn_render_url():
-    """Verify that Everskies CDN composite URLs are base64-encoded and formatted."""
-    vars_ = [-1, 100, 200]
-    url = avatar.get_render_url(vars_, width=400, crop=True)
+    """Verify that Everskies CDN composite URLs are base64-encoded and properly layered."""
+    vars_ = [100, 200, -1]
+    url = avatar.get_render_url(vars_, crop=True)
     assert url.startswith("https://cdn.everskies.com/render/")
     assert "m=1" in url
 
@@ -78,7 +78,16 @@ async def test_cdn_render_url():
     if rem:
         slug += "=" * (4 - rem)
     decoded = json.loads(base64.b64decode(slug).decode("utf-8"))
-    assert decoded == vars_
+    assert decoded == [100, 200, -1]
+
+    # Verify that passing skin tone first is automatically reordered so body is at the bottom
+    url2 = avatar.get_render_url([-1, 100, 200])
+    slug2 = url2.split("/render/")[1].split(".png")[0]
+    rem2 = len(slug2) % 4
+    if rem2:
+        slug2 += "=" * (4 - rem2)
+    decoded2 = json.loads(base64.b64decode(slug2).decode("utf-8"))
+    assert decoded2 == [100, 200, -1]
 
 
 async def test_daily_boutique_rotation_deterministic():

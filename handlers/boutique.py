@@ -64,7 +64,7 @@ async def _build_boutique_card(
     """Generate media URL, caption, and keyboard for a boutique set."""
     sets = avatar.get_daily_boutique(gender=gender)
     if not sets:
-        empty_url = avatar.get_render_url([-1], width=400)
+        empty_url = avatar.get_render_url([-1])
         empty_caption = (
             "🛍 <b>ویترین روزانه بوتیک</b>\n"
             "━━━━━━━━━━━━━━━━━━━━\n"
@@ -94,8 +94,7 @@ async def _build_boutique_card(
     # Determine render image
     if is_preview:
         render_url = avatar.get_render_url(
-            [player_av["skin_tone"]] + current_set["var_ids"],
-            width=400,
+            current_set["var_ids"] + [player_av["skin_tone"]],
         )
         preview_notice = "\n<i>👤 در حال پیش‌نمایش زنده روی پوست کاراکتر شما</i>\n"
     else:
@@ -199,7 +198,7 @@ async def _build_wardrobe_card(
 
     if not items:
         # Empty wardrobe: show naked base avatar
-        skin_url = avatar.get_render_url([player_av["skin_tone"]], width=400)
+        skin_url = avatar.get_render_url([player_av["skin_tone"]])
         caption = (
             "🧥 <b>کمد لباس شخصی شما</b>\n"
             "━━━━━━━━━━━━━━━━━━━━\n"
@@ -223,8 +222,7 @@ async def _build_wardrobe_card(
 
     # Render set on player's skin
     render_url = avatar.get_render_url(
-        [player_av["skin_tone"]] + current_set["var_ids"],
-        width=400,
+        current_set["var_ids"] + [player_av["skin_tone"]],
     )
 
     status_str = "👕 <b>بر تن کاراکتر</b>" if is_active else "📦 در کمد لباس"

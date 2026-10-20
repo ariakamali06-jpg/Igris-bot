@@ -85,10 +85,24 @@ def get_render_url(
     Uses m=0 by default to preserve the full 221x340 canvas.
     Omits 'x' parameter because Everskies CDN interprets 'x' as an internal
     downscale factor that collapses pixel art into a 7px smear.
+
+    CRITICAL LAYERING SPECIFICATION:
+    In Everskies CDN, the variation array is composited back-to-front (in reverse):
+    - Index 0 is the FOREGROUND / TOPMOST layer (accessories, hair, clothes).
+    - Later indices are drawn BEHIND earlier indices.
+    - The LAST index is the BACKGROUND / BOTTOM-MOST layer (body mannequin).
+    Base body / skin tone variations have NEGATIVE IDs (-1 to -12).
+    Therefore, all negative IDs must be placed at the END of the array
+    so the body is underneath and all clothing/items sit on top of the body!
     """
     if not variation_ids:
         return ""
-    raw_b64 = base64.b64encode(json.dumps(variation_ids).encode("utf-8")).decode("utf-8")
+
+    pos_ids = [vid for vid in variation_ids if vid >= 0]
+    neg_ids = [vid for vid in variation_ids if vid < 0]
+    ordered_ids = pos_ids + neg_ids
+
+    raw_b64 = base64.b64encode(json.dumps(ordered_ids).encode("utf-8")).decode("utf-8")
     slug = raw_b64.rstrip("=")
     params: list[str] = []
     if crop:
@@ -236,12 +250,12 @@ async def unequip(user_id: int) -> None:
         )
 
 
-async def get_player_render_url(user_id: int, width: int = 400) -> str:
+async def get_player_render_url(user_id: int, width: int | None = None) -> str:
     """Generate the full render URL for the player's active avatar."""
     avatar = await get_player_avatar(user_id)
     skin_tone = avatar["skin_tone"]
     equipped = avatar["equipped_var_ids"]
-    full_vars = [skin_tone] + equipped
+    full_vars = equipped + [skin_tone]
     return get_render_url(full_vars, width=width)
 
 
@@ -489,7 +503,7 @@ async def assign_starter_set(
         "var_ids": var_ids,
         "skin_tone": skin_tone,
         "makeup_data": makeup_data,
-        "render_url": get_render_url([skin_tone] + var_ids),
+        "render_url": get_render_url(var_ids + [skin_tone]),
     }
 
 
@@ -556,7 +570,7 @@ def get_daily_boutique(
                         "var_ids": var_ids,
                         "is_plus_size": row["is_plus_size"],
                         "price": calculate_set_price(row["item_count"]),
-                        "render_url": get_render_url(var_ids, width=400),
+                        "render_url": get_render_url(var_ids),
                     }
                 )
 
@@ -668,7 +682,7 @@ async def list_wardrobe(user_id: int) -> list[dict[str, Any]]:
                 "is_plus_size": r["is_plus_size"],
                 "price_paid": r["price_paid"],
                 "acquired_at": r["acquired_at"],
-                "render_url": get_render_url(var_ids, width=400),
+                "render_url": get_render_url(var_ids),
             }
         )
     return result
