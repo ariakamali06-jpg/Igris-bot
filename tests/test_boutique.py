@@ -11,7 +11,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 from aiogram import Bot, Dispatcher
-from aiogram.types import CallbackQuery, Chat, Message, Update, User
+from aiogram.types import BufferedInputFile, CallbackQuery, Chat, Message, Update, User
 
 from database.connection import db
 from database.seed import seed_catalog
@@ -208,7 +208,7 @@ async def test_boutique_and_wardrobe_text_commands(monkeypatch):
     await dp.feed_update(bot=bot, update=Update(update_id=1, message=msg_btq))
     assert len(photos_sent) == 1
     assert "بوتیک" in photos_sent[-1]["caption"]
-    assert "https://cdn.everskies.com/render/" in photos_sent[-1]["photo"]
+    assert isinstance(photos_sent[-1]["photo"], (BufferedInputFile, str))
 
     # 2. Trigger "کمد"
     msg_wdr = Message(message_id=2, date=now, chat=chat, from_user=user, text="کمد")

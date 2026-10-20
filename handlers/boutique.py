@@ -11,11 +11,13 @@ from __future__ import annotations
 
 import contextlib
 import logging
+from typing import Any
 
 from aiogram import F, Router
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command
 from aiogram.types import (
+    BufferedInputFile,
     CallbackQuery,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
@@ -49,6 +51,14 @@ def _get_player_default_gender(player: Player) -> str:
     if any(k in p_gen for k in ("زن", "دختر", "girl", "female")):
         return "female"
     return "unisex"
+
+
+async def _render_photo_payload(url: str, filename: str = "avatar.png") -> Any:
+    """Fetch and 4x upscale avatar PNG in-memory, falling back to raw URL on failure."""
+    hd_bytes = await avatar.fetch_upscaled_avatar(url, scale=4)
+    if hd_bytes:
+        return BufferedInputFile(hd_bytes, filename=filename)
+    return url
 
 
 # -----------------------------------------------------------------------------
@@ -280,7 +290,7 @@ async def _build_wardrobe_card(
 async def _build_skin_menu(user_id: int) -> tuple[str, str, InlineKeyboardMarkup]:
     """Generate skin tone picker interface."""
     player_av = await avatar.get_player_avatar(user_id)
-    render_url = await avatar.get_player_render_url(user_id, width=400)
+    render_url = await avatar.get_player_render_url(user_id)
 
     caption = (
         "🎨 <b>انتخاب رنگ پوست کاراکتر</b>\n"
@@ -333,7 +343,8 @@ async def handle_boutique_command(message: Message) -> None:
         index=0,
         is_preview=False,
     )
-    await message.reply_photo(photo=render_url, caption=caption, reply_markup=markup)
+    photo_payload = await _render_photo_payload(render_url, "boutique.png")
+    await message.reply_photo(photo=photo_payload, caption=caption, reply_markup=markup)
 
 
 @router.message(Command("wardrobe", "closet"))
@@ -349,7 +360,8 @@ async def handle_wardrobe_command(message: Message) -> None:
         display_name=message.from_user.full_name or "مسافر",
     )
     render_url, caption, markup = await _build_wardrobe_card(user_id=user_id, index=0)
-    await message.reply_photo(photo=render_url, caption=caption, reply_markup=markup)
+    photo_payload = await _render_photo_payload(render_url, "wardrobe.png")
+    await message.reply_photo(photo=photo_payload, caption=caption, reply_markup=markup)
 
 
 @router.message(Command("avatar"))
@@ -364,7 +376,8 @@ async def handle_avatar_command(message: Message) -> None:
         username=message.from_user.username or "",
         display_name=message.from_user.full_name or "مسافر",
     )
-    render_url = await avatar.get_player_render_url(user_id, width=400)
+    render_url = await avatar.get_player_render_url(user_id)
+    photo_payload = await _render_photo_payload(render_url, "avatar.png")
     caption = (
         "👤 <b>پروفایل آواتار و استایل کاراکتر</b>\n"
         "━━━━━━━━━━━━━━━━━━━━\n"
@@ -388,7 +401,7 @@ async def handle_avatar_command(message: Message) -> None:
             ],
         ]
     )
-    await message.reply_photo(photo=render_url, caption=caption, reply_markup=markup)
+    await message.reply_photo(photo=photo_payload, caption=caption, reply_markup=markup)
 
 
 # -----------------------------------------------------------------------------

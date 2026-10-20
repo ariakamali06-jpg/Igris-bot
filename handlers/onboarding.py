@@ -5,11 +5,13 @@ from __future__ import annotations
 
 import contextlib
 import logging
+from typing import Any
 
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import (
+    BufferedInputFile,
     CallbackQuery,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
@@ -795,13 +797,18 @@ async def _finalize_character(
         with contextlib.suppress(Exception):
             await call.message.delete()
 
-    # Send character avatar photo (transparent, NO background!) directly to chat
+    # Send character avatar photo upscaled 4x (Nearest-Neighbor, crisp HD)
+    photo_payload: Any = render_url
+    hd_bytes = await avatar.fetch_upscaled_avatar(render_url, scale=4)
+    if hd_bytes:
+        photo_payload = BufferedInputFile(hd_bytes, filename="citizen_avatar.png")
+
     sent_photo = False
     if bot_instance:
         try:
             await bot_instance.send_photo(
                 chat_id=chat_id,
-                photo=render_url,
+                photo=photo_payload,
                 caption=caption,
                 reply_markup=None,
             )
@@ -813,7 +820,7 @@ async def _finalize_character(
         if hasattr(call.message, "answer_photo"):
             try:
                 await call.message.answer_photo(
-                    photo=render_url,
+                    photo=photo_payload,
                     caption=caption,
                     reply_markup=None,
                 )
@@ -823,7 +830,7 @@ async def _finalize_character(
         elif hasattr(call.message, "reply_photo"):
             try:
                 await call.message.reply_photo(
-                    photo=render_url,
+                    photo=photo_payload,
                     caption=caption,
                     reply_markup=None,
                 )

@@ -9,16 +9,22 @@ Handles:
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import hashlib
+import io
 import json
 import logging
 import random
 import sqlite3
 import time
+import urllib.request
+from collections import OrderedDict
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
+from PIL import Image
 
 from config import ROOT_DIR, settings
 from database.connection import db
@@ -113,6 +119,56 @@ def get_render_url(
         params.append("a=1")
     qs = f"?{'&'.join(params)}" if params else ""
     return f"https://cdn.everskies.com/render/{slug}.png{qs}"
+
+
+# In-memory LRU cache for 4x upscaled avatar PNG bytes (zero disk overhead)
+_AVATAR_HD_CACHE: OrderedDict[str, bytes] = OrderedDict()
+_MAX_HD_CACHE: int = 150
+
+
+async def fetch_upscaled_avatar(render_url: str, scale: int = 4) -> bytes | None:
+    """Fetch avatar PNG from Everskies CDN and upscale using Nearest Neighbor.
+
+    Upscaling 4x (from 221x340 to 884x1360) ensures pixel art remains razor-sharp
+    and crisp on modern high-DPI screens without Telegram's bilinear smoothing.
+    Zero disk overhead: streams and resizes entirely in-memory using BytesIO.
+    """
+    if not render_url:
+        return None
+
+    cache_key = f"{render_url}_x{scale}"
+    if cache_key in _AVATAR_HD_CACHE:
+        _AVATAR_HD_CACHE.move_to_end(cache_key)
+        return _AVATAR_HD_CACHE[cache_key]
+
+    def _sync_fetch_and_scale() -> bytes | None:
+        try:
+            req = urllib.request.Request(
+                render_url,
+                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"},
+            )
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                data = resp.read()
+            if not data:
+                return None
+            img = Image.open(io.BytesIO(data))
+            new_w = img.size[0] * scale
+            new_h = img.size[1] * scale
+            hd_img = img.resize((new_w, new_h), Image.Resampling.NEAREST)
+            out = io.BytesIO()
+            hd_img.save(out, format="PNG")
+            res = out.getvalue()
+            return res
+        except Exception as exc:
+            logger.warning("Failed to upscale avatar (%s): %s", render_url, exc)
+            return None
+
+    res = await asyncio.to_thread(_sync_fetch_and_scale)
+    if res is not None:
+        _AVATAR_HD_CACHE[cache_key] = res
+        if len(_AVATAR_HD_CACHE) > _MAX_HD_CACHE:
+            _AVATAR_HD_CACHE.popitem(last=False)
+    return res
 
 
 def calculate_set_price(item_count: int) -> int:
