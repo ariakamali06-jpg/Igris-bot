@@ -93,6 +93,9 @@ class CardMessage(Message):
         self.reply_markup = reply_markup
         return self
 
+    async def delete(self, **kw: Any):
+        return True
+
     # -- send APIs -------------------------------------------------------
     async def answer(self, text: str, **kw: Any):
         self.sent.append({"kind": "text", "text": text})
@@ -190,7 +193,8 @@ async def test_inventory_button_works_from_photo_card(player) -> None:
     assert "Inventory" in (card.caption or "") or "کوله‌پشتی" in (card.caption or ""), (
         f"caption was not updated: {card.caption!r}"
     )
-    assert _has_button(card.reply_markup, "Back to card") or _has_button(card.reply_markup, "کارت من")
+    has_back = _has_button(card.reply_markup, "Back to card")
+    assert has_back or _has_button(card.reply_markup, "کارت من")
 
 
 async def test_shop_button_works_from_photo_card(player) -> None:
@@ -204,7 +208,8 @@ async def test_shop_button_works_from_photo_card(player) -> None:
     assert "Boutique" in (card.caption or "") or "بوتیک" in (card.caption or ""), (
         f"caption was not updated: {card.caption!r}"
     )
-    assert _has_button(card.reply_markup, "Back to card") or _has_button(card.reply_markup, "کارت من")
+    has_back = _has_button(card.reply_markup, "Back to card")
+    assert has_back or _has_button(card.reply_markup, "کارت من")
 
 
 async def test_inventory_pagination_stays_on_caption(player) -> None:
@@ -264,7 +269,8 @@ async def test_equip_refreshes_markup_without_touching_caption(player) -> None:
 
     assert call.alerts == [], f"equip errored: {call.alerts}"
     assert card.caption == before, "equip must not rewrite the caption"
-    assert _has_button(card.reply_markup, "Back to card") or _has_button(card.reply_markup, "کارت من")
+    has_back = _has_button(card.reply_markup, "Back to card")
+    assert has_back or _has_button(card.reply_markup, "کارت من")
 
 
 async def test_unequip_item_removes_from_loadout_and_stays_unequipped(player) -> None:
@@ -283,8 +289,6 @@ async def test_unequip_item_removes_from_loadout_and_stays_unequipped(player) ->
 
 
 async def test_equip_and_unequip_updates_photo_media(player) -> None:
-    from handlers.common import hydrate
-
     card = CardMessage()
     call_uneq = FakeCall("uneq:body:0:fitted_tee", card)
     await profile.cb_unequip(call_uneq)
@@ -356,4 +360,52 @@ async def test_cmd_version_creator_only() -> None:
     denied_text = msg_stranger.sent[0]["text"]
     assert "مختص سازنده‌ی ربات" in denied_text
     assert "v2.0.0" not in denied_text
+
+
+@pytest.mark.asyncio
+async def test_help_menu_commands_and_boutique_redirect() -> None:
+    from handlers import boutique, economy
+
+    # 1. دستور متنی /help منوی اصلی و دکمه‌های شیشه‌ای را نمایش می‌دهد
+    msg = CardMessage(photo=False)
+    await economy.cmd_help(msg)
+    assert len(msg.sent) == 1
+    assert "راهنمای جامع شهر و جهان تیرامیکس" in msg.sent[0]["text"]
+
+    # 2. کلیک روی help:cmds فهرست جامع تمامی دستورات جدید را نشان می‌دهد
+    text_msg = CardMessage(photo=False)
+    call_cmds = FakeCall("help:cmds", text_msg)
+    await economy.cb_help_cmds(call_cmds)
+    assert "فهرست کامل دستورات شهر تیرامیکس" in (text_msg.text or "")
+    assert "/boutique" in text_msg.text
+    assert "/wardrobe" in text_msg.text
+    assert "/customizer" in text_msg.text
+    assert "آرایشگاه" in text_msg.text
+    assert "سولاریوم" in text_msg.text
+    assert "دوز" in text_msg.text
+    assert "دروازه" in text_msg.text
+    assert "کاپ" in text_msg.text
+    assert "سنگ کاغذ قیچی" in text_msg.text
+    assert "ریسک" in text_msg.text
+    assert "سایه هکر" in text_msg.text
+    assert "سرقت بانک" in text_msg.text
+    assert "نوچه" in text_msg.text
+    assert "هدیه" in text_msg.text
+    assert "سپر خرید" in text_msg.text
+    assert _has_button(text_msg.reply_markup, "فروشگاه و بوتیک مد")
+
+    # 3. کلیک روی دکمه فروشگاه از منوی راهنما (btq:open) ویترین تصویری بوتیک را باز می‌کند
+    call_btq = FakeCall("btq:open", text_msg)
+    await boutique.handle_boutique_callback(call_btq)
+    assert len(text_msg.sent) == 1
+    assert text_msg.sent[0]["kind"] == "photo"
+    assert "بوتیک" in (text_msg.sent[0].get("caption") or "")
+
+    # 4. کال‌بک قدیمی shop:0 نیز به ویترین مدرن و دیداری بوتیک متصل است
+    photo_card = CardMessage(photo=True)
+    call_shop0 = FakeCall("shop:0", photo_card)
+    await shop.cb_shop(call_shop0)
+    assert "بوتیک" in (photo_card.caption or "")
+    assert _has_button(photo_card.reply_markup, "کارت من")
+
 

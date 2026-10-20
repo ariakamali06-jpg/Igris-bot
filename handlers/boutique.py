@@ -92,7 +92,11 @@ async def _build_boutique_card(
                     InlineKeyboardButton(text="🚹 مردانه", callback_data="btq:cat:male"),
                     InlineKeyboardButton(text="⚧ اسپرت", callback_data="btq:cat:unisex"),
                 ],
-                [InlineKeyboardButton(text="🚪 بستن", callback_data="btq:close")],
+                [
+                    InlineKeyboardButton(text="🔙 راهنما", callback_data="help:main"),
+                    InlineKeyboardButton(text="🏠 کارت من", callback_data="act:me"),
+                    InlineKeyboardButton(text="🚪 بستن", callback_data="btq:close"),
+                ],
             ]
         )
         return empty_url, empty_caption, markup
@@ -194,14 +198,19 @@ async def _build_boutique_card(
         InlineKeyboardButton(text=u_mark, callback_data="btq:cat:unisex"),
     ]
 
-    bottom_row = [
+    extra_row = [
         InlineKeyboardButton(text="🎨 کاتالوگ مینی‌اپ", url=settings.webapp_url),
         InlineKeyboardButton(text="🧥 کمد من", callback_data="wdr:open:0"),
+    ]
+
+    bottom_row = [
+        InlineKeyboardButton(text="🔙 راهنما", callback_data="help:main"),
+        InlineKeyboardButton(text="🏠 کارت من", callback_data="act:me"),
         InlineKeyboardButton(text="🚪 بستن", callback_data="btq:close"),
     ]
 
     markup = InlineKeyboardMarkup(
-        inline_keyboard=[nav_row, act_preview_row, cat_row, bottom_row]
+        inline_keyboard=[nav_row, act_preview_row, cat_row, extra_row, bottom_row]
     )
     return render_url, caption, markup
 
@@ -533,6 +542,58 @@ async def handle_customizer_webapp_data(message: Message) -> None:
 # Callback Query Handlers
 # -----------------------------------------------------------------------------
 
+
+async def open_boutique_from_callback(call: CallbackQuery) -> None:
+    """
+    نمایش و باز کردن مستقیم ویترین تصویری بوتیک مدرن از طریق کال‌بک شیشه‌ای.
+
+    اگر پیام قبلی دارای عکس باشد (کارت شناسنامه)، مدیا و کیبورد درجا ویرایش می‌شوند.
+    اگر پیام قبلی متنی باشد (مانند منوی راهنما)، پیام متنی پاک شده و کارت تصویری
+    جذاب بوتیک همراه با کنترل‌های کاروسل و ناوبری ارسال می‌گردد.
+    """
+    if not call.from_user or not call.message:
+        await call.answer()
+        return
+
+    user_id = call.from_user.id
+    player = await game.load_player(user_id)
+    if not player:
+        player = await game.ensure_player(
+            user_id=user_id,
+            username=call.from_user.username or "",
+            display_name=call.from_user.full_name or "مسافر",
+        )
+    gender = _get_player_default_gender(player)
+    render_url, caption, markup = await _build_boutique_card(
+        user_id=user_id,
+        gender=gender,
+        index=0,
+        is_preview=False,
+    )
+
+    is_photo_message = bool(getattr(call.message, "photo", None))
+    if is_photo_message:
+        try:
+            await call.message.edit_media(
+                media=InputMediaPhoto(media=render_url, caption=caption, parse_mode="HTML"),
+                reply_markup=markup,
+            )
+        except TelegramBadRequest as exc:
+            logger.debug("edit_media error in boutique callback: %s", exc)
+            with contextlib.suppress(Exception):
+                await call.message.edit_caption(caption=caption, reply_markup=markup)
+    else:
+        with contextlib.suppress(Exception):
+            await call.message.delete()
+        photo_payload = await _render_photo_payload(render_url, "boutique.png")
+        await call.message.answer_photo(
+            photo=photo_payload,
+            caption=caption,
+            reply_markup=markup,
+        )
+    await call.answer()
+
+
 @router.callback_query(F.data.startswith("btq:"))
 async def handle_boutique_callback(call: CallbackQuery) -> None:
     """Handle all boutique interactions with single-message carousel editing."""
@@ -543,6 +604,10 @@ async def handle_boutique_callback(call: CallbackQuery) -> None:
     user_id = call.from_user.id
     parts = call.data.split(":")
     action = parts[1] if len(parts) > 1 else ""
+
+    if action in ("open", "main"):
+        await open_boutique_from_callback(call)
+        return
 
     if action == "close":
         await call.answer()

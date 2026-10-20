@@ -154,11 +154,20 @@ async def cmd_shop(message: Message) -> None:
 
 @router.callback_query(F.data.startswith("shop:"))
 async def cb_shop(call: CallbackQuery) -> None:
+    """
+    هدایت هوشمند کال‌بک‌های فروشگاه قدیمی به ویترین مدرن و دیداری بوتیک تیرامیکس.
+    """
     user = call.from_user
     if user is None or call.data is None:
         return
     payload = call.data.split(":")[1:]
     action = payload[0] if payload else "0"
+
+    if action in ("0", "open"):
+        from handlers.boutique import open_boutique_from_callback
+
+        await open_boutique_from_callback(call)
+        return
 
     try:
         if action == "noop":

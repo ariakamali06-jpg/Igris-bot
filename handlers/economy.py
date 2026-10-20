@@ -438,8 +438,12 @@ def _help_markup() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="⚔️ راهنمای دوئل و دزدی", callback_data="help:combat"),
             ],
             [
-                InlineKeyboardButton(text="🏪 فروشگاه", callback_data="shop:0"),
+                InlineKeyboardButton(text="🛍 فروشگاه و بوتیک مد", callback_data="btq:open"),
                 InlineKeyboardButton(text="💼 کار کردن", callback_data="act:work"),
+            ],
+            [
+                InlineKeyboardButton(text="👤 شناسنامه من", callback_data="act:me"),
+                InlineKeyboardButton(text="🚪 بستن", callback_data="btq:close"),
             ],
         ]
     )
@@ -454,7 +458,7 @@ _HELP_MAIN_TEXT = (
     "🏛 <b>سیستم‌های اصلی شهر:</b>\n"
     "• <b>آموزش و شغل:</b> با ارتقای مدرک تحصیلی، شغل‌های پردرآمدتر در اداره کار باز می‌شوند.\n"
     "• <b>بانک و اقتصاد:</b> نگهداری پول در گاوصندوق امن ضدسرقت، دریافت تسهیلات و تسویه اقساط.\n"
-    "• <b>کمد و زیبایی:</b> خرید از فروشگاه، تغییر مدل مو در آرایشگاه و جراحی پلاستیک چهره.\n"
+    "• <b>بوتیک و مد:</b> ویترین روزانه ست‌های اوراسکایز، پرو زنده و کاتالوگ مینی‌اپ.\n"
     "• <b>خانواده و جامعه:</b> ازدواج، فرزندآوری، طلاق با قاضی تصادفی از اعضای گروه، و کلن‌ها.\n"
     "• <b>قانون و ریسک:</b> دزدی از سایر شهروندان با ریسک حبس در بازداشتگاه یا جریمه ۵ برابری.\n\n"
     "👇 <i>از دکمه‌های زیر برای دسترسی سریع یا مشاهده لیست تمام دستورات استفاده کنید:</i>"
@@ -462,52 +466,58 @@ _HELP_MAIN_TEXT = (
 
 
 _HELP_CMDS_TEXT = (
-    "📜 <b>فهرست کامل دستورات شهر تیرامیکس:</b>\n\n"
-    "👤 <b>کاراکتر و کمد لباس:</b>\n"
-    "• <code>پروفایل</code> یا <code>کارت</code> — شناسنامه شهروندی و کارت گرافیکی\n"
-    "• <code>کمد</code> یا <code>کوله</code> — کمد لباس و تعویض تجهیزات با دکمه\n"
-    "• <code>آمار</code> یا <code>/stats</code> — ارقام لول، انرژی، قدرت، دفاع و استایل\n\n"
-    "💼 <b>آموزش، شغل و درآمد:</b>\n"
-    "• <code>کار</code> یا <code>/work</code> — شیفت کاری و دریافت درآمد بر اساس شغل\n"
-    "• <code>تحصیل</code> یا <code>/study</code> — ارتقای مدرک تحصیلی در دانشگاه تیرامیکس\n"
-    "• <code>شغل</code> یا <code>/job</code> — مشاهده فرصت‌های شغلی یا استخدام\n"
-    "• <code>کیف پول</code> یا <code>موجودی</code> — موجودی نقد و بانکی\n"
-    "• <code>بانک</code> یا <code>/bank</code> — خدمات بانک مرکزی (واریز، برداشت و وام)\n"
-    "• <code>روزانه</code> یا <code>/daily</code> — دریافت حقوق و جایزه ۲۴ ساعته\n\n"
-    "✂️ <b>خدمات شهری و ظاهر:</b>\n"
-    "• <code>آرایشگاه</code> — سالن پیرایش مو (<code>آرایشگاه [مدل 1 تا 5] [رنگ]</code>)\n"
-    "• <code>زیبایی</code> — جراحی چهره (<code>زیبایی [چشم 1 تا 4] [رنگ] [لبخند]</code>)\n"
-    "• <code>کلینیک</code> — مراجعه به درمانگاه شهر برای درمان بیماری‌ها و نقاهت\n"
-    "• <code>فروشگاه</code> یا <code>/shop</code> — بوتیک لباس، شلوار، کلاه و اکسسوری\n\n"
-    "💍 <b>روابط، خانواده و طلاق:</b>\n"
-    "• <code>ازدواج</code> (در ریپلای یا آیدی) — پیشنهاد پیوند و تشکیل زندگی مشترک\n"
-    "• <code>رابطه</code> یا <code>سکس</code> — رابطه با همسر با شانس فرزندآوری\n"
-    "• <code>خیانت</code> (در ریپلای به شخص دیگر) — رابطه پنهانی با ریسک رسوایی\n"
-    "• <code>طلاق</code> — جدایی؛ توافقی یا با حکم قاضی تصادفی از گروه!\n\n"
-    "⚔️ <b>جرم، دوئل و کلن‌ها:</b>\n"
-    "• <code>دزدی</code> (ریپلای یا آیدی) — غارت ۳۵٪ تا ۸۵٪ موجودی نقد\n"
-    "• <code>دوئل [مبلغ]</code> (ریپلای یا آیدی) — مبارزه تن به تن بر سر سکه\n"
-    "• <code>کلن</code> — وضعیت کلن، یا <code>کلن ساخت [نام]</code> برای تأسیس سندیکا\n"
-    "• <code>باس</code> یا <code>/boss</code> — حمله گروهی به غول‌های خیابانی شهر\n\n"
-    "🏙 <b>املاک، بورس و قرارداد:</b>\n"
-    "• <code>املاک</code> — خرید، ارتقا و وصول درآمد منفعل املاک\n"
-    "• <code>قرارداد</code> — ماموریت‌های شهری و جوایز نقدی\n"
-    "• <code>بورس</code> — لیست ارزها، خرید و فروش و سرمایه‌گذاری\n"
-    "• <code>سپر خرید</code> — بیمه ضدسرقت برای مدت مشخص\n"
-    "• <code>قرعه</code> — لاتاری با جوایز دوره‌ای تیرامیکس\n\n"
-    "🎰 <b>بازی‌های شهر:</b>\n"
-    "• <code>کازینو [مبلغ]</code> — اسلات شانس\n"
-    "• <code>ریسک [مبلغ]</code> — انفجار با کش‌اوت دستی\n"
-    "• <code>تاس [مبلغ] بالا|پایین</code> — شرط‌بندی روی مجموع تاس‌ها\n"
-    "• <code>سکه [مبلغ] شیر|خط</code> — شیر یا خط ۵۰/۵۰\n"
-    "• <code>دوز</code> — ایکس‌او آنلاین دونفره\n"
-    "• <code>دروازه</code> — پنالتی فوتبال خیابانی\n\n"
-    "🕳 <b>بازار سیاه و تبهکاری:</b>\n"
-    "• <code>کاسب</code> — بساط زیرپل: نگهبان و ابزار سرقت\n"
-    "• <code>بازارچه</code> — فروش و خرید کالا بین شهروندان\n"
+    "📜 <b>فهرست کامل دستورات شهر تیرامیکس:</b>\n"
+    "━━━━━━━━━━━━━━━━━━━━\n\n"
+    "👤 <b>هویت و ظاهر:</b>\n"
+    "• <code>پروفایل</code> / <code>/me</code> — شناسنامه رسمی و کارت گرافیکی\n"
+    "• <code>آمار</code> / <code>/stats</code> — لول، انرژی، سلامت، اتک، دفاع و استایل\n"
+    "• <code>بوتیک</code> / <code>/boutique</code> — ویترین روزانه ست‌های لباس و خرید\n"
+    "• <code>کمد</code> / <code>/wardrobe</code> — مشاهده و پوشیدن لباس‌های خریداری‌شده\n"
+    "• <code>آواتار</code> / <code>/avatar</code> — استایل شخصی، کمد و میانبرهای چهره\n"
+    "• <code>/customizer</code> — مینی‌اپ کاتالوگ و شخصی‌سازی کاراکتر\n"
+    "• <code>آرایشگاه</code> — مدل و رنگ مو | <code>زیبایی</code> — جراحی چهره\n"
+    "• <code>سولاریوم</code> — برنزه‌سازی پوست | <code>کلینیک</code> — درمانگاه شهر\n\n"
+    "💼 <b>اقتصاد، شغل و دارایی:</b>\n"
+    "• <code>کار</code> / <code>/work</code> — شیفت کاری و دریافت درآمد\n"
+    "• <code>تحصیل</code> / <code>/study</code> — ارتقای مدرک تحصیلی دانشگاهی\n"
+    "• <code>شغل</code> / <code>/job</code> — مشاهده و استخدام در مشاغل\n"
+    "• <code>کیف پول</code> / <code>موجودی</code> — موجودی نقد، بانک و شارد روح\n"
+    "• <code>بانک</code> / <code>/bank</code> — واریز، برداشت و دریافت وام\n"
+    "• <code>روزانه</code> / <code>/daily</code> — پاداش وفاداری ۲۴ ساعته\n"
+    "• <code>املاک</code> / <code>/property</code> — خرید و درآمد منفعل املاک\n"
+    "• <code>بورس</code> / <code>/exchange</code> — بازار ارز دیجیتال و سهام\n"
+    "• <code>قرارداد</code> / <code>/contract</code> — ماموریت‌های روزانه با جایزه\n"
+    "• <code>بازارچه</code> / <code>/bazaar</code> — دادوستد مستقیم با سایر بازیکنان\n"
+    "• <code>قرعه</code> / <code>/lottery</code> — لاتاری | <code>هدیه</code> — اهدای پول\n"
+    "• <code>سپر خرید</code> / <code>/shield</code> — بیمه ضدسرقت اموال\n\n"
+    "💍 <b>روابط، خانواده و سندیکا:</b>\n"
+    "• <code>ازدواج</code> (ریپلای/آیدی) — پیشنهاد پیوند مشترک\n"
+    "• <code>طلاق</code> — جدایی توافقی یا دادگاه با قاضی تصادفی\n"
+    "• <code>رابطه</code> / <code>سکس</code> — عشق‌بازی با همسر و فرزندآوری\n"
+    "• <code>خیانت</code> (ریپلای) — رابطه پنهانی با ریسک رسوایی\n"
+    "• <code>کلن</code> / <code>/clan</code> — سندیکا و خانواده‌های مافیایی\n\n"
+    "⚔️ <b>دوئل، نبرد و دنیای زیرزمینی:</b>\n"
+    "• <code>دوئل [مبلغ]</code> (ریپلای/آیدی) — نبرد خیابانی سر پول\n"
+    "• <code>دزدی</code> (ریپلای/آیدی) — جیب‌بری با ریسک حبس و جریمه\n"
+    "• <code>اخاذی</code> (ریپلای/آیدی) — باج‌گیری خیابانی از شهروندان\n"
     "• <code>سایه هکر</code> / <code>سایه قاتل</code> — اجیر کردن سایه‌های تاریک\n"
-    "• <code>اخاذی</code> — زورگیری خیابانی از شهروندان\n"
-    "• <code>حیوان</code> — خرید، ارتقا و نبرد حیوانات خانگی"
+    "• <code>کاسب</code> / <code>/blackmarket</code> — بازار سیاه و ابزار سرقت\n"
+    "• <code>سرقت بانک</code> / <code>/bankraid</code> — عملیات دستبرد به خزانه\n"
+    "• <code>نوچه</code> / <code>/crew</code> — استخدام بادیگارد مسلح\n"
+    "• <code>حیوان</code> / <code>/pet</code> — خرید و مبارزات پت‌های جنگی\n"
+    "• <code>باس</code> / <code>/boss</code> — حمله گروهی به غول‌های شهر\n\n"
+    "🎰 <b>کازینو و بازی‌های شانس:</b>\n"
+    "• <code>کازینو [مبلغ]</code> — اسلات شانس ۳تایی\n"
+    "• <code>ریسک [مبلغ]</code> — بازی انفجار با کش‌اوت دستی\n"
+    "• <code>تاس [مبلغ] بالا|پایین</code> — مجموع جفت‌تاس\n"
+    "• <code>سکه [مبلغ] شیر|خط</code> — شیر یا خط ۵۰/۵۰\n"
+    "• <code>سنگ کاغذ قیچی [مبلغ]</code> — بازی RPS با بات\n"
+    "• <code>حدس [مبلغ]</code> — حدس عدد | <code>گاوصندوق [مبلغ]</code> — رمزگشایی\n"
+    "• <code>دوز</code> (ریپلای/آیدی) — دوز دونفره آنلاین\n"
+    "• <code>دروازه</code> (ریپلای/آیدی) — پنالتی فوتبال دونفره\n"
+    "• <code>کاپ</code> / <code>/cup</code> — تورنمنت حذفی قهرمانی\n"
+    "━━━━━━━━━━━━━━━━━━━━\n"
+    "💡 <i>در دستورات دونفره می‌توانید با ریپلای، آیدی عددی یا یوزرنیم با @ حریف را مشخص کنید.</i>"
 )
 
 
@@ -557,12 +567,19 @@ async def cb_help_cmds(call: CallbackQuery) -> None:
     if isinstance(message, Message):
         back_markup = InlineKeyboardMarkup(
             inline_keyboard=[
-                [InlineKeyboardButton(text="🔙 بازگشت به راهنما", callback_data="help:main")]
+                [
+                    InlineKeyboardButton(text="🔙 بازگشت به راهنما", callback_data="help:main"),
+                    InlineKeyboardButton(text="🛍 فروشگاه و بوتیک مد", callback_data="btq:open"),
+                ],
+                [
+                    InlineKeyboardButton(text="👤 شناسنامه من", callback_data="act:me"),
+                    InlineKeyboardButton(text="🚪 بستن", callback_data="btq:close"),
+                ],
             ]
         )
         try:
             if message.photo:
-                await message.edit_caption(caption=_HELP_CMDS_TEXT, reply_markup=back_markup)
+                await message.answer(_HELP_CMDS_TEXT, reply_markup=back_markup)
             else:
                 await message.edit_text(_HELP_CMDS_TEXT, reply_markup=back_markup)
         except Exception:
@@ -577,7 +594,14 @@ async def cb_help_combat(call: CallbackQuery) -> None:
     if isinstance(message, Message):
         back_markup = InlineKeyboardMarkup(
             inline_keyboard=[
-                [InlineKeyboardButton(text="🔙 بازگشت به راهنما", callback_data="help:main")]
+                [
+                    InlineKeyboardButton(text="🔙 بازگشت به راهنما", callback_data="help:main"),
+                    InlineKeyboardButton(text="🛍 فروشگاه و بوتیک مد", callback_data="btq:open"),
+                ],
+                [
+                    InlineKeyboardButton(text="👤 شناسنامه من", callback_data="act:me"),
+                    InlineKeyboardButton(text="🚪 بستن", callback_data="btq:close"),
+                ],
             ]
         )
         try:
