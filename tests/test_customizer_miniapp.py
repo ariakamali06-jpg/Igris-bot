@@ -177,6 +177,9 @@ async def test_handle_customizer_command():
         assert msg.reply_photo.called
         call_kwargs = msg.reply_photo.call_args[1]
         assert "مینی‌اپ شخصی‌سازی" in call_kwargs["caption"]
+        markup = call_kwargs["reply_markup"]
+        assert markup.inline_keyboard[0][0].web_app is not None
+        assert "github.io" in markup.inline_keyboard[0][0].web_app.url
     finally:
         async with db.write() as conn:
             await conn.execute("DELETE FROM player_avatar WHERE user_id = ?", (test_user_id,))
