@@ -23,6 +23,7 @@ This module therefore provides:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import sqlite3
 from collections.abc import AsyncIterator
@@ -169,10 +170,15 @@ class Database:
                 is_plus_size     INTEGER NOT NULL DEFAULT 0,
                 active_set_id    INTEGER DEFAULT NULL,
                 equipped_var_ids TEXT    NOT NULL DEFAULT '[]',
+                makeup_data      TEXT    NOT NULL DEFAULT '{}',
                 updated_at       INTEGER NOT NULL DEFAULT 0
             )
             """
         )
+        with contextlib.suppress(Exception):
+            await self._write_conn.execute(
+                "ALTER TABLE player_avatar ADD COLUMN makeup_data TEXT NOT NULL DEFAULT '{}'"
+            )
         await self._write_conn.execute(
             """
             CREATE TABLE IF NOT EXISTS player_wardrobe (

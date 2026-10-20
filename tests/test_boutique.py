@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import base64
 import json
+import sqlite3
 from datetime import UTC, datetime
+from pathlib import Path
 from unittest.mock import AsyncMock
 
 import pytest
@@ -19,14 +21,47 @@ from services import avatar, economy, game
 pytestmark = pytest.mark.asyncio
 
 
+def _ensure_test_catalog():
+    p = Path("/tmp/bot_catalog.db")
+    if p.exists():
+        p.unlink()
+    conn = sqlite3.connect(p)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS bot_sets (
+            id INTEGER PRIMARY KEY,
+            name TEXT NOT NULL,
+            gender TEXT NOT NULL,
+            item_count INTEGER NOT NULL,
+            var_ids TEXT NOT NULL,
+            is_plus_size INTEGER NOT NULL DEFAULT 0
+        )
+    """)
+    for i in range(1, 31):
+        if i <= 10:
+            g = "female"
+        elif i <= 20:
+            g = "male"
+        else:
+            g = "unisex"
+        conn.execute(
+            "INSERT INTO bot_sets VALUES (?, ?, ?, ?, ?, ?)",
+            (i, f"Set {i}", g, 3, f"[{1000 + i}, {2000 + i}]", 0),
+        )
+    conn.commit()
+    conn.close()
+
+
 @pytest.fixture(autouse=True)
 async def _setup_db():
-    from handlers import boutique
+    _ensure_test_catalog()
+    from handlers import boutique, salon
     boutique.router._parent_router = None
+    salon.router._parent_router = None
     await db.connect()
     await seed_catalog()
     yield
     boutique.router._parent_router = None
+    salon.router._parent_router = None
     await db.close()
 
 

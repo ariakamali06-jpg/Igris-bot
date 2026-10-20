@@ -526,6 +526,7 @@ CREATE TABLE IF NOT EXISTS player_avatar (
     is_plus_size     INTEGER NOT NULL DEFAULT 0,
     active_set_id    INTEGER DEFAULT NULL,
     equipped_var_ids TEXT    NOT NULL DEFAULT '[]',
+    makeup_data      TEXT    NOT NULL DEFAULT '{}',
     updated_at       INTEGER NOT NULL DEFAULT 0
 );
 

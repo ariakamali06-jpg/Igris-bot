@@ -479,74 +479,9 @@ async def cb_balance(call: CallbackQuery) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Tiramix City Services: Barber, Beauty Surgery & Clinic
+# Tiramix City Services: Clinic
+# (Barber, Solarium & Makeup are managed in handlers.salon)
 # ---------------------------------------------------------------------------
-
-@router.message(CommandOrText(["barber"], {"آرایشگاه", "سلمونی", "مو"}))
-async def cmd_barber(message: Message) -> None:
-    user = message.from_user
-    if user is None:
-        return
-    try:
-        player = await hydrate(user.id, user.full_name, user.username)
-        from services import tiramix
-        text = (
-            "✂️ <b>به آرایشگاه و سالن پیرایش تیرامیکس خوش آمدید!</b>\n\n"
-            f"👤 مدل موی فعلی: <b>{player.hair_style}</b> ({player.hair_color})\n"
-            f"💵 هزینه تغییر مدل و رنگ مو: <b>{tiramix.HAIRSTYLE_FEES:,}</b> سکه\n\n"
-            "برای تغییر فوری مدل مو به همراه رنگ دلخواه، از دستور زیر استفاده کنید:\n"
-            "<code>آرایشگاه [مدل 1 تا 5] [مشکی/نقره‌ای/قهوه‌ای]</code>\n"
-            "<i>مثال: آرایشگاه 2 مشکی</i>"
-        )
-        parts = (message.text or "").strip().split()
-        if len(parts) >= 3:
-            s_num = parts[1]
-            c_fa = parts[2]
-            color_map = {"مشکی": "black", "نقره‌ای": "silver", "نقره": "silver", "قهوه‌ای": "brown", "قهوه": "brown"}
-            c_key = color_map.get(c_fa, "black")
-            s_key = f"hair{s_num}" if s_num in ("1", "2", "3", "4", "5") else "hair1"
-            res = await tiramix.update_hairstyle(player, s_key, c_key)
-            await message.reply(res["message"])
-            return
-
-        await message.reply(text)
-    except Exception as exc:  # noqa: BLE001
-        await answer_error(exc, message=message)
-
-
-@router.message(CommandOrText(["beauty"], {"زیبایی", "جراحی", "عمل"}))
-async def cmd_beauty(message: Message) -> None:
-    user = message.from_user
-    if user is None:
-        return
-    try:
-        player = await hydrate(user.id, user.full_name, user.username)
-        from services import tiramix
-        text = (
-            "💎 <b>به کلینیک فوق تخصصی زیبایی و جراحی پلاستیک تیرامیکس خوش آمدید!</b>\n\n"
-            f"💵 هزینه جراحی کامل چهره: <b>{tiramix.SURGERY_FEES:,}</b> سکه\n\n"
-            "برای جراحی و تغییر چشم و دهان از فرمول زیر استفاده کنید:\n"
-            "<code>زیبایی [چشم 1 تا 4] [رنگ] [لبخند 1 تا 4]</code>\n"
-            "<i>رنگ‌های مجاز: آبی، سبز، عسلی، بنفش، مشکی</i>\n"
-            "<i>مثال: زیبایی 2 آبی 1</i>"
-        )
-        parts = (message.text or "").strip().split()
-        if len(parts) >= 4:
-            e_num = parts[1] if parts[1] in ("1", "2", "3", "4") else "1"
-            col_fa = parts[2]
-            m_num = parts[3] if parts[3] in ("1", "2", "3", "4") else "1"
-            color_map = {"آبی": "blue", "سبز": "green", "عسلی": "amber", "بنفش": "violet", "مشکی": "black"}
-            col_key = color_map.get(col_fa, "blue")
-            e_key = f"eyes{e_num}_1"
-            m_key = f"mouth{m_num}_1"
-            res = await tiramix.update_facial_surgery(player, e_key, col_key, m_key)
-            await message.reply(res["message"])
-            return
-
-        await message.reply(text)
-    except Exception as exc:  # noqa: BLE001
-        await answer_error(exc, message=message)
-
 
 @router.message(CommandOrText(["clinic"], {"کلینیک", "بیمارستان", "درمانگاه", "دکتر"}))
 async def cmd_clinic(message: Message) -> None:

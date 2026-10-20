@@ -262,7 +262,9 @@ async def _build_wardrobe_card(
         ]
 
     options_row = [
-        InlineKeyboardButton(text="🎨 تغییر رنگ پوست", callback_data="wdr:skin_menu"),
+        InlineKeyboardButton(
+            text="💇‍♀️ آرایشگاه و سولاریوم (پولی)", callback_data="sal:menu"
+        ),
         InlineKeyboardButton(text="❌ درآوردن لباس", callback_data=f"wdr:unequip:{idx}"),
     ]
 
@@ -355,7 +357,7 @@ async def handle_wardrobe_command(message: Message) -> None:
 @router.message(Command("avatar"))
 @router.message(F.text.lower().in_(AVATAR_COMMANDS))
 async def handle_avatar_command(message: Message) -> None:
-    """Show current character avatar and skin tone options."""
+    """Show current character avatar and styling options."""
     if not message.from_user:
         return
     user_id = message.from_user.id
@@ -364,7 +366,30 @@ async def handle_avatar_command(message: Message) -> None:
         username=message.from_user.username or "",
         display_name=message.from_user.full_name or "مسافر",
     )
-    render_url, caption, markup = await _build_skin_menu(user_id)
+    render_url = await avatar.get_player_render_url(user_id, width=400)
+    caption = (
+        "👤 <b>پروفایل آواتار و استایل کاراکتر</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "برای تغییر رنگ پوست در سولاریوم یا میکاپ چهره (مو، چشم، بینی، گوش، لب) "
+        "به آرایشگاه تیرامیکس مراجعه کنید."
+    )
+    markup = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="💇‍♀️ ورود به آرایشگاه و سولاریوم (پولی)",
+                    callback_data="sal:menu",
+                ),
+            ],
+            [
+                InlineKeyboardButton(text="👕 کمد لباس من", callback_data="wdr:view:0"),
+                InlineKeyboardButton(text="🛍 ویترین بوتیک", callback_data="btq:cat:female"),
+            ],
+            [
+                InlineKeyboardButton(text="🚪 بستن", callback_data="btq:close"),
+            ],
+        ]
+    )
     await message.reply_photo(photo=render_url, caption=caption, reply_markup=markup)
 
 
@@ -568,26 +593,18 @@ async def handle_wardrobe_callback(call: CallbackQuery) -> None:
             )
         return
 
-    if action == "skin_menu":
-        render_url, caption, markup = await _build_skin_menu(user_id)
+    if action in ("skin_menu", "set_skin"):
+        from handlers import salon as salon_h
+
+        render_url, caption, markup = await salon_h._build_solarium_menu(user_id)
         with contextlib.suppress(TelegramBadRequest):
             await call.message.edit_media(
-                media=InputMediaPhoto(media=render_url, caption=caption, parse_mode="HTML"),
+                media=InputMediaPhoto(
+                    media=render_url, caption=caption, parse_mode="HTML"
+                ),
                 reply_markup=markup,
             )
         await call.answer()
-        return
-
-    if action == "set_skin":
-        tone_id = int(parts[2]) if len(parts) > 2 else -1
-        await avatar.set_skin_tone(user_id, tone_id)
-        await call.answer("🎨 رنگ پوست با موفقیت به‌روزرسانی شد!", show_alert=False)
-        render_url, caption, markup = await _build_skin_menu(user_id)
-        with contextlib.suppress(TelegramBadRequest):
-            await call.message.edit_media(
-                media=InputMediaPhoto(media=render_url, caption=caption, parse_mode="HTML"),
-                reply_markup=markup,
-            )
         return
 
     await call.answer()

@@ -110,7 +110,7 @@ async def get_player_avatar(user_id: int) -> dict[str, Any]:
         cursor = await conn.execute(
             """
             SELECT user_id, skin_tone, is_plus_size, active_set_id,
-                   equipped_var_ids, updated_at
+                   equipped_var_ids, makeup_data, updated_at
             FROM player_avatar WHERE user_id = ?
             """,
             (user_id,),
@@ -119,12 +119,15 @@ async def get_player_avatar(user_id: int) -> dict[str, Any]:
         await cursor.close()
 
     if row is not None:
+        keys = row.keys() if hasattr(row, "keys") else []
+        makeup_raw = row["makeup_data"] if "makeup_data" in keys else "{}"
         return {
             "user_id": row["user_id"],
             "skin_tone": row["skin_tone"],
             "is_plus_size": row["is_plus_size"],
             "active_set_id": row["active_set_id"],
             "equipped_var_ids": json.loads(row["equipped_var_ids"] or "[]"),
+            "makeup_data": json.loads(makeup_raw or "{}"),
             "updated_at": row["updated_at"],
         }
 
@@ -145,8 +148,8 @@ async def get_player_avatar(user_id: int) -> dict[str, Any]:
         await conn.execute(
             """
             INSERT OR IGNORE INTO player_avatar
-                (user_id, skin_tone, is_plus_size, active_set_id, equipped_var_ids, updated_at)
-            VALUES (?, ?, 0, NULL, '[]', ?)
+                (user_id, skin_tone, is_plus_size, active_set_id, equipped_var_ids, makeup_data, updated_at)
+            VALUES (?, ?, 0, NULL, '[]', '{}', ?)
             """,
             (user_id, skin_tone_id, now_ts),
         )
@@ -157,6 +160,7 @@ async def get_player_avatar(user_id: int) -> dict[str, Any]:
         "is_plus_size": 0,
         "active_set_id": None,
         "equipped_var_ids": [],
+        "makeup_data": {},
         "updated_at": now_ts,
     }
 
