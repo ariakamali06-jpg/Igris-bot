@@ -57,6 +57,7 @@ CREATE TABLE IF NOT EXISTS players (
     last_intimacy_time INTEGER NOT NULL DEFAULT 0,
     last_affair_time   INTEGER NOT NULL DEFAULT 0,
     eye_style          TEXT    NOT NULL DEFAULT 'eyes1_1',
+    nose_style         TEXT    NOT NULL DEFAULT 'nose_natural',
     mouth_style        TEXT    NOT NULL DEFAULT 'mouth1_1',
     hair_style         TEXT    NOT NULL DEFAULT 'hair1',
     clan_id            INTEGER DEFAULT NULL,

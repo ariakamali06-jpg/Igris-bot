@@ -127,6 +127,7 @@ class Database:
             ("last_intimacy_time", "INTEGER", "0"),
             ("last_affair_time", "INTEGER", "0"),
             ("eye_style", "TEXT", "'eyes1_1'"),
+            ("nose_style", "TEXT", "'nose_natural'"),
             ("mouth_style", "TEXT", "'mouth1_1'"),
             ("hair_style", "TEXT", "'hair1'"),
             ("clan_id", "INTEGER", "NULL"),

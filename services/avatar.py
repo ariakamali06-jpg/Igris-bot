@@ -148,7 +148,8 @@ async def get_player_avatar(user_id: int) -> dict[str, Any]:
         await conn.execute(
             """
             INSERT OR IGNORE INTO player_avatar
-                (user_id, skin_tone, is_plus_size, active_set_id, equipped_var_ids, makeup_data, updated_at)
+                (user_id, skin_tone, is_plus_size, active_set_id,
+                 equipped_var_ids, makeup_data, updated_at)
             VALUES (?, ?, 0, NULL, '[]', '{}', ?)
             """,
             (user_id, skin_tone_id, now_ts),
@@ -242,11 +243,78 @@ async def get_player_render_url(user_id: int, width: int = 400) -> str:
 
 
 # -----------------------------------------------------------------------------
+# Starter Sets for Character Creation
+# -----------------------------------------------------------------------------
+
+STARTER_SETS: dict[int, dict[str, Any]] = {
+    101: {
+        "id": 101,
+        "name": "🌸 استایل کژوال پاییزی (Casual Autumn)",
+        "gender": "female",
+        "item_count": 3,
+        "var_ids": [1001, 1002, 1003],
+        "is_plus_size": 0,
+        "price": 0,
+    },
+    102: {
+        "id": 102,
+        "name": "✨ استایل استریت آیدل (Street Idol)",
+        "gender": "female",
+        "item_count": 4,
+        "var_ids": [1004, 1005, 1006, 1007],
+        "is_plus_size": 0,
+        "price": 0,
+    },
+    103: {
+        "id": 103,
+        "name": "🎀 استایل شیک آکادمی (Academy Chic)",
+        "gender": "female",
+        "item_count": 3,
+        "var_ids": [1008, 1009, 1010],
+        "is_plus_size": 0,
+        "price": 0,
+    },
+    201: {
+        "id": 201,
+        "name": "🕶 استریت‌ویر مدرن (Modern Streetwear)",
+        "gender": "male",
+        "item_count": 3,
+        "var_ids": [2001, 2002, 2003],
+        "is_plus_size": 0,
+        "price": 0,
+    },
+    202: {
+        "id": 202,
+        "name": "⚡️ هودی و جاگر دارک (Dark Cyber)",
+        "gender": "male",
+        "item_count": 4,
+        "var_ids": [2004, 2005, 2006, 2007],
+        "is_plus_size": 0,
+        "price": 0,
+    },
+    203: {
+        "id": 203,
+        "name": "🎩 کت کژوال شیک (Smart Casual)",
+        "gender": "male",
+        "item_count": 3,
+        "var_ids": [2008, 2009, 2010],
+        "is_plus_size": 0,
+        "price": 0,
+    },
+}
+
+
+# -----------------------------------------------------------------------------
 # Boutique Stock & Rotation
 # -----------------------------------------------------------------------------
 
 def get_set_from_catalog(set_id: int) -> dict[str, Any] | None:
-    """Fetch single set details from bot_catalog.db."""
+    """Fetch single set details from bot_catalog.db or starter sets."""
+    if set_id in STARTER_SETS:
+        s = dict(STARTER_SETS[set_id])
+        s["render_url"] = get_render_url(s["var_ids"], width=400)
+        return s
+
     cat_path = get_catalog_db_path()
     if not cat_path.exists():
         return None
@@ -277,6 +345,153 @@ def get_set_from_catalog(set_id: int) -> dict[str, Any] | None:
     except Exception as exc:
         logger.warning("failed to fetch set %s from catalog: %s", set_id, exc)
         return None
+
+
+def get_starter_sets(gender: str = "male") -> list[dict[str, Any]]:
+    """Return 3 starter sets for onboarding, from catalog or defaults."""
+    cat_path = get_catalog_db_path()
+    if cat_path.exists():
+        try:
+            conn = sqlite3.connect(cat_path)
+            conn.row_factory = sqlite3.Row
+            cur = conn.cursor()
+            g_filter = "female" if gender in ("female", "دختر") else "male"
+            cur.execute(
+                """
+                SELECT id, name, gender, item_count, var_ids, is_plus_size
+                FROM bot_sets
+                WHERE gender IN (?, 'unisex')
+                ORDER BY item_count ASC, id ASC
+                LIMIT 3
+                """,
+                (g_filter,),
+            )
+            rows = cur.fetchall()
+            cur.close()
+            conn.close()
+            if rows and len(rows) >= 3:
+                return [
+                    {
+                        "id": r["id"],
+                        "name": r["name"],
+                        "gender": r["gender"],
+                        "item_count": r["item_count"],
+                        "var_ids": json.loads(r["var_ids"] or "[]"),
+                        "is_plus_size": r["is_plus_size"],
+                        "price": 0,
+                        "render_url": get_render_url(
+                            json.loads(r["var_ids"] or "[]"), width=400
+                        ),
+                    }
+                    for r in rows
+                ]
+        except Exception as exc:
+            logger.warning("failed to fetch starter sets from catalog: %s", exc)
+
+    # Fallback to curated starter sets
+    target_gender = "female" if gender in ("female", "دختر") else "male"
+    res = []
+    for s in STARTER_SETS.values():
+        if s["gender"] == target_gender:
+            item = dict(s)
+            item["render_url"] = get_render_url(item["var_ids"], width=400)
+            res.append(item)
+    return res
+
+
+async def assign_starter_set(
+    user_id: int,
+    set_id: int,
+    gender: str = "male",
+    skin_tone: int = -1,
+    makeup_data: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Wipe legacy items and assign new starter set to wardrobe and active avatar."""
+    if makeup_data is None:
+        makeup_data = {}
+
+    set_info = get_set_from_catalog(set_id)
+    if not set_info:
+        starters = get_starter_sets(gender)
+        set_info = next(
+            (s for s in starters if s["id"] == set_id),
+            starters[0] if starters else None,
+        )
+
+    if not set_info:
+        raise ValueError(f"Unknown starter set id: {set_id}")
+
+    now_ts = int(time.time())
+    var_ids = set_info["var_ids"]
+    var_ids_json = json.dumps(var_ids)
+    makeup_json = json.dumps(makeup_data)
+
+    async with db.write() as conn:
+        # Wipe old legacy clothes completely
+        await conn.execute("DELETE FROM loadout WHERE user_id = ?", (user_id,))
+        await conn.execute(
+            "DELETE FROM inventory WHERE user_id = ? AND "
+            "item_id IN ('fitted_tee', 'street_slacks')",
+            (user_id,),
+        )
+        # Clear any prior wardrobe entries for this player
+        await conn.execute("DELETE FROM player_wardrobe WHERE user_id = ?", (user_id,))
+
+        # Add starter set to player_wardrobe (free)
+        await conn.execute(
+            """
+            INSERT OR REPLACE INTO player_wardrobe
+                (user_id, set_id, set_name, gender, item_count,
+                 var_ids, is_plus_size, price_paid, acquired_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)
+            """,
+            (
+                user_id,
+                set_info["id"],
+                set_info["name"],
+                set_info["gender"],
+                set_info["item_count"],
+                var_ids_json,
+                set_info.get("is_plus_size", 0),
+                now_ts,
+            ),
+        )
+
+        # Equip starter set and save makeup / skin tone in player_avatar
+        await conn.execute(
+            """
+            INSERT INTO player_avatar
+                (user_id, skin_tone, is_plus_size, active_set_id,
+                 equipped_var_ids, makeup_data, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(user_id) DO UPDATE SET
+                skin_tone = excluded.skin_tone,
+                is_plus_size = excluded.is_plus_size,
+                active_set_id = excluded.active_set_id,
+                equipped_var_ids = excluded.equipped_var_ids,
+                makeup_data = excluded.makeup_data,
+                updated_at = excluded.updated_at
+            """,
+            (
+                user_id,
+                skin_tone,
+                set_info.get("is_plus_size", 0),
+                set_info["id"],
+                var_ids_json,
+                makeup_json,
+                now_ts,
+            ),
+        )
+
+    return {
+        "user_id": user_id,
+        "set_id": set_info["id"],
+        "name": set_info["name"],
+        "var_ids": var_ids,
+        "skin_tone": skin_tone,
+        "makeup_data": makeup_data,
+        "render_url": get_render_url([skin_tone] + var_ids, width=400),
+    }
 
 
 def get_daily_boutique(

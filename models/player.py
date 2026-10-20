@@ -93,6 +93,7 @@ class Player:
     last_intimacy_time: int = 0
     last_affair_time: int = 0
     eye_style: str = "eyes1_1"
+    nose_style: str = "nose_natural"
     mouth_style: str = "mouth1_1"
     hair_style: str = "hair1"
     clan_id: int | None = None

@@ -110,7 +110,10 @@ async def ensure_player(
             VALUES (?, ?, ?, 1, 0, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT (user_id) DO UPDATE SET
                 username = excluded.username,
-                display_name = CASE WHEN players.onboarding_completed = 1 THEN players.display_name ELSE excluded.display_name END,
+                display_name = CASE
+                    WHEN players.onboarding_completed = 1 THEN players.display_name
+                    ELSE excluded.display_name
+                END,
                 last_seen = excluded.last_seen
             """,
             (
@@ -238,6 +241,7 @@ async def _load_conn(
         last_intimacy_time=row["last_intimacy_time"] if "last_intimacy_time" in keys else 0,
         last_affair_time=row["last_affair_time"] if "last_affair_time" in keys else 0,
         eye_style=row["eye_style"] if "eye_style" in keys else "eyes1_1",
+        nose_style=row["nose_style"] if "nose_style" in keys else "nose_natural",
         mouth_style=row["mouth_style"] if "mouth_style" in keys else "mouth1_1",
         hair_style=row["hair_style"] if "hair_style" in keys else "hair1",
         clan_id=row["clan_id"] if "clan_id" in keys else None,
@@ -452,11 +456,12 @@ def render_request(player: Player) -> RenderRequest:
             body = f"base_boy_{skin_num}"
     elif player.gender in ("سایه‌وار", "نامشخص"):
         body = "base_shadow"
-    elif player.body_stance in ("base_female", "base_shadow"):
-        body = player.body_stance
-    elif player.body_stance and player.body_stance.startswith("base_boy_"):
-        body = player.body_stance
-    elif player.body_stance and player.body_stance in ("base_street", "base_male", "base_aegis"):
+    elif player.body_stance and (
+        player.body_stance in (
+            "base_female", "base_shadow", "base_street", "base_male", "base_aegis"
+        )
+        or player.body_stance.startswith("base_boy_")
+    ):
         body = player.body_stance
     else:
         body = "base_boy_2"
@@ -490,9 +495,10 @@ async def complete_character_creation(
     body_stance: str,
     hair_style: str,
     hair_color: str,
-    starter_items: tuple[str, ...],
+    starter_items: tuple[str, ...] = (),
     eye_style: str = "eyes1_1",
     mouth_style: str = "mouth1_1",
+    nose_style: str = "nose_natural",
 ) -> Player:
     """Commit full onboarding wizard selections, grant & equip kit, mark complete."""
     current = now()
@@ -509,6 +515,7 @@ async def complete_character_creation(
                 hair_color = ?,
                 hair_style = ?,
                 eye_style = ?,
+                nose_style = ?,
                 mouth_style = ?,
                 onboarding_completed = 1,
                 last_seen = ?
@@ -524,14 +531,21 @@ async def complete_character_creation(
                 hair_color,
                 hair_style,
                 eye_style,
+                nose_style,
                 mouth_style,
                 current,
                 user_id,
             ),
         )
-        # Grant kit items & hair if they exist in catalog
-        all_items = set(starter_items) | {hair_style}
-        for item_id in all_items:
+        # Wipe old legacy clothes completely from loadout and inventory
+        await conn.execute("DELETE FROM loadout WHERE user_id = ?", (user_id,))
+        await conn.execute(
+            "DELETE FROM inventory WHERE user_id = ? AND "
+            "item_id IN ('fitted_tee', 'street_slacks')",
+            (user_id,),
+        )
+        # Grant kit items if explicitly provided
+        for item_id in starter_items:
             if item_id in ITEMS_BY_ID:
                 await _grant_item_conn(conn, user_id, item_id, current)
                 item = ITEMS_BY_ID[item_id]

@@ -1,16 +1,18 @@
-import pytest
-from datetime import datetime, timezone
-from aiogram.types import Chat, Message, User
-from aiogram.fsm.context import FSMContext
-from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.fsm.storage.base import StorageKey
+from __future__ import annotations
 
+from datetime import UTC, datetime
+
+import pytest
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.storage.base import StorageKey
+from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.types import Chat, Message, User
 from pydantic import ConfigDict, PrivateAttr
 
 from database.connection import db
 from database.seed import seed_catalog
 from handlers import onboarding
-from services import game
+from services import avatar, game
 
 
 class FakeCall:
@@ -38,9 +40,11 @@ class MutableMessage(Message):
     def __init__(self, text: str = "", user: User | None = None) -> None:
         super().__init__(
             message_id=101,
-            date=datetime.now(timezone.utc),
+            date=datetime.now(UTC),
             chat=Chat(id=999001, type="private"),
-            from_user=user or User(id=999001, is_bot=False, first_name="Aria", username="ariakamali"),
+            from_user=user or User(
+                id=999001, is_bot=False, first_name="Aria", username="ariakamali"
+            ),
             text=text,
         )
         self._replies = []
@@ -53,12 +57,19 @@ class MutableMessage(Message):
         self._replies.append({"text": text, "reply_markup": reply_markup})
         return self
 
+    async def edit_text(self, text: str, reply_markup=None, **kw):
+        self._replies.append({"text": text, "reply_markup": reply_markup})
+        return self
+
+    async def delete(self, **kw):
+        return True
+
     async def reply_photo(self, photo=None, caption=None, reply_markup=None, **kw):
-        self._replies.append({"caption": caption, "reply_markup": reply_markup})
+        self._replies.append({"photo": photo, "caption": caption, "reply_markup": reply_markup})
         return self
 
     async def answer_photo(self, photo=None, caption=None, reply_markup=None, **kw):
-        self._replies.append({"caption": caption, "reply_markup": reply_markup})
+        self._replies.append({"photo": photo, "caption": caption, "reply_markup": reply_markup})
         return self
 
 
@@ -77,6 +88,8 @@ async def test_onboarding_full_wizard(_db) -> None:
         await conn.execute("DELETE FROM loadout WHERE user_id = 999001")
         await conn.execute("DELETE FROM inventory WHERE user_id = 999001")
         await conn.execute("DELETE FROM wallets WHERE user_id = 999001")
+        await conn.execute("DELETE FROM player_avatar WHERE user_id = 999001")
+        await conn.execute("DELETE FROM player_wardrobe WHERE user_id = 999001")
 
     storage = MemoryStorage()
     user = User(id=999001, is_bot=False, first_name="Aria", username="ariakamali")
@@ -130,25 +143,39 @@ async def test_onboarding_full_wizard(_db) -> None:
     await onboarding.cb_eye_color(call_eyec, state)
     data = await state.get_data()
     assert data["eye_color"] == "blue"
+    assert await state.get_state() == onboarding.OnboardingState.waiting_for_nose.state
+
+    # 8. Choose nose
+    call_nose = FakeCall("ob:nose:1", msg, user)
+    await onboarding.cb_nose(call_nose, state)
+    data = await state.get_data()
+    assert data["nose_style"] == "1"
+    assert await state.get_state() == onboarding.OnboardingState.waiting_for_mouth.state
+
+    # 9. Choose mouth
+    call_mouth = FakeCall("ob:mouth:1", msg, user)
+    await onboarding.cb_mouth(call_mouth, state)
+    data = await state.get_data()
+    assert data["mouth_style"] == "1"
     assert await state.get_state() == onboarding.OnboardingState.waiting_for_hair_style.state
 
-    # 8. Choose hair style
-    call_hair = FakeCall("ob:hair:1", msg, user)
+    # 10. Choose hair style
+    call_hair = FakeCall("ob:hair:hair1", msg, user)
     await onboarding.cb_hair_style(call_hair, state)
     data = await state.get_data()
-    assert data["hair_style"] == "1"
+    assert data["hair_style"] == "hair1"
     assert await state.get_state() == onboarding.OnboardingState.waiting_for_hair_color.state
 
-    # 9. Choose hair color
+    # 11. Choose hair color
     call_hairc = FakeCall("ob:hairc:silver", msg, user)
     await onboarding.cb_hair_color(call_hairc, state)
     data = await state.get_data()
     assert data["hair_color"] == "silver"
-    assert await state.get_state() == onboarding.OnboardingState.waiting_for_mouth.state
+    assert await state.get_state() == onboarding.OnboardingState.waiting_for_starter_set.state
 
-    # 10. Choose mouth & finalize
-    call_mouth = FakeCall("ob:mouth:1", msg, user)
-    await onboarding.cb_mouth(call_mouth, state)
+    # 12. Choose starter set & finalize
+    call_set = FakeCall("ob:set:201", msg, user)
+    await onboarding.cb_starter_set(call_set, state)
     assert await state.get_state() is None
 
     # Check player in DB
@@ -159,9 +186,24 @@ async def test_onboarding_full_wizard(_db) -> None:
     assert player.age == 22
     assert player.eye_color == "blue"
     assert player.hair_color == "silver"
+    assert player.nose_style == "1"
     assert player.onboarding_completed == 1
 
-    # 11. Subsequent /start directly opens profile
+    # Check avatar & wardrobe
+    av = await avatar.get_player_avatar(user.id)
+    assert av is not None
+    assert av["active_set_id"] == 201
+
+    render_url = await avatar.get_player_render_url(user.id)
+    assert "https://cdn.everskies.com/render/" in render_url
+
+    # Verify transparent: photo sent with transparent caption
+    photo_replies = [r for r in msg.replies if "photo" in r]
+    assert len(photo_replies) >= 1
+    assert "شناسنامه شهروندی" in photo_replies[-1]["caption"]
+    assert "بدون بک‌گراند" in photo_replies[-1]["caption"]
+
+    # 13. Subsequent /start directly opens profile
     msg2 = MutableMessage(text="/start", user=user)
     await onboarding.cmd_start(msg2, state)
     assert len(msg2.replies) == 1
@@ -174,6 +216,8 @@ async def test_onboarding_custom_female_character(_db) -> None:
         await conn.execute("DELETE FROM loadout WHERE user_id = 999002")
         await conn.execute("DELETE FROM inventory WHERE user_id = 999002")
         await conn.execute("DELETE FROM wallets WHERE user_id = 999002")
+        await conn.execute("DELETE FROM player_avatar WHERE user_id = 999002")
+        await conn.execute("DELETE FROM player_wardrobe WHERE user_id = 999002")
 
     storage = MemoryStorage()
     user = User(id=999002, is_bot=False, first_name="Shadow", username="shadow_queen")
@@ -211,18 +255,32 @@ async def test_onboarding_custom_female_character(_db) -> None:
     # 7. Choose eye color
     call_eyec = FakeCall("ob:eyec:violet", msg, user)
     await onboarding.cb_eye_color(call_eyec, state)
+    assert await state.get_state() == onboarding.OnboardingState.waiting_for_nose.state
 
-    # 8. Choose hair style
-    call_hair = FakeCall("ob:hair:2", msg, user)
-    await onboarding.cb_hair_style(call_hair, state)
+    # 8. Choose nose
+    call_nose = FakeCall("ob:nose:2", msg, user)
+    await onboarding.cb_nose(call_nose, state)
+    assert await state.get_state() == onboarding.OnboardingState.waiting_for_mouth.state
 
-    # 9. Choose hair color
-    call_hairc = FakeCall("ob:hairc:brown", msg, user)
-    await onboarding.cb_hair_color(call_hairc, state)
-
-    # 10. Choose mouth & finalize
+    # 9. Choose mouth
     call_mouth = FakeCall("ob:mouth:2", msg, user)
     await onboarding.cb_mouth(call_mouth, state)
+    assert await state.get_state() == onboarding.OnboardingState.waiting_for_hair_style.state
+
+    # 10. Choose hair style
+    call_hair = FakeCall("ob:hair:hair2", msg, user)
+    await onboarding.cb_hair_style(call_hair, state)
+    assert await state.get_state() == onboarding.OnboardingState.waiting_for_hair_color.state
+
+    # 11. Choose hair color
+    call_hairc = FakeCall("ob:hairc:brown", msg, user)
+    await onboarding.cb_hair_color(call_hairc, state)
+    assert await state.get_state() == onboarding.OnboardingState.waiting_for_starter_set.state
+
+    # 12. Choose starter set
+    call_set = FakeCall("ob:set:101", msg, user)
+    await onboarding.cb_starter_set(call_set, state)
+    assert await state.get_state() is None
 
     player = await game.load_player(user.id)
     assert player is not None
@@ -231,20 +289,31 @@ async def test_onboarding_custom_female_character(_db) -> None:
     assert player.age == 24
     assert player.eye_color == "violet"
     assert player.hair_color == "brown"
+    assert player.nose_style == "2"
+
+    av = await avatar.get_player_avatar(user.id)
+    assert av is not None
+    assert av["active_set_id"] == 101
 
 
 @pytest.mark.asyncio
 async def test_recreation_restriction_for_regular_users_and_admin(_db) -> None:
-    from handlers import profile
-
     reg_user_id = 888001
     owner_user_id = 5765828495
 
     async with db.write() as conn:
-        await conn.execute("DELETE FROM players WHERE user_id IN (?, ?)", (reg_user_id, owner_user_id))
-        await conn.execute("DELETE FROM loadout WHERE user_id IN (?, ?)", (reg_user_id, owner_user_id))
-        await conn.execute("DELETE FROM inventory WHERE user_id IN (?, ?)", (reg_user_id, owner_user_id))
-        await conn.execute("DELETE FROM wallets WHERE user_id IN (?, ?)", (reg_user_id, owner_user_id))
+        await conn.execute(
+            "DELETE FROM players WHERE user_id IN (?, ?)", (reg_user_id, owner_user_id)
+        )
+        await conn.execute(
+            "DELETE FROM loadout WHERE user_id IN (?, ?)", (reg_user_id, owner_user_id)
+        )
+        await conn.execute(
+            "DELETE FROM inventory WHERE user_id IN (?, ?)", (reg_user_id, owner_user_id)
+        )
+        await conn.execute(
+            "DELETE FROM wallets WHERE user_id IN (?, ?)", (reg_user_id, owner_user_id)
+        )
 
     storage = MemoryStorage()
 
@@ -252,13 +321,16 @@ async def test_recreation_restriction_for_regular_users_and_admin(_db) -> None:
     reg_user = User(id=reg_user_id, is_bot=False, first_name="RegularPlayer", username="regular")
     await game.ensure_player(reg_user_id, "RegularPlayer", "regular")
     async with db.write() as conn:
-        await conn.execute("UPDATE players SET onboarding_completed = 1 WHERE user_id = ?", (reg_user_id,))
+        await conn.execute(
+            "UPDATE players SET onboarding_completed = 1 WHERE user_id = ?", (reg_user_id,)
+        )
     reg_player = await game.load_player(reg_user_id)
     assert reg_player is not None
     assert reg_player.onboarding_completed == 1
 
     # Regular player tries /create command -> REJECTED
-    reg_state = FSMContext(storage=storage, key=StorageKey(bot_id=1, chat_id=reg_user_id, user_id=reg_user_id))
+    reg_key = StorageKey(bot_id=1, chat_id=reg_user_id, user_id=reg_user_id)
+    reg_state = FSMContext(storage=storage, key=reg_key)
     msg_create = MutableMessage(text="/create", user=reg_user)
     await onboarding.cmd_start(msg_create, reg_state)
     assert len(msg_create.replies) == 1
@@ -273,16 +345,21 @@ async def test_recreation_restriction_for_regular_users_and_admin(_db) -> None:
     assert await reg_state.get_state() is None
 
     # 2. Check Owner (Rex Lapis: 5765828495)
-    owner_user = User(id=owner_user_id, is_bot=False, first_name="Rex Lapis", username="rexlapis")
+    owner_user = User(
+        id=owner_user_id, is_bot=False, first_name="Rex Lapis", username="rexlapis"
+    )
     await game.ensure_player(owner_user_id, "Rex Lapis", "rexlapis")
     async with db.write() as conn:
-        await conn.execute("UPDATE players SET onboarding_completed = 1 WHERE user_id = ?", (owner_user_id,))
+        await conn.execute(
+            "UPDATE players SET onboarding_completed = 1 WHERE user_id = ?", (owner_user_id,)
+        )
     owner_player = await game.load_player(owner_user_id)
     assert owner_player is not None
     assert owner_player.onboarding_completed == 1
 
     # Owner runs /create -> ALLOWED into wizard!
-    owner_state = FSMContext(storage=storage, key=StorageKey(bot_id=1, chat_id=owner_user_id, user_id=owner_user_id))
+    owner_key = StorageKey(bot_id=1, chat_id=owner_user_id, user_id=owner_user_id)
+    owner_state = FSMContext(storage=storage, key=owner_key)
     msg_owner_create = MutableMessage(text="/create", user=owner_user)
     await onboarding.cmd_start(msg_owner_create, owner_state)
     assert len(msg_owner_create.replies) == 1
@@ -290,7 +367,7 @@ async def test_recreation_restriction_for_regular_users_and_admin(_db) -> None:
     assert await owner_state.get_state() == onboarding.OnboardingState.waiting_for_name.state
 
     # Owner taps act:create callback -> ALLOWED into wizard!
-    owner_state_2 = FSMContext(storage=storage, key=StorageKey(bot_id=1, chat_id=owner_user_id, user_id=owner_user_id))
+    owner_state_2 = FSMContext(storage=storage, key=owner_key)
     call_owner = FakeCall("act:create", msg_owner_create, owner_user)
     await onboarding.cb_start_creation(call_owner, owner_state_2)
     assert len(call_owner.alerts) == 0
