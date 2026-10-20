@@ -11,7 +11,6 @@ from __future__ import annotations
 import logging
 
 from aiogram import F, Router
-from aiogram.filters import Command
 from aiogram.types import (
     BufferedInputFile,
     CallbackQuery,
@@ -20,19 +19,18 @@ from aiogram.types import (
     Message,
 )
 
+from config import settings
 from handlers.common import (
     CommandOrText,
     answer_error,
     card_bytes,
     editable_message,
-    energy_bar,
     esc,
     hydrate,
 )
 from handlers.panel import refresh_markup, render_panel
 from models import Player, Slot
-from services import economy, game
-from config import settings
+from services import avatar, economy, game
 
 logger = logging.getLogger(__name__)
 router = Router(name="profile")
@@ -66,19 +64,70 @@ async def _profile_markup(player: Player) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[])
 
 
+def avatar_png_to_card_jpeg(png_bytes: bytes) -> bytes:
+    """
+    کامپوزیت تصویر شفاف آواتار اوراسکایز روی پس‌زمینه دارک و تبدیل به فرمت استاندارد JPEG.
+
+    این تبدیل برای سازگاری کامل با کلاینت‌های تلگرام و نمایش روان و بدون لگ کارت شناسنامه
+    انجام می‌شود تا تصویر آواتار بازیکن بدون حاشیه‌های ناخواسته رندر گردد.
+    """
+    import io
+
+    from PIL import Image
+
+    avatar_img = Image.open(io.BytesIO(png_bytes)).convert("RGBA")
+    w, h = avatar_img.size
+    bg = Image.new("RGBA", (w, h), (18, 20, 29, 255))
+    bg.alpha_composite(avatar_img)
+    buf = io.BytesIO()
+    bg.convert("RGB").save(buf, format="JPEG", quality=92, optimize=True)
+    return buf.getvalue()
+
+
 async def _profile_panel(player: Player) -> tuple[str, bytes]:
-    """The card's caption + rendered bytes, shared by /me and the callback."""
+    """
+    تولید متن شناسنامه شهروندی و دریافت تصویر زنده آواتار کاراکتر.
+
+    این تابع ابتدا تصویر شفاف و باکیفیت ۴ برابری (HD 884x1360) آواتار اوراسکایز بازیکن
+    را بر اساس آخرین لباس‌ها و استایل ذخیره‌شده دریافت کرده و روی پس‌زمینه دارک کامپوزیت می‌کند.
+    در صورت قطعی شبکه یا عدم دسترسی به سرور CDN، به‌صورت خودکار به سیستم رندر محلی (Fallback)
+    برمی‌گردد تا کاربر هیچ‌وقت با خطای خالی بودن تصویر مواجه نشود.
+    """
     import time
+
     from services import tiramix
 
-    photo = await card_bytes(player)
+    # ۱. دریافت تصویر آواتار اوراسکایز با کیفیت ۴ برابری و پس‌زمینه شفاف
+    photo: bytes | None = None
+    try:
+        render_url = await avatar.get_player_render_url(player.user_id)
+        if render_url:
+            png_bytes = await avatar.fetch_upscaled_avatar(render_url, scale=4)
+            if png_bytes:
+                photo = avatar_png_to_card_jpeg(png_bytes)
+    except Exception as exc:
+        logger.warning(
+            "خطا در دریافت آواتار زنده اوراسکایز برای بازیکن %s: %s",
+            player.user_id,
+            exc,
+        )
+
+    # ۲. فال‌بک امن: در صورت نبود عکس، از کارت محلی کامپوزیتور استفاده می‌شود
+    if not photo:
+        photo = await card_bytes(player)
+
     credits, shards = await economy.balances(player.user_id)
     now = int(time.time())
 
-    jail_status = f"🔒 حبس در بازداشتگاه ({int((player.is_jailed_until - now)//60)} دقیقه)" if player.is_in_jail(now) else "🟢 آزاد"
+    jail_rem = int((player.is_jailed_until - now) // 60)
+    jail_status = (
+        f"🔒 حبس در بازداشتگاه ({jail_rem} دقیقه)"
+        if player.is_in_jail(now)
+        else "🟢 آزاد"
+    )
     pregnancy_status = "🤰 باردار" if player.is_pregnant(now) else ""
-    marital_status = f"💍 متأهل" if player.spouse_id else "مجرد"
-    
+    marital_status = "💍 متأهل" if player.spouse_id else "مجرد"
+
     clan_name = "ندارد"
     if player.clan_id:
         clan_info = await tiramix.get_player_clan(player.clan_id)
@@ -92,17 +141,24 @@ async def _profile_panel(player: Player) -> tuple[str, bytes]:
         else "غیرفعال"
     )
 
+    children_str = f"👶 <b>فرزندان:</b> {player.children_count} {pregnancy_status}".strip()
     lines = [
-        f"🍁 <b>شناسنامه شهروندی شهر تیرامیکس</b>",
+        "🍁 <b>شناسنامه شهروندی شهر تیرامیکس</b>",
         "",
         f"👤 <b>نام:</b> {esc(player.username or player.display_name)} (لول <b>{player.level}</b>)",
         f"🎂 <b>سن:</b> {player.age} سال | ⚧ <b>جنسیت:</b> {player.gender}",
         f"🎓 <b>سطح سواد:</b> {player.education_title}",
         f"💼 <b>شغل:</b> {player.job}",
-        f"💍 <b>وضعیت تأهل:</b> {marital_status} | 👶 <b>فرزندان:</b> {player.children_count} {pregnancy_status}",
-        f"💰 <b>کیف پول:</b> <b>{credits:,}</b> سکه | 🏦 <b>بانک:</b> <b>{player.bank_balance:,}</b> سکه",
+        f"💍 <b>وضعیت تأهل:</b> {marital_status} | {children_str}",
+        (
+            f"💰 <b>کیف پول:</b> <b>{credits:,}</b> سکه | "
+            f"🏦 <b>بانک:</b> <b>{player.bank_balance:,}</b> سکه"
+        ),
         f"🛡 <b>کلن:</b> {clan_name} | ⚖️ <b>وضعیت قضایی:</b> {jail_status}",
-        f"⚔️ قدرت: <b>{player.atk}</b> · 🛡 دفاع: <b>{player.defense}</b> · 💎 استایل: <b>{player.drip}</b>",
+        (
+            f"⚔️ قدرت: <b>{player.atk}</b> · 🛡 دفاع: <b>{player.defense}</b>"
+            f" · 💎 استایل: <b>{player.drip}</b>"
+        ),
         f"🐺 <b>حیوان:</b> {pet_status} | 🤫 <b>خیانت مخفی:</b> {player.affair_count}",
         f"🛡 <b>سپر ضدسرقت:</b> {shield_status}",
     ]
@@ -111,11 +167,12 @@ async def _profile_panel(player: Player) -> tuple[str, bytes]:
 
 
 async def _send_profile(target: Message, player: Player) -> None:
+    """ارسال کارت شناسنامه شهروندی به صورت عکس شفاف با کپشن کامل به کاربر."""
     caption, photo = await _profile_panel(player)
-    # STRICT USER PREFERENCE: NO CLUTTERED BUTTONS UNDER THE CARD
+    # ترجیح کاربر: عدم نمایش دکمه‌های شلوغ و غیرضروری زیر عکس کارت
     try:
         await target.reply_photo(
-            photo=BufferedInputFile(photo, filename="character.jpg"),
+            photo=BufferedInputFile(photo, filename="character.png"),
             caption=caption,
             reply_markup=None,
         )
@@ -123,7 +180,7 @@ async def _send_profile(target: Message, player: Player) -> None:
         if getattr(target, "bot", None):
             await target.bot.send_photo(
                 chat_id=target.chat.id,
-                photo=BufferedInputFile(photo, filename="character.jpg"),
+                photo=BufferedInputFile(photo, filename="character.png"),
                 caption=caption,
                 reply_markup=None,
             )
@@ -171,17 +228,17 @@ async def cmd_version(message: Message) -> None:
         "👑 <b>پنل وضعیت نسخه و تغییرات سیستمی (مخصوص سازنده)</b>\n\n"
         "🔖 <b>نسخه فعال:</b> <code>v2.0.0</code> (Tiramix City Life Simulator Edition)\n"
         "⚡️ <b>موتور شبیه‌ساز شهری:</b> شبیه‌ساز جهان اجتماعی تیرامیکس | ۸۵ تست پاس‌شده\n"
-        "🏛 <b>سیستم‌های فعال:</b> بانک، وام و گاوصندوق، زندان، دادگاه خانواده با قاضی تصادفی، کلن‌ها، ازدواج و فرزند\n\n"
+        "🏛 <b>سیستم‌های فعال:</b> بانک، وام و گاوصندوق، زندان، دادگاه خانواده، کلن‌ها، ازدواج\n\n"
         "📝 <b>لیست آخرین تغییرات اعمال‌شده در نسخه ۲.۰.۰:</b>\n"
         "├ 🍁 <b>تغییر کامل هویت و تم:</b> مهاجرت به جهان مدرن، لوفای و پاییزی شهر تیرامیکس\n"
-        "├ 🎴 <b>شناسنامه تمیز متنی:</b> حذف تمام دکمه‌های شلوغ پروفایل و صدور کارت شهروندی بدون کلید مزاحم\n"
-        "├ 🚂 <b>ویزارد ۹ مرحله‌ای ثبت‌نام:</b> سناریوی قطار با ۵ درجه رنگ پوست، ۳ فرم چشم، ۵ رنگ چشم، ۵ مدل مو، ۳ رنگ مو و ۴ میمیک لب\n"
-        "├ 💼 <b>خدمات و اقتصاد شهری:</b> پیاده‌سازی دستورات <code>کار</code>، <code>تحصیل</code>، <code>شغل</code>، <code>بانک</code>، <code>کمد</code>، <code>آرایشگاه</code>، <code>زیبایی</code> و <code>کلینیک</code>\n"
-        "├ 🛍 <b>دسته‌بندی بوتیک مد:</b> دسته‌بندی اینلاین لباس‌ها (بالاتنه، پایین‌تنه، سر/کلاه، اکسسوری و ویترین روزانه)\n"
-        "├ ⚖️ <b>دادگاه خانواده تیرامیکس:</b> طلاق توافقی یا ارجاع به دادگاه با قضاوت تصادفی یکی از اعضای گروه\n"
-        "├ 💍 <b>سیستم روابط زناشویی و فرزند:</b> ازدواج، رابطه، شانس بارداری، نقاهت کلینیک و هزینه‌های رشد فرزند\n"
-        "├ 🥷 <b>دزدی و مجازات قضایی:</b> غارت ۳۵٪ تا ۸۵٪ موجودی نقد، جریمه ۵ برابری و حبس در بازداشتگاه شهر\n"
-        "└ 🛡 <b>سیستم کلن‌ها و سندیکاها:</b> تشکیل کلن‌های محلی درون گروه‌ها با خزانه و اعضای اختصاصی"
+        "├ 🎴 <b>شناسنامه تمیز متنی:</b> حذف تمام دکمه‌های شلوغ پروفایل و صدور کارت شهروندی\n"
+        "├ 🚂 <b>ویزارد ۹ مرحله‌ای ثبت‌نام:</b> سناریوی قطار با شخصی‌سازی رنگ پوست، چشم، مو و لب\n"
+        "├ 💼 <b>خدمات و اقتصاد شهری:</b> دستورات کار، تحصیل، شغل، بانک، کمد، آرایشگاه، کلینیک\n"
+        "├ 🛍 <b>دسته‌بندی بوتیک مد:</b> دسته‌بندی اینلاین لباس‌ها و ویترین روزانه\n"
+        "├ ⚖️ <b>دادگاه خانواده تیرامیکس:</b> طلاق توافقی یا ارجاع به دادگاه با قضاوت تصادفی\n"
+        "├ 💍 <b>روابط زناشویی و فرزند:</b> ازدواج، رابطه، شانس بارداری و نقاهت کلینیک\n"
+        "├ 🥷 <b>دزدی و مجازات قضایی:</b> غارت موجودی نقد، جریمه ۵ برابری و حبس در بازداشتگاه\n"
+        "└ 🛡 <b>سیستم کلن‌ها و سندیکاها:</b> تشکیل کلن‌های محلی درون گروه‌ها با خزانه و اعضا"
     )
     await message.answer(text)
 
@@ -257,10 +314,12 @@ async def cb_inventory(call: CallbackQuery) -> None:
     try:
         player = await hydrate(user.id, user.full_name, user.username)
         markup = await _inventory_markup(player, page, 0)
-        text = (
-            f"🎒 <b>کوله‌پشتی</b> — {esc(player.display_tag)}\n"
-            f"⚔️ قدرت: <b>{player.atk}</b> · 🛡 دفاع: <b>{player.defense}</b> · 💎 استایل: <b>{player.drip}</b>"
+        stats_str = (
+            f"⚔️ قدرت: <b>{player.atk}</b> · "
+            f"🛡 دفاع: <b>{player.defense}</b> · "
+            f"💎 استایل: <b>{player.drip}</b>"
         )
+        text = f"🎒 <b>کوله‌پشتی</b> — {esc(player.display_tag)}\n{stats_str}"
         await render_panel(
             editable_message(call), text=text, reply_markup=markup
         )

@@ -125,7 +125,7 @@ async def _build_boutique_card(
         status_text = f"💰 <b>قیمت ست:</b> {current_set['price']:,} سکه"
 
     caption = (
-        f"🛍 <b>بوتیک مد و لباس روزانه</b>\n"
+        f"🛍 <b>بوتیک خیابانی مد و لباس روزانه</b>\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
         f"👗 <b>نام ست:</b> {current_set['name']}\n"
         f"📦 <b>تعداد اقلام:</b> {current_set['item_count']} تکه لباس\n"
@@ -171,7 +171,7 @@ async def _build_boutique_card(
     # Preview toggle row
     if is_preview:
         preview_btn = InlineKeyboardButton(
-            text="🔙 مشاهده مانکن ست",
+            text="🔙 مانکن ست",
             callback_data=f"btq:prev:{gender}:{idx}:0",
         )
     else:
@@ -180,7 +180,10 @@ async def _build_boutique_card(
             callback_data=f"btq:prev:{gender}:{idx}:1",
         )
 
-    # Category tabs
+    # چیدمان تمیز، مینیمال و استاندارد دکمه‌های بوتیک جهت جلوگیری از سردرگمی بازیکن
+    act_preview_row = [action_btn, preview_btn]
+
+    # تب‌های انتخاب دسته‌بندی جنسیت
     f_mark = "• 🚺 دخترانه •" if gender == "female" else "🚺 دخترانه"
     m_mark = "• 🚹 پسرانه •" if gender == "male" else "🚹 پسرانه"
     u_mark = "• ⚧ اسپرت •" if gender == "unisex" else "⚧ اسپرت"
@@ -192,12 +195,13 @@ async def _build_boutique_card(
     ]
 
     bottom_row = [
+        InlineKeyboardButton(text="🎨 کاتالوگ مینی‌اپ", url=settings.webapp_url),
         InlineKeyboardButton(text="🧥 کمد من", callback_data="wdr:open:0"),
         InlineKeyboardButton(text="🚪 بستن", callback_data="btq:close"),
     ]
 
     markup = InlineKeyboardMarkup(
-        inline_keyboard=[nav_row, [action_btn], [preview_btn], cat_row, bottom_row]
+        inline_keyboard=[nav_row, act_preview_row, cat_row, bottom_row]
     )
     return render_url, caption, markup
 

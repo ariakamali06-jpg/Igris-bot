@@ -10,7 +10,6 @@ from __future__ import annotations
 import logging
 
 from aiogram import F, Router
-from aiogram.filters import Command
 from aiogram.types import (
     CallbackQuery,
     InlineKeyboardButton,
@@ -35,7 +34,9 @@ _PAGE_SIZE = 5
 SHOP_COMMANDS = {"شاپ", "فروشگاه", "خرید", "بازار", "shop", "store", "market"}
 
 
-async def _shop_page(player: Player, page: int, category: str = "all") -> tuple[str, InlineKeyboardMarkup]:
+async def _shop_page(
+    player: Player, page: int, category: str = "all"
+) -> tuple[str, InlineKeyboardMarkup]:
     if category == "all":
         stock = await shop.today_stock()
         cat_title = "ویترین روزانه شهر تیرامیکس"
@@ -141,15 +142,14 @@ async def _owned_ids(user_id: int) -> list[str]:
 
 @router.message(CommandOrText(["shop", "store", "market"], SHOP_COMMANDS))
 async def cmd_shop(message: Message) -> None:
-    user = message.from_user
-    if user is None:
-        return
-    try:
-        player = await hydrate(user.id, user.full_name, user.username)
-        text, markup = await _shop_page(player, 0)
-        await message.reply(text, reply_markup=markup)
-    except Exception as exc:  # noqa: BLE001
-        await answer_error(exc, message=message)
+    """
+    هدایت هوشمند دستورات فروشگاه، شاپ و خرید به بوتیک مدرن و دیداری تیرامیکس.
+
+    به جای نمایش دکمه‌های پرشمار و گیج‌کننده قدیمی، کاربر مستقیماً به سیستم
+    کاروسل تصویری ست‌های لباس و مینی‌اپ کاتالوگ هدایت می‌شود.
+    """
+    from handlers.boutique import handle_boutique_command
+    await handle_boutique_command(message)
 
 
 @router.callback_query(F.data.startswith("shop:"))

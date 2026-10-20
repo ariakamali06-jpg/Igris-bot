@@ -202,16 +202,23 @@ async def cmd_start(message: Message, state: FSMContext) -> None:
             t in message.text.lower()
             for t in ("create", "new_char", "شخصیت جدید", "ساخت", "تغییر چهره")
         )
+        # بررسی وضعیت ذخیره کاراکتر و جلوگیری از ساخت مکرر
         if player.onboarding_completed == 1:
             if not is_recreation:
+                # کاربر کاراکتر فعال دارد؛ با /start مستقیماً پروفایل و شناسنامه‌اش لود می‌شود
                 await _send_profile(message, player)
                 return
+
+            # کاربر با داشتن کاراکتر، دستور ساخت مجدد فرستاده است (/create یا ساخت)
+            # شناسنامه شهروندی قفل است و فقط در صورت دسترسی مدیریتی مجاز است
             if not is_admin_or_owner(user.id):
                 await message.reply(
-                    "⚠️ <b>وَخَه بینُم شهروند! شناسنامه تو قفل است و قبلاً ثبت شده!</b>\n\n"
-                    "شناسنامه شهروندی تو در شهرداری تیرامیکس صادر شده\n"
-                    "و هر شخص فقط یک‌بار ثبت‌نام اولیه دارد.\n"
-                    "برای تغییر ظاهر و مو از <code>آرایشگاه</code> استفاده کن!"
+                    "⚠️ <b>شهروند گرامی، شناسنامه شما قفل است و قبلاً ثبت شده است!</b>\n\n"
+                    "📜 شناسنامه هویتی شما در شهرداری تیرامیکس صادر شده و دائمی است.\n"
+                    "🔹 هر کاربر در بازی فقط یک کاراکتر پایدار دارد.\n"
+                    "🔹 برای تغییر استایل و لباس‌ها از <code>بوتیک</code> استفاده کنید.\n"
+                    "🔹 برای تغییر مدل مو و چهره به <code>آرایشگاه</code> مراجعه کنید.\n"
+                    "🔹 جهت مشاهده وضعیت خود، کلمه <code>پروفایل</code> را ارسال کنید."
                 )
                 return
 
@@ -265,6 +272,14 @@ async def cb_check_channels(call: CallbackQuery, state: FSMContext) -> None:
     await call.answer("✅ عضویت در کانال‌ها با موفقیت تأیید شد! 🎉")
     msg = editable_message(call)
     target = msg if msg is not None else call.message
+
+    # اگر کاربر قبلاً کاراکتر ساخته باشد، مستقیم شناسنامه‌اش لود می‌شود و ویزارد باز نمی‌شود
+    player = await hydrate(user.id, user.full_name, user.username)
+    if player.onboarding_completed == 1:
+        if isinstance(target, Message):
+            await _send_profile(target, player)
+        return
+
     if isinstance(target, Message):
         await _start_name_wizard(target, state, user, is_edit=True)
 
