@@ -70,7 +70,6 @@ async def test_cdn_render_url():
     vars_ = [-1, 100, 200]
     url = avatar.get_render_url(vars_, width=400, crop=True)
     assert url.startswith("https://cdn.everskies.com/render/")
-    assert "x=400" in url
     assert "m=1" in url
 
     # Decode slug

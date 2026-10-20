@@ -75,23 +75,26 @@ def get_catalog_db_path() -> Path:
 
 def get_render_url(
     variation_ids: list[int],
-    width: int = 400,
+    width: int | None = None,
     crop: bool = False,
     animated: bool = False,
 ) -> str:
     """Generate an on-demand Everskies CDN composite PNG URL.
 
     Zero disk overhead: Telegram downloads directly from Everskies CDN.
+    Uses m=0 by default to preserve the full 221x340 canvas.
+    Omits 'x' parameter because Everskies CDN interprets 'x' as an internal
+    downscale factor that collapses pixel art into a 7px smear.
     """
     if not variation_ids:
         return ""
     raw_b64 = base64.b64encode(json.dumps(variation_ids).encode("utf-8")).decode("utf-8")
     slug = raw_b64.rstrip("=")
     params: list[str] = []
-    if width:
-        params.append(f"x={width}")
     if crop:
         params.append("m=1")
+    else:
+        params.append("m=0")
     if animated:
         params.append("a=1")
     qs = f"?{'&'.join(params)}" if params else ""
@@ -249,19 +252,19 @@ async def get_player_render_url(user_id: int, width: int = 400) -> str:
 STARTER_SETS: dict[int, dict[str, Any]] = {
     101: {
         "id": 101,
-        "name": "🌸 استایل کژوال پاییزی (Casual Autumn)",
+        "name": "🌸 استایل کژوال دخترانه (Casual Girl)",
         "gender": "female",
-        "item_count": 3,
-        "var_ids": [1001, 1002, 1003],
+        "item_count": 8,
+        "var_ids": [4024707, 4027798, 4027823, 4027826, 4027832, 4027838, 4027839, 4027840],
         "is_plus_size": 0,
         "price": 0,
     },
     102: {
         "id": 102,
-        "name": "✨ استایل استریت آیدل (Street Idol)",
+        "name": "✨ یونیفرم کالج و مدرسه (School Time)",
         "gender": "female",
-        "item_count": 4,
-        "var_ids": [1004, 1005, 1006, 1007],
+        "item_count": 8,
+        "var_ids": [3623948, 3623958, 3623964, 3623978, 3623984, 3623991, 3624003, 3624005],
         "is_plus_size": 0,
         "price": 0,
     },
@@ -269,8 +272,23 @@ STARTER_SETS: dict[int, dict[str, Any]] = {
         "id": 103,
         "name": "🎀 استایل شیک آکادمی (Academy Chic)",
         "gender": "female",
-        "item_count": 3,
-        "var_ids": [1008, 1009, 1010],
+        "item_count": 12,
+        "var_ids": [
+            297694, 297700, 297703, 297709, 297713, 297719,
+            297725, 298928, 297737, 297743, 298590, 298591,
+        ],
+        "is_plus_size": 0,
+        "price": 0,
+    },
+    104: {
+        "id": 104,
+        "name": "🏙 استایل خیابانی شیک (Urban Chic)",
+        "gender": "female",
+        "item_count": 11,
+        "var_ids": [
+            4582094, 4582095, 4582116, 4584726, 4584745, 4584760,
+            4584761, 4584787, 4584788, 4586437, 4586447,
+        ],
         "is_plus_size": 0,
         "price": 0,
     },
@@ -278,26 +296,47 @@ STARTER_SETS: dict[int, dict[str, Any]] = {
         "id": 201,
         "name": "🕶 استریت‌ویر مدرن (Modern Streetwear)",
         "gender": "male",
-        "item_count": 3,
-        "var_ids": [2001, 2002, 2003],
+        "item_count": 10,
+        "var_ids": [
+            486733, 486737, 486741, 486742, 486743,
+            486744, 486751, 486754, 486758, 486760,
+        ],
         "is_plus_size": 0,
         "price": 0,
     },
     202: {
         "id": 202,
-        "name": "⚡️ هودی و جاگر دارک (Dark Cyber)",
+        "name": "⚡️ اسپرت شهری (Urban Sport)",
         "gender": "male",
-        "item_count": 4,
-        "var_ids": [2004, 2005, 2006, 2007],
+        "item_count": 10,
+        "var_ids": [
+            421051, 421052, 421056, 421059, 421063,
+            421066, 421068, 421071, 421073, 421076,
+        ],
         "is_plus_size": 0,
         "price": 0,
     },
     203: {
         "id": 203,
-        "name": "🎩 کت کژوال شیک (Smart Casual)",
+        "name": "🎩 پالتو و کت شیک زمستانی (Winter Coat)",
         "gender": "male",
-        "item_count": 3,
-        "var_ids": [2008, 2009, 2010],
+        "item_count": 12,
+        "var_ids": [
+            321579, 321585, 321592, 321598, 321599, 321604,
+            321610, 321613, 321614, 321620, 321626, 321632,
+        ],
+        "is_plus_size": 0,
+        "price": 0,
+    },
+    204: {
+        "id": 204,
+        "name": "✨ استایل ترندی کره‌ای (Trendy K-Style)",
+        "gender": "male",
+        "item_count": 9,
+        "var_ids": [
+            502323, 502324, 502329, 502333, 502335,
+            502339, 502342, 502343, 502353,
+        ],
         "is_plus_size": 0,
         "price": 0,
     },
@@ -312,7 +351,7 @@ def get_set_from_catalog(set_id: int) -> dict[str, Any] | None:
     """Fetch single set details from bot_catalog.db or starter sets."""
     if set_id in STARTER_SETS:
         s = dict(STARTER_SETS[set_id])
-        s["render_url"] = get_render_url(s["var_ids"], width=400)
+        s["render_url"] = get_render_url(s["var_ids"])
         return s
 
     cat_path = get_catalog_db_path()
@@ -340,7 +379,7 @@ def get_set_from_catalog(set_id: int) -> dict[str, Any] | None:
             "var_ids": var_ids,
             "is_plus_size": row["is_plus_size"],
             "price": calculate_set_price(row["item_count"]),
-            "render_url": get_render_url(var_ids, width=400),
+            "render_url": get_render_url(var_ids),
         }
     except Exception as exc:
         logger.warning("failed to fetch set %s from catalog: %s", set_id, exc)
@@ -348,53 +387,13 @@ def get_set_from_catalog(set_id: int) -> dict[str, Any] | None:
 
 
 def get_starter_sets(gender: str = "male") -> list[dict[str, Any]]:
-    """Return 3 starter sets for onboarding, from catalog or defaults."""
-    cat_path = get_catalog_db_path()
-    if cat_path.exists():
-        try:
-            conn = sqlite3.connect(cat_path)
-            conn.row_factory = sqlite3.Row
-            cur = conn.cursor()
-            g_filter = "female" if gender in ("female", "دختر") else "male"
-            cur.execute(
-                """
-                SELECT id, name, gender, item_count, var_ids, is_plus_size
-                FROM bot_sets
-                WHERE gender IN (?, 'unisex')
-                ORDER BY item_count ASC, id ASC
-                LIMIT 3
-                """,
-                (g_filter,),
-            )
-            rows = cur.fetchall()
-            cur.close()
-            conn.close()
-            if rows and len(rows) >= 3:
-                return [
-                    {
-                        "id": r["id"],
-                        "name": r["name"],
-                        "gender": r["gender"],
-                        "item_count": r["item_count"],
-                        "var_ids": json.loads(r["var_ids"] or "[]"),
-                        "is_plus_size": r["is_plus_size"],
-                        "price": 0,
-                        "render_url": get_render_url(
-                            json.loads(r["var_ids"] or "[]"), width=400
-                        ),
-                    }
-                    for r in rows
-                ]
-        except Exception as exc:
-            logger.warning("failed to fetch starter sets from catalog: %s", exc)
-
-    # Fallback to curated starter sets
+    """Return curated, high-detail starter sets for onboarding."""
     target_gender = "female" if gender in ("female", "دختر") else "male"
     res = []
     for s in STARTER_SETS.values():
         if s["gender"] == target_gender:
             item = dict(s)
-            item["render_url"] = get_render_url(item["var_ids"], width=400)
+            item["render_url"] = get_render_url(item["var_ids"])
             res.append(item)
     return res
 
@@ -490,7 +489,7 @@ async def assign_starter_set(
         "var_ids": var_ids,
         "skin_tone": skin_tone,
         "makeup_data": makeup_data,
-        "render_url": get_render_url([skin_tone] + var_ids, width=400),
+        "render_url": get_render_url([skin_tone] + var_ids),
     }
 
 
