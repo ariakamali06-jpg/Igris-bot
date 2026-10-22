@@ -43,6 +43,9 @@ class Settings(BaseSettings):
         default="https://ariakamali06-jpg.github.io/Igris-bot/",
         alias="WEBAPP_URL",
     )
+    # Telegram @username of this bot (without @) — used to build /start
+    # deep links like t.me/<bot_username>?start=wear_... from the Mini App.
+    bot_username: str = Field(default="", alias="BOT_USERNAME")
 
     # --- Channels & Sponsorship ---------------------------------------------
     force_channel_join: bool = Field(default=True, alias="FORCE_CHANNEL_JOIN")
