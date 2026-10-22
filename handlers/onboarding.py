@@ -17,6 +17,7 @@ from aiogram.types import (
     InlineKeyboardMarkup,
     Message,
     User,
+    WebAppInfo,
 )
 
 from config import settings
@@ -183,6 +184,82 @@ async def _start_name_wizard(
     if hasattr(sent, "message_id"):
         tracked.append(sent.message_id)
     await state.update_data(tracked_msg_ids=tracked)
+
+
+@router.message(CommandOrText(["start"], {}))
+async def cmd_start_wear(message: Message, state: FSMContext) -> None:
+    """Handle /start with composable Mini App payload: /start wear_<b64>.
+
+    Telegram Mini Apps opened from a menu button or glass button cannot use
+    sendMessage, so the save travels via this deep link instead.
+    """
+    if not message.text:
+        return
+    parts = message.text.split(maxsplit=1)
+    if len(parts) < 2 or not parts[1].startswith("wear_"):
+        return
+    await _handle_wear_payload(message, parts[1][len("wear_"):])
+
+
+async def _handle_wear_payload(message: Message, encoded: str) -> None:
+    """Decode the Mini App save payload and persist it as the user's avatar."""
+    import base64
+    import json as _json
+
+    user = message.from_user
+    if user is None or not message.from_user:
+        return
+    try:
+        # base64 UTF-8: تابع منبع payload در مینی‌اپ است
+        padded = encoded + "=" * (-len(encoded) % 4)
+        payload = _json.loads(base64.urlsafe_b64decode(padded).decode("utf-8"))
+        var_ids = [int(x) for x in payload.get("items", [])]
+        skin_idx = int(payload.get("skin", 1))
+        body = str(payload.get("body", "slim"))
+        is_plus = 1 if body == "plus" else 0
+
+        if is_plus:
+            skin_map = {1: -7, 2: -8, 3: -9, 4: -10, 5: -11, 6: -6}
+            skin_tone_id = skin_map.get(skin_idx, -7)
+        else:
+            skin_map = {1: -1, 2: -2, 3: -3, 4: -4, 5: -5}
+            skin_tone_id = skin_map.get(skin_idx, -1)
+
+        # hydrate + ensure_player: اگر کاربر تازه‌کار باشد هم ردیف بازی ساخته می‌شود
+        await hydrate(user.id, user.full_name, user.username)
+
+        await avatar.save_custom_avatar(
+            user_id=user.id,
+            var_ids=var_ids,
+            skin_tone=skin_tone_id,
+            is_plus_size=is_plus,
+        )
+        render_url = await avatar.get_player_render_url(user.id)
+
+        photo_payload = await avatar.fetch_upscaled_avatar(render_url, scale=2)
+        markup = InlineKeyboardMarkup(
+            inline_keyboard=[[
+                InlineKeyboardButton(
+                    text="🎨 باز کردن کاستومایز",
+                    web_app=WebAppInfo(url=settings.webapp_url),
+                )
+            ]]
+        )
+        caption = (
+            "✅ <b>استایل کاراکتر از مینی‌اپ ثبت شد!</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            f"👕 <b>قطعات:</b> {len(var_ids)} قلم\n"
+            f"🧍 <b>فرم بدنه:</b> {'پلاس' if is_plus else 'اسلیم'}"
+        )
+
+        if photo_payload is None:
+            # رندر کلود از دسترس خارج بود؛ استایل ثبت شد ولی عکس نمی‌فرستیم
+            logger.warning("wear_ save: render fetch failed for %s", user.id)
+            await message.reply(caption, reply_markup=markup)
+        else:
+            await message.reply_photo(photo=photo_payload, caption=caption, reply_markup=markup)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("wear_ deep link failed: %s", exc)
 
 
 @router.message(
