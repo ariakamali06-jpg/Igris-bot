@@ -47,11 +47,24 @@ async def _player(offset: int):
 
 
 async def _seed_code(user_id: int, code: str, rows: int) -> None:
-    kind, credits, _ = _SEED[code]
-    for i in range(rows):
-        await economy.grant(
-            user_id, credits=credits, kind=kind, ref=f"contract-seed:{code}:{i}"
-        )
+    """Ledger rows for a contract code — credits_delta = 0 for 'work'/'study'/'shop'
+    (no wallet drift), so a partial payroll incorrectly granting credits makes the
+    balance-reconciliation assert fail immediately (regression canary)."""
+    kind, _, _ = _SEED[code]
+    if not rows:
+        return
+    async with db.write() as conn:
+        current = int(time.time())  # ensure today's window
+        for i in range(rows):
+            await conn.execute(
+                """
+                INSERT INTO ledger (user_id, kind, credits_delta, shards_delta,
+                                    balance_after_credits, balance_after_shards,
+                                    ref, created_at)
+                VALUES (?, ?, 0, 0, 0, 0, ?, ?)
+                """,
+                (user_id, kind.value, f"contract-seed:{code}:{i}", current),
+            )
 
 
 def _today_codes() -> list[contracts.ContractDef]:
