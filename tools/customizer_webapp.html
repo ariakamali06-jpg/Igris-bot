@@ -4617,6 +4617,10 @@
         <span>✨ اکسسوری</span>
         <span class="zone-tab-count">۳,۳۸۱</span>
       </button>
+      <button class="zone-tab-btn" data-zone="sets" onclick="selectZone('sets')">
+        <span>✨ ست‌های کامل</span>
+        <span class="zone-tab-count">۱۰۰+</span>
+      </button>
     </nav>
 
     <!-- Subtags Bar & Search -->
@@ -4684,6 +4688,7 @@
 
       <div class="drawer-sub-bar">
         <span id="drawerLayerCount">۰ قلم بر تن</span>
+        <button id="drawerSortBtn" class="drawer-clear-btn" onclick="resetAutoSort()">🔄 مرتب‌سازی خودکار</button>
         <button class="drawer-clear-btn" onclick="clearAllEquipped()">🗑 حذف همه اقلام</button>
       </div>
 
@@ -4726,6 +4731,61 @@
 
     // Ordered list of equipped variations (Index 0 = TOPMOST / FOREGROUND)
     let equippedVarList = [];
+    // Everskies canonical layer order, foreground → background.
+    // Sort key = position in this wheel; anything unknown sinks to the
+    // very background, just in front of the body / behind-hair bucket.
+    const LAYER_ORDER = [
+      'bag', 'belt', 'necklace', 'headwear',      // اکسسوری روی همه‌چیز
+      'corset', 'vest', 'vest_corset',            // تاپ‌های بیرونی
+      'shirt', 'blouse', 'sweater', 'hoodie', 'jacket', 'coat', // پوشاک بالاتنه
+      'dress',                                    // پیراهن (روی دامن)
+      'pants', 'jeans', 'shorts', 'skirts',       // پایین‌تنه
+      'sneakers', 'boots', 'heels', 'socks_tights', 'socks',    // کفش و جوراب
+      'face', 'makeup',                           // صورت و میکاپ
+      'earrings',                                 // گوشواره‌ها
+      'hair', 'hair_base',                        // موی جلو
+      '__BODY__',                                 // بدن کاراکتر (رزرو برای -۱)
+      'hair_back', 'wings_tail'                   // موی پشت و بال‌ها
+    ];
+    const LAYER_SORT_ENABLED_KEY = 'igris_auto_sort_layers';
+    // 'auto' (پیش‌فرض؛ هربار تغییری مرتب می‌شود) یا 'manual' (کاربر قفل کرده)
+    let layerSortMode = (localStorage.getItem(LAYER_SORT_ENABLED_KEY) || 'auto') === 'manual'
+      ? 'manual' : 'auto';
+
+    // نوع ظاهری هر قطعه را از تگ/زون استخراج می‌کند که لایه‌بندی دقیق باشد
+    function layerKeyName(vId) {
+      if (vId < 0) return '__BODY__'; // بدن کاراکتر
+      const it = ITEMS_BY_VAR.get(vId);
+      if (!it) return 'misc';
+      if (it.s === 'hair_base' && /back|پشت|behind/i.test(it.n)) return 'hair_back';
+      const parts = [it.s, it.tag];
+      for (const p of parts) {
+        if (p && LAYER_ORDER.includes(p)) return p;
+      }
+      return 'misc';
+    }
+
+    // مرتب‌سازی خودکار اقلام بر تن بر اساس چرخ لایه اوراسکایز (رو به پیش)
+    function autoSortLayers(list) {
+      if (layerSortMode === 'manual') return list; // کاربر قفل دستی کرده
+      const keyOf = v => {
+        const k = layerKeyName(v);
+        const i = LAYER_ORDER.indexOf(k);
+        return i === -1 ? LAYER_ORDER.indexOf('wings_tail') + 1 : i;
+      };
+      return list.slice().sort((a, b) => keyOf(a) - keyOf(b));
+    }
+
+    function layerOrderRank(vId) { return LAYER_ORDER.indexOf(layerKeyName(vId)); }
+
+    // applyEquipped: نقطه ورود واحد برای هر تغییری در اقلام بر تن.
+    // مرتب‌سازی خودکار اینجا اعمال می‌شود (ولی دستکاری دستی قفلِ خودش را دارد).
+    function applyEquipped(newList) {
+      equippedVarList = autoSortLayers(newList);
+      updateAvatarPreview();
+      updateCatalogEquippedStates();
+      renderLayerDrawer();
+    }
 
     // Fast Indexing
     const ITEMS_BY_VAR = new Map();
@@ -4746,6 +4806,9 @@
         console.warn("Telegram WebApp init warning:", err);
       }
     }
+
+    // نام کاربری ربات برای دیپ‌لینک ذخیره؛ از init داده‌های تلگرام دریافت می‌شود
+    let botUsername = '';
 
     function hapticFeedback() {
       if (tg?.HapticFeedback) {
@@ -4909,6 +4972,11 @@
 
     function renderSubtags() {
       const container = document.getElementById('subtagsScroll');
+      // در تب ست‌ها، زیردسته بی‌معنی است
+      if (currentZone === 'sets') {
+        container.innerHTML = '';
+        return;
+      }
       const list = SUBTAG_DEFINITIONS[currentZone] || [{ id: 'all', label: '🌟 همه' }];
       container.innerHTML = list.map(s => `
         <button class="subtag-pill ${s.id === currentSubtag ? 'active' : ''}" onclick="selectSubtag('${s.id}')">
@@ -4941,16 +5009,20 @@
     }
 
     // Item Equip / Unequip Toggle
-    function toggleItem(vId) {
+    function toggleItem(vId, opts) {
       hapticFeedback();
       const idx = equippedVarList.indexOf(vId);
       if (idx >= 0) {
         // Unequip
-        equippedVarList.splice(idx, 1);
+        if (opts?.manualDOMove) {
+          equippedVarList.splice(idx, 1); // جابه‌جایی دستی؛ مرتب‌سازی قفل
+        } else {
+          equippedVarList.splice(idx, 1);
+        }
         showToast('🗑 قلم از تن کاراکتر خارج شد');
       } else {
-        // Equip: Add to TOP of list (index 0) so new item is immediately visible on top
-        equippedVarList.unshift(vId);
+        // Equip: first as a raw list, then applyEquipped sorts it automatically
+        equippedVarList.push(vId);
         showToast('✨ قلم روی کاراکتر پوشیده شد');
 
         // Check if item belongs to a multi-piece hair set
@@ -4964,9 +5036,7 @@
         }
       }
 
-      updateAvatarPreview();
-      updateCatalogEquippedStates();
-      renderLayerDrawer();
+      applyEquipped(equippedVarList);
     }
 
     function showHairSetBanner(setName, count) {
@@ -4986,16 +5056,28 @@
       if (!pendingHairSet) return;
       hapticFeedback();
       const vars = pendingHairSet.vars;
+      const merged = equippedVarList.slice();
       vars.forEach(v => {
-        if (!equippedVarList.includes(v)) {
-          equippedVarList.unshift(v);
+        if (!merged.includes(v)) {
+          merged.push(v);
         }
       });
-      updateAvatarPreview();
-      updateCatalogEquippedStates();
-      renderLayerDrawer();
+      applyEquipped(merged); // مرتب‌سازی خودکار برای ترتیب درست مو/پشت‌مو
       showToast(`⚡ ست کامل مو (${vars.length} قطعه) تن کاراکتر شد!`);
       hideHairSetBanner();
+    }
+
+    // تجهیز کامل یک ست واقعی (کامل از RAW_ITEMS) با یک کلیک
+    function equipFullSet(setName) {
+      hapticFeedback();
+      const pieces = RAW_ITEMS.filter(it => it.st === setName);
+      if (!pieces.length) {
+        showToast('⚠️ قطعه‌ای از این ست در کاتالوگ یافت نشد');
+        return;
+      }
+      // ست جدید، شالوده تازه استایل است؛ اقلام قبلی پاک می‌شوند
+      applyEquipped(pieces.map(p => p.v));
+      showToast(`✨ ست «${setName.trim()}» با ${pieces.length} قطعه تن کاراکتر شد!`);
     }
 
     // Catalog Rendering (Filtered & Paginated)
@@ -5003,6 +5085,39 @@
       const grid = document.getElementById('catalogGrid');
       const statusText = document.getElementById('catalogStatusText');
       const countText = document.getElementById('catalogCountText');
+
+      // تب «ست‌های کامل»: گروه‌بندی قطعات بر اساس نام ست و نمایش یکجا
+      if (currentZone === 'sets') {
+        const setNames = new Set();
+        RAW_ITEMS.forEach(it => { if (it.st) setNames.add(it.st); });
+        const q = searchQuery;
+        const shown = [...setNames].filter(name => !q || name.toLowerCase().includes(q));
+        statusText.innerText = '✨ ست‌های کامل';
+        countText.innerText = `${shown.length.toLocaleString('fa-IR')} ست موجود`;
+        if (!shown.length) {
+          grid.innerHTML = `
+            <div class="empty-catalog">
+              <span style="font-size: 32px;">🔍</span>
+              <p>هیچ ست‌ای با این نام یافت نشد!</p>
+            </div>
+          `;
+          return;
+        }
+        grid.innerHTML = shown.slice(0, 120).map(name => {
+          const pieces = RAW_ITEMS.filter(it => it.st === name);
+          const slug = getSlug(pieces.map(p => p.v));
+          const thumbUrl = `https://cdn.everskies.com/render/${slug}.png?m=1`;
+          const fullyEq = pieces.length > 0 && pieces.every(p => equippedVarList.includes(p.v));
+          return `
+            <div class="item-card ${fullyEq ? 'equipped' : ''}" data-set="${name}" onclick="equipFullSet('${name.replace(/[\\"']/g, '')}')">
+              <img class="item-thumb-img" src="${thumbUrl}" loading="lazy" alt="${name}">
+              <span class="item-name-tag">${name}</span>
+              <span class="item-hair-badge" title="پوشیدن کل ست">⚡</span>
+            </div>
+          `;
+        }).join('');
+        return;
+      }
 
       const filtered = RAW_ITEMS.filter(it => {
         if (it.z !== currentZone) return false;
@@ -5105,6 +5220,7 @@
         const isBottom = idx === count - 1;
         const rankLabel = isTop ? '👑 لایه ۱ (روترین)' : (isBottom ? `لایه ${idx + 1} (زیرین)` : `لایه ${idx + 1}`);
         const thumbUrl = `https://cdn.everskies.com/render/${getSlug([vId])}.png?m=1`;
+        const auto = layerSortMode === 'auto' ? ' 🔄' : '';
 
         return `
           <div class="layer-row ${isTop ? 'topmost' : ''}">
@@ -5112,7 +5228,7 @@
               <img src="${thumbUrl}" alt="${it.n}">
             </div>
             <div class="layer-meta">
-              <span class="layer-rank-badge">${rankLabel}</span>
+              <span class="layer-rank-badge">${rankLabel}${auto}</span>
               <span class="layer-title">${it.n}</span>
               <span class="layer-zone-chip">${zoneNames[it.z] || 'اکسسوری'}</span>
             </div>
@@ -5132,9 +5248,29 @@
       }).join('');
     }
 
+    // وقتی کاربر دستی جابه‌جا می‌کند، مرتب‌سازی خودکار قفل می‌شود
+    // تا ترتیب دستی‌اش دست‌نخورده بماند (تا دوباره «مرتب‌سازی خودکار» بزند).
+    function freezeAutoSort() {
+      if (layerSortMode !== 'manual') {
+        layerSortMode = 'manual';
+        try { localStorage.setItem(LAYER_SORT_ENABLED_KEY, 'manual'); } catch (e) {}
+      }
+    }
+
+    // بازگشت به چیدمان استاندارد اوراسکایز (حرفه‌ای و بدون خراب‌کاری)
+    function resetAutoSort() {
+      hapticFeedback();
+      layerSortMode = 'auto';
+      try { localStorage.setItem(LAYER_SORT_ENABLED_KEY, 'auto'); } catch (e) {}
+      applyEquipped(equippedVarList);
+      showToast('🔄 چیدمان خودکار اوراسکایز دوباره فعال شد');
+    }
+
+    // دستکاری دستی بعد از دسته‌بندی مجاز است؛ re-sort اینجا قفل «دستی» فعال می‌کند
     function moveLayerUp(idx) {
       if (idx <= 0 || idx >= equippedVarList.length) return;
       hapticFeedback();
+      freezeAutoSort();
       // Swap with idx - 1 (closer to index 0 / foreground!)
       const temp = equippedVarList[idx - 1];
       equippedVarList[idx - 1] = equippedVarList[idx];
@@ -5148,6 +5284,7 @@
     function moveLayerDown(idx) {
       if (idx < 0 || idx >= equippedVarList.length - 1) return;
       hapticFeedback();
+      freezeAutoSort();
       // Swap with idx + 1 (closer to index N / background!)
       const temp = equippedVarList[idx + 1];
       equippedVarList[idx + 1] = equippedVarList[idx];
@@ -5172,7 +5309,9 @@
       showToast('🗑 همه اقلام تن‌پوش کاراکتر پاک شدند');
     }
 
-    // Save & Submission Handler
+    // Save & Submission Handler — دو مسیره:
+    // ۱) sendData (وقتی تلگرام آن را قبول کند — دریافت سریع بدون خروج)
+    // ۲) دیپ‌لینک /start wear_<b64> (همیشه کار می‌کند؛ حتی از منوی شیشه‌ای)
     function submitAvatar() {
       hapticFeedback();
       const payload = {
@@ -5182,7 +5321,7 @@
       };
       const jsonStr = JSON.stringify(payload);
 
-      // Telegram WebApp Submission
+      // مسیر ۱: sendData در نسخه‌های جدید تلگرام همه‌جا پذیرفته می‌شود
       if (tg?.sendData) {
         try {
           showToast('💾 در حال ذخیره و ثبت روی کاراکتر...');
@@ -5192,11 +5331,28 @@
           }, 600);
           return;
         } catch (err) {
-          console.warn("tg.sendData failed, fallbacking", err);
+          console.warn("tg.sendData failed, falling back to deep link", err);
         }
       }
 
-      // Browser Test Fallback Modal
+      // مسیر ۲: دیپ‌لینک wear_ — از هر جا باز شده باشد به بات می‌رسد
+      if (botUsername) {
+        try {
+          const encoded = btoa(jsonStr).replace(/=+$/, ''); // base64url-safe
+          const deepLink = `https://t.me/${botUsername}?start=wear_${encoded}`;
+          showToast('🔗 در حال انتقال به ربات برای ذخیره...');
+          if (tg?.openTelegramLink) {
+            tg.openTelegramLink(deepLink);
+          } else {
+            location.href = deepLink;
+          }
+          return;
+        } catch (err) {
+          console.warn("deep-link fallback failed", err);
+        }
+      }
+
+      // مسیر ۳: باز کردن خارج از تلگرام — مودال آزمایشی مرورگر
       openFallbackModal(payload);
     }
 
@@ -5227,6 +5383,16 @@
     // Bootstrapping
     function boot() {
       try {
+        // استخراج نام کاربری ربات برای ساخت دیپ‌لینک wear_:
+        // تلگرام در start_param / referrer داده اولیه، آن را می‌گذارد؛
+        // در محیط مرورگر هم پارامتر ?bot= پشتیبانی می‌شود.
+        try {
+          botUsername =
+            (tg?.initDataUnsafe?.start_param || '').toString().split('_')[0] ||
+            new URLSearchParams(location.search).get('bot') ||
+            window.__IGRIS_BOT_USERNAME__ ||
+            '';
+        } catch (e) { botUsername = window.__IGRIS_BOT_USERNAME__ || ''; }
         renderSkinSwatches();
         renderSubtags();
         renderCatalog();
