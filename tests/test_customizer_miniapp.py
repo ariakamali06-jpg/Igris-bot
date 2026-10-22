@@ -155,6 +155,78 @@ async def test_handle_customizer_webapp_data_handler():
             await conn.execute("DELETE FROM players WHERE user_id = ?", (test_user_id,))
 
 
+async def test_wear_deep_link_saves_loadout():
+    """Dual-path save: /start wear_<b64> must persist the mini-app loadout."""
+    import base64
+
+    from handlers.onboarding import _handle_wear_payload
+
+    test_user_id = 999126
+    await game.ensure_player(
+        user_id=test_user_id,
+        username="wear_tester",
+        display_name="تستر دیپ‌لینک",
+    )
+
+    try:
+        payload = {"skin": 2, "body": "slim", "items": [111, 222]}
+        encoded = base64.urlsafe_b64encode(json.dumps(payload).encode()).decode().rstrip("=")
+        msg = AsyncMock()
+        msg.from_user.id = test_user_id
+        msg.from_user.username = "wear_tester"
+        msg.from_user.full_name = "تستر دیپ‌لینک"
+        msg.reply_photo = AsyncMock()
+        msg.reply = AsyncMock()
+
+        await _handle_wear_payload(msg, encoded)
+
+        av = await avatar.get_player_avatar(test_user_id)
+        assert av["equipped_var_ids"] == [111, 222]
+        assert av["skin_tone"] == -2  # slim 2 -> -2
+        assert av["is_plus_size"] == 0
+    finally:
+        async with db.write() as conn:
+            await conn.execute("DELETE FROM player_avatar WHERE user_id = ?", (test_user_id,))
+            await conn.execute("DELETE FROM inventory WHERE user_id = ?", (test_user_id,))
+            await conn.execute("DELETE FROM players WHERE user_id = ?", (test_user_id,))
+
+
+async def test_wear_deep_link_plus_size():
+    """Plus-size payload ('body': 'plus') maps to plus skin IDs."""
+    import base64
+
+    from handlers.onboarding import _handle_wear_payload
+
+    test_user_id = 999127
+    await game.ensure_player(
+        user_id=test_user_id,
+        username="wear_plus_tester",
+        display_name="تستر پلاس",
+    )
+
+    try:
+        payload = {"skin": 1, "body": "plus", "items": [333]}
+        encoded = base64.urlsafe_b64encode(json.dumps(payload).encode()).decode().rstrip("=")
+        msg = AsyncMock()
+        msg.from_user.id = test_user_id
+        msg.from_user.username = "wear_plus_tester"
+        msg.from_user.full_name = "تستر پلاس"
+        msg.reply_photo = AsyncMock()
+        msg.reply = AsyncMock()
+
+        await _handle_wear_payload(msg, encoded)
+
+        av = await avatar.get_player_avatar(test_user_id)
+        assert av["equipped_var_ids"] == [333]
+        assert av["skin_tone"] == -7  # plus 1 -> -7
+        assert av["is_plus_size"] == 1
+    finally:
+        async with db.write() as conn:
+            await conn.execute("DELETE FROM player_avatar WHERE user_id = ?", (test_user_id,))
+            await conn.execute("DELETE FROM inventory WHERE user_id = ?", (test_user_id,))
+            await conn.execute("DELETE FROM players WHERE user_id = ?", (test_user_id,))
+
+
 async def test_handle_customizer_command():
     """Verify customizer launcher command responds with photo and webapp markup."""
     assert "کاستومایز" in CUSTOMIZER_COMMANDS
