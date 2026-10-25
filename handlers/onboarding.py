@@ -189,7 +189,7 @@ async def _start_name_wizard(
 
 @router.message(CommandOrText(["start"], {}))
 async def cmd_start_wear(message: Message, state: FSMContext) -> None:
-    """Handle /start with composable Mini App payload: /start wear_<b64>.
+    """Handle /start with composable Mini App payload: /start w_<b64> or wear_<b64>.
 
     Telegram Mini Apps opened from a menu button or glass button cannot use
     sendMessage, so the save travels via this deep link instead.
@@ -197,9 +197,99 @@ async def cmd_start_wear(message: Message, state: FSMContext) -> None:
     if not message.text:
         return
     parts = message.text.split(maxsplit=1)
-    if len(parts) < 2 or not parts[1].startswith("wear_"):
+    if len(parts) < 2:
         return
-    await _handle_wear_payload(message, parts[1][len("wear_"):])
+    arg = parts[1]
+    if arg.startswith("w_"):
+        await _handle_compact_wear_payload(message, arg[len("w_"):])
+        return
+    if arg.startswith("wear_"):
+        await _handle_wear_payload(message, arg[len("wear_"):])
+        return
+
+
+async def _handle_compact_wear_payload(message: Message, encoded: str) -> None:
+    """Decode the compact binary Mini App save payload (<64 chars) and persist it."""
+    import base64
+
+    user = message.from_user
+    if user is None:
+        return
+    try:
+        padded = encoded + "=" * (-len(encoded) % 4)
+        data = base64.urlsafe_b64decode(padded)
+        if not data:
+            return
+        header = data[0]
+        is_plus = 1 if ((header >> 6) & 1) else 0
+        skin_idx = header & 0x3F
+        var_ids = []
+        for i in range(1, len(data), 3):
+            chunk = data[i : i + 3]
+            if len(chunk) == 3:
+                var_ids.append((chunk[0] << 16) | (chunk[1] << 8) | chunk[2])
+
+        if is_plus:
+            skin_map = {1: -7, 2: -8, 3: -9, 4: -10, 5: -11, 6: -6}
+            skin_tone_id = skin_map.get(skin_idx, -7)
+        else:
+            skin_map = {1: -1, 2: -2, 3: -3, 4: -4, 5: -5}
+            skin_tone_id = skin_map.get(skin_idx, -1)
+
+        player = await hydrate(user.id, user.full_name, user.username)
+        is_new_player = player.onboarding_completed == 0
+
+        await avatar.save_custom_avatar(
+            user_id=user.id,
+            var_ids=var_ids,
+            skin_tone=skin_tone_id,
+            is_plus_size=is_plus,
+        )
+
+        if is_new_player:
+            async with db.write() as conn:
+                await conn.execute(
+                    "UPDATE players SET onboarding_completed = 1, skin_tone = ? WHERE user_id = ?",
+                    (str(skin_tone_id), user.id),
+                )
+
+        render_url = await avatar.get_player_render_url(user.id)
+        photo_payload = await avatar.fetch_upscaled_avatar(render_url, scale=2)
+
+        custom_url = await avatar.get_customizer_url(user.id)
+        markup = InlineKeyboardMarkup(
+            inline_keyboard=[[
+                InlineKeyboardButton(
+                    text="🎨 باز کردن کاستومایز",
+                    web_app=WebAppInfo(url=custom_url),
+                )
+            ]]
+        )
+
+        if is_new_player:
+            caption = (
+                "🍁 <b>شناسنامه شهروندی تیرامیکس صادر شد!</b>\n\n"
+                f"👤 <b>نام:</b> {esc(player.display_name)}\n"
+                f"🧍 <b>فرم بدنه:</b> {'پلاس' if is_plus else 'اسلیم'}\n"
+                f"👕 <b>قطعات پوشش:</b> {len(var_ids)} قلم\n"
+                f"💰 <b>کیف پول:</b> ۲۵۰ سکه | 🏦 <b>بانک:</b> ۰ سکه\n\n"
+                "✨ <b>کاراکتر شما با موفقیت از طریق مینی‌اپ ساخته شد و بدون بک‌گراند آماده است!</b>"
+            )
+        else:
+            caption = (
+                "✅ <b>استایل کاراکتر از مینی‌اپ ثبت شد!</b>\n"
+                "━━━━━━━━━━━━━━━━━━━━\n"
+                f"👕 <b>قطعات:</b> {len(var_ids)} قلم\n"
+                f"🧍 <b>فرم بدنه:</b> {'پلاس' if is_plus else 'اسلیم'}"
+            )
+
+        if photo_payload is None:
+            logger.warning("w_ save: render fetch failed for %s", user.id)
+            await message.reply(caption, reply_markup=markup)
+        else:
+            await message.reply_photo(photo=photo_payload, caption=caption, reply_markup=markup)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("compact wear_ deep link failed: %s", exc)
 
 
 async def _handle_wear_payload(message: Message, encoded: str) -> None:

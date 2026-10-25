@@ -340,3 +340,50 @@ async def test_wear_deep_link_completes_onboarding_for_new_player():
             await conn.execute("DELETE FROM player_avatar WHERE user_id = ?", (test_user_id,))
             await conn.execute("DELETE FROM inventory WHERE user_id = ?", (test_user_id,))
             await conn.execute("DELETE FROM players WHERE user_id = ?", (test_user_id,))
+
+
+async def test_compact_binary_wear_deep_link():
+    """Verify compact binary deep-link w_<b64> saves avatar correctly under 64 chars."""
+    import base64
+
+    from aiogram.fsm.context import FSMContext
+
+    from handlers.onboarding import cmd_start_wear
+
+    test_user_id = 999130
+    await game.ensure_player(
+        user_id=test_user_id,
+        username="compact_tester",
+        display_name="تستر فشرده",
+    )
+
+    try:
+        # Binary pack: skin 3, slim, items [4024707, 4027798]
+        header = 3 & 0x3F
+        bytes_data = bytearray([header])
+        for v in [4024707, 4027798]:
+            bytes_data.extend([(v >> 16) & 0xFF, (v >> 8) & 0xFF, v & 0xFF])
+        b64 = base64.urlsafe_b64encode(bytes(bytes_data)).decode("ascii").rstrip("=")
+
+        assert len(f"w_{b64}") <= 64, "Deep-link start param must be <= 64 characters"
+
+        msg = AsyncMock()
+        msg.text = f"/start w_{b64}"
+        msg.from_user.id = test_user_id
+        msg.from_user.username = "compact_tester"
+        msg.from_user.full_name = "تستر فشرده"
+        msg.reply_photo = AsyncMock()
+        msg.reply = AsyncMock()
+
+        state = AsyncMock(spec=FSMContext)
+        await cmd_start_wear(msg, state)
+
+        av = await avatar.get_player_avatar(test_user_id)
+        assert av["equipped_var_ids"] == [4024707, 4027798]
+        assert av["skin_tone"] == -3
+        assert av["is_plus_size"] == 0
+    finally:
+        async with db.write() as conn:
+            await conn.execute("DELETE FROM player_avatar WHERE user_id = ?", (test_user_id,))
+            await conn.execute("DELETE FROM inventory WHERE user_id = ?", (test_user_id,))
+            await conn.execute("DELETE FROM players WHERE user_id = ?", (test_user_id,))

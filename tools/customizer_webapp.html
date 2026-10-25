@@ -5383,16 +5383,40 @@
       };
       const jsonStr = JSON.stringify(payload);
 
-      // مسیر ۱: دیپ‌لینک wear_ (پایدار در تمامی حالت‌های منو و اینلاین)
-      if (botUsername) {
+      // ۱. ارسال مستقیم با Telegram.WebApp.sendData
+      if (tg?.sendData) {
         try {
-          const encoded = btoa(unescape(encodeURIComponent(jsonStr))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-          const deepLink = `https://t.me/${botUsername}?start=wear_${encoded}`;
+          tg.sendData(jsonStr);
+        } catch (e) {
+          console.warn("tg.sendData failed/ignored:", e);
+        }
+      }
+
+      // ۲. فشرده‌سازی باینری فشرده زیر ۶۴ کاراکتر برای دیپ‌لینک تلگرام (w_)
+      let compactB64 = '';
+      try {
+        const isPlus = (currentBodyType === 'plus') ? 1 : 0;
+        const header = (isPlus << 6) | (currentSkinIdx & 0x3F);
+        const bytes = [header];
+        for (let i = 0; i < equippedVarList.length; i++) {
+          const v = Number(equippedVarList[i]);
+          bytes.push((v >> 16) & 0xFF, (v >> 8) & 0xFF, v & 0xFF);
+        }
+        let bin = '';
+        for (let i = 0; i < bytes.length; i++) {
+          bin += String.fromCharCode(bytes[i]);
+        }
+        compactB64 = btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+      } catch (err) {
+        console.warn("compact encoding error:", err);
+      }
+
+      // ۳. اجرای دیپ‌لینک استاندارد کم‌حجم تلگرام (زیر ۶۴ کاراکتر)
+      if (botUsername && compactB64 && (compactB64.length + 2 <= 64)) {
+        try {
+          const deepLink = `https://t.me/${botUsername}?start=w_${compactB64}`;
           showToast('💾 در حال ذخیره و ثبت استایل در ربات...');
 
-          if (tg?.sendData) {
-            try { tg.sendData(jsonStr); } catch (e) {}
-          }
           if (tg?.openTelegramLink) {
             tg.openTelegramLink(deepLink);
           } else {
@@ -5400,28 +5424,34 @@
           }
           setTimeout(() => {
             try { tg.close(); } catch (e) {}
-          }, 800);
+          }, 600);
           return;
         } catch (err) {
-          console.warn("deep-link save failed, trying sendData fallback", err);
+          console.warn("compact deep-link failed:", err);
         }
       }
 
-      // مسیر ۲: sendData تلگرام در صورتی که botUsername موجود نبود
-      if (tg?.sendData) {
+      // ۴. فال‌بک دیپ‌لینک wear_ در صورتی که تعداد اقلام بیشتر باشد
+      if (botUsername) {
         try {
-          showToast('💾 در حال ذخیره و ثبت روی کاراکتر...');
-          tg.sendData(jsonStr);
+          const encoded = btoa(unescape(encodeURIComponent(jsonStr))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+          const deepLink = `https://t.me/${botUsername}?start=wear_${encoded}`;
+          showToast('💾 در حال ذخیره و ثبت استایل در ربات...');
+
+          if (tg?.openTelegramLink) {
+            tg.openTelegramLink(deepLink);
+          } else {
+            location.href = deepLink;
+          }
           setTimeout(() => {
             try { tg.close(); } catch (e) {}
           }, 600);
           return;
         } catch (err) {
-          console.warn("tg.sendData fallback failed", err);
+          console.warn("wear_ deep-link failed:", err);
         }
       }
 
-      // مسیر ۳: خارج از تلگرام — مودال مرورگر
       openFallbackModal(payload);
     }
 
