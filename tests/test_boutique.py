@@ -298,3 +298,45 @@ async def test_boutique_carousel_callbacks(monkeypatch):
         await conn.execute("DELETE FROM player_avatar WHERE user_id = ?", (user.id,))
         await conn.execute("DELETE FROM wallets WHERE user_id = ?", (user.id,))
         await conn.execute("DELETE FROM players WHERE user_id = ?", (user.id,))
+
+
+async def test_wardrobe_shows_custom_equipped_outfit():
+    """Verify player's equipped custom outfit is shown in wardrobe and not naked."""
+    test_user_id = 999135
+    await game.ensure_player(
+        user_id=test_user_id,
+        username="wardrobe_custom_tester",
+        display_name="تستر کمد",
+    )
+    try:
+        # Save custom avatar with 2 pieces
+        await avatar.save_custom_avatar(
+            user_id=test_user_id,
+            var_ids=[4024707, 4027798],
+            skin_tone=-2,
+            is_plus_size=0,
+        )
+
+        wdr = await avatar.list_wardrobe(test_user_id)
+        assert len(wdr) >= 1
+        assert wdr[0]["var_ids"] == [4024707, 4027798]
+
+        # Build wardrobe card
+        from handlers.boutique import _build_wardrobe_card
+
+        render_url, caption, markup = await _build_wardrobe_card(user_id=test_user_id, index=0)
+        assert "بر تن کاراکتر" in caption
+        assert "استایل اختصاصی" in caption
+        assert "cdn.everskies.com/render/" in render_url
+        import base64
+        slug = render_url.split("/render/")[1].split(".png")[0]
+        decoded = base64.b64decode(slug + "==").decode()
+        assert "4024707" in decoded
+        assert "4027798" in decoded
+        assert "-2" in decoded
+    finally:
+        async with db.write() as conn:
+            await conn.execute("DELETE FROM player_wardrobe WHERE user_id = ?", (test_user_id,))
+            await conn.execute("DELETE FROM player_avatar WHERE user_id = ?", (test_user_id,))
+            await conn.execute("DELETE FROM wallets WHERE user_id = ?", (test_user_id,))
+            await conn.execute("DELETE FROM players WHERE user_id = ?", (test_user_id,))

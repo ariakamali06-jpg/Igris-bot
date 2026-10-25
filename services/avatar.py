@@ -317,6 +317,7 @@ async def save_custom_avatar(
     """Save player custom avatar composition from customizer / Mini App."""
     await get_player_avatar(user_id)  # ensure row exists
     now_ts = int(time.time())
+    active_set = 9999 if var_ids else None
     async with db.write() as conn:
         await conn.execute(
             """
@@ -324,11 +325,27 @@ async def save_custom_avatar(
             SET equipped_var_ids = ?,
                 skin_tone = ?,
                 is_plus_size = ?,
+                active_set_id = ?,
                 updated_at = ?
             WHERE user_id = ?
             """,
-            (json.dumps(var_ids), skin_tone, is_plus_size, now_ts, user_id),
+            (json.dumps(var_ids), skin_tone, is_plus_size, active_set, now_ts, user_id),
         )
+        if var_ids:
+            await conn.execute(
+                """
+                INSERT INTO player_wardrobe
+                    (user_id, set_id, set_name, gender, item_count,
+                     var_ids, is_plus_size, price_paid, acquired_at)
+                VALUES (?, 9999, '✨ استایل اختصاصی (بر تن)', 'unisex', ?, ?, ?, 0, ?)
+                ON CONFLICT(user_id, set_id) DO UPDATE SET
+                    item_count = excluded.item_count,
+                    var_ids = excluded.var_ids,
+                    is_plus_size = excluded.is_plus_size,
+                    acquired_at = excluded.acquired_at
+                """,
+                (user_id, len(var_ids), json.dumps(var_ids), is_plus_size, now_ts),
+            )
     return {
         "user_id": user_id,
         "equipped_var_ids": var_ids,
@@ -746,7 +763,7 @@ async def buy_boutique_set(
 
 
 async def list_wardrobe(user_id: int) -> list[dict[str, Any]]:
-    """List all sets owned by the player."""
+    """List all sets owned by the player, including custom active loadout if equipped."""
     async with db.read() as conn:
         cursor = await conn.execute(
             """
@@ -778,6 +795,48 @@ async def list_wardrobe(user_id: int) -> list[dict[str, Any]]:
                 "render_url": get_render_url(var_ids),
             }
         )
+
+    # Check if player currently has custom clothes equipped on their body
+    player_av = await get_player_avatar(user_id)
+    equipped = player_av.get("equipped_var_ids", [])
+    if equipped:
+        already_in_wardrobe = any(
+            set(r.get("var_ids", [])) == set(equipped) for r in result
+        )
+        if not already_in_wardrobe:
+            now_ts = player_av.get("updated_at", int(time.time()))
+            is_plus = player_av.get("is_plus_size", 0)
+            async with db.write() as conn:
+                await conn.execute(
+                    """
+                    INSERT INTO player_wardrobe
+                        (user_id, set_id, set_name, gender, item_count,
+                         var_ids, is_plus_size, price_paid, acquired_at)
+                    VALUES (?, 9999, '✨ استایل اختصاصی (بر تن)', 'unisex', ?, ?, ?, 0, ?)
+                    ON CONFLICT(user_id, set_id) DO UPDATE SET
+                        item_count = excluded.item_count,
+                        var_ids = excluded.var_ids,
+                        is_plus_size = excluded.is_plus_size,
+                        acquired_at = excluded.acquired_at
+                    """,
+                    (user_id, len(equipped), json.dumps(equipped), is_plus, now_ts),
+                )
+            result.insert(
+                0,
+                {
+                    "id": 0,
+                    "set_id": 9999,
+                    "name": "✨ استایل اختصاصی (بر تن)",
+                    "gender": "unisex",
+                    "item_count": len(equipped),
+                    "var_ids": equipped,
+                    "is_plus_size": is_plus,
+                    "price_paid": 0,
+                    "acquired_at": now_ts,
+                    "render_url": get_render_url(equipped),
+                },
+            )
+
     return result
 
 

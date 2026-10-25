@@ -225,33 +225,58 @@ async def _build_wardrobe_card(
     player_av = await avatar.get_player_avatar(user_id)
 
     if not items:
-        # Empty wardrobe: show naked base avatar
-        skin_url = avatar.get_render_url([player_av["skin_tone"]])
+        # Truly empty wardrobe: show player's live avatar (mannequin)
+        render_url = await avatar.get_player_render_url(user_id)
         caption = (
             "🧥 <b>کمد لباس شخصی شما</b>\n"
             "━━━━━━━━━━━━━━━━━━━━\n"
-            "شما هنوز هیچ ستی خریداری نکرده‌اید!\n"
-            "برای خرید و ورق زدن جذاب‌ترین ست‌های بازی به بوتیک روزانه سر بزنید."
+            "کاراکتر شما در حال حاضر لباسی بر تن ندارد و هنوز ستی در کمد ذخیره نشده است!\n\n"
+            "• برای طراحی لباس و تیپ اختصاصی روی <b>«📱 مینی‌اپ شخصی‌سازی»</b> بزنید.\n"
+            "• برای خرید ست‌های جذاب به <b>«🛍 ویترین بوتیک»</b> سر بزنید."
         )
-        markup = InlineKeyboardMarkup(
-            inline_keyboard=[
-                [InlineKeyboardButton(text="🛍 ویترین بوتیک", callback_data="btq:cat:female")],
-                [InlineKeyboardButton(text="🎨 انتخاب رنگ پوست", callback_data="wdr:skin_menu")],
-                [InlineKeyboardButton(text="🚪 بستن کمد", callback_data="btq:close")],
+        custom_url = await avatar.get_customizer_url(user_id) if settings.webapp_url else ""
+        buttons = []
+        if custom_url:
+            buttons.append(
+                [
+                    InlineKeyboardButton(
+                        text="📱 مینی‌اپ شخصی‌سازی و طراحی لباس",
+                        web_app=WebAppInfo(url=custom_url),
+                    )
+                ]
+            )
+        buttons.append(
+            [
+                InlineKeyboardButton(text="🛍 ویترین بوتیک مد", callback_data="btq:cat:female"),
+                InlineKeyboardButton(text="🎨 انتخاب رنگ پوست", callback_data="wdr:skin_menu"),
             ]
         )
-        return skin_url, caption, markup
+        buttons.append([InlineKeyboardButton(text="🚪 بستن کمد", callback_data="btq:close")])
+        markup = InlineKeyboardMarkup(inline_keyboard=buttons)
+        return render_url, caption, markup
 
     total = len(items)
     idx = max(0, min(index, total - 1))
     current_set = items[idx]
     set_id = current_set["set_id"]
-    is_active = player_av["active_set_id"] == set_id
-
-    # Render set on player's skin
-    render_url = avatar.get_render_url(
-        current_set["var_ids"] + [player_av["skin_tone"]],
+    equipped_vars = player_av.get("equipped_var_ids", [])
+    is_active = (
+        player_av.get("active_set_id") == set_id
+        or (bool(equipped_vars) and set(current_set["var_ids"]) == set(equipped_vars))
     )
+
+    # Render set on player's skin (or live player avatar if currently active)
+    if is_active:
+        render_url = await avatar.get_player_render_url(user_id)
+    else:
+        skin_id = player_av["skin_tone"]
+        is_plus = current_set.get("is_plus_size") or player_av.get("is_plus_size", 0)
+        if is_plus:
+            plus_head_map = {-7: -13, -8: -14, -9: -15, -10: -16, -11: -17, -6: -12}
+            head_id = plus_head_map.get(skin_id, -13)
+            render_url = avatar.get_render_url(current_set["var_ids"] + [skin_id, head_id])
+        else:
+            render_url = avatar.get_render_url(current_set["var_ids"] + [skin_id])
 
     status_str = "👕 <b>بر تن کاراکتر</b>" if is_active else "📦 در کمد لباس"
 
@@ -266,14 +291,16 @@ async def _build_wardrobe_card(
         f"<i>لباس {idx + 1} از {total}</i>"
     )
 
-    prev_idx = (idx - 1) % total
-    next_idx = (idx + 1) % total
-
-    nav_row = [
-        InlineKeyboardButton(text="⬅️ قبلی", callback_data=f"wdr:nav:{prev_idx}"),
-        InlineKeyboardButton(text=f"[{idx + 1} / {total}]", callback_data="noop"),
-        InlineKeyboardButton(text="بعدی ➡️", callback_data=f"wdr:nav:{next_idx}"),
-    ]
+    if total > 1:
+        prev_idx = (idx - 1) % total
+        next_idx = (idx + 1) % total
+        nav_row = [
+            InlineKeyboardButton(text="⬅️ قبلی", callback_data=f"wdr:nav:{prev_idx}"),
+            InlineKeyboardButton(text=f"[{idx + 1} / {total}]", callback_data="noop"),
+            InlineKeyboardButton(text="بعدی ➡️", callback_data=f"wdr:nav:{next_idx}"),
+        ]
+    else:
+        nav_row = [InlineKeyboardButton(text=f"✨ {total} ست موجود", callback_data="noop")]
 
     if is_active:
         equip_row = [
@@ -836,7 +863,7 @@ async def handle_wardrobe_callback(call: CallbackQuery) -> None:
     parts = call.data.split(":")
     action = parts[1] if len(parts) > 1 else ""
 
-    if action == "open" or action == "nav":
+    if action in ("open", "nav", "view"):
         idx = int(parts[2]) if len(parts) > 2 else 0
         render_url, caption, markup = await _build_wardrobe_card(user_id=user_id, index=idx)
         with contextlib.suppress(TelegramBadRequest):
