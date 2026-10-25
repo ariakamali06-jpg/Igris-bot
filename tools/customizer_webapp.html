@@ -4844,6 +4844,11 @@
     // مرتب‌سازی خودکار اینجا اعمال می‌شود (ولی دستکاری دستی قفلِ خودش را دارد).
     function applyEquipped(newList) {
       equippedVarList = autoSortLayers(newList);
+      try {
+        localStorage.setItem('igris_equipped_items', JSON.stringify(equippedVarList));
+        localStorage.setItem('igris_skin', String(currentSkinIdx));
+        localStorage.setItem('igris_body', currentBodyType);
+      } catch (e) {}
       updateAvatarPreview();
       updateCatalogEquippedStates();
       renderLayerDrawer();
@@ -4911,6 +4916,7 @@
 
     function setSkinTone(idx) {
       currentSkinIdx = Number(idx);
+      try { localStorage.setItem('igris_skin', String(currentSkinIdx)); } catch (e) {}
       renderSkinSwatches();
       updateAvatarPreview();
       hapticFeedback();
@@ -4918,11 +4924,13 @@
 
     function setBodyType(type) {
       currentBodyType = type;
+      try { localStorage.setItem('igris_body', currentBodyType); } catch (e) {}
       document.querySelectorAll('.body-btn').forEach(b => {
         b.classList.toggle('active', b.dataset.body === type);
       });
       if (currentSkinIdx === 6 && type === 'slim') {
         currentSkinIdx = 1;
+        try { localStorage.setItem('igris_skin', String(currentSkinIdx)); } catch (e) {}
       }
       renderSkinSwatches();
       updateAvatarPreview();
@@ -5337,7 +5345,7 @@
       const temp = equippedVarList[idx - 1];
       equippedVarList[idx - 1] = equippedVarList[idx];
       equippedVarList[idx] = temp;
-
+      try { localStorage.setItem('igris_equipped_items', JSON.stringify(equippedVarList)); } catch (e) {}
       updateAvatarPreview();
       renderLayerDrawer();
       showToast('🔼 آیتم یک لایه به رو آمد');
@@ -5351,7 +5359,7 @@
       const temp = equippedVarList[idx + 1];
       equippedVarList[idx + 1] = equippedVarList[idx];
       equippedVarList[idx] = temp;
-
+      try { localStorage.setItem('igris_equipped_items', JSON.stringify(equippedVarList)); } catch (e) {}
       updateAvatarPreview();
       renderLayerDrawer();
       showToast('🔽 آیتم یک لایه به زیر رفت');
@@ -5365,6 +5373,7 @@
       if (equippedVarList.length === 0) return;
       hapticFeedback();
       equippedVarList = [];
+      try { localStorage.setItem('igris_equipped_items', JSON.stringify(equippedVarList)); } catch (e) {}
       updateAvatarPreview();
       updateCatalogEquippedStates();
       renderLayerDrawer();
@@ -5552,25 +5561,51 @@
           }
 
           // بارگذاری اقلام پوشیده شده فعلی کاراکتر
-          if (Array.isArray(loadoutData.items) && loadoutData.items.length > 0) {
+          if (Array.isArray(loadoutData.items)) {
             equippedVarList = loadoutData.items.map(Number).filter(Boolean);
+            try {
+              localStorage.setItem('igris_equipped_items', JSON.stringify(equippedVarList));
+              localStorage.setItem('igris_skin', String(currentSkinIdx));
+              localStorage.setItem('igris_body', currentBodyType);
+            } catch (e) {}
           }
-        } else if (tg?.initDataUnsafe?.user) {
-          const tgUser = tg.initDataUnsafe.user;
-          const strip = document.getElementById('playerProfileStrip');
-          const nameEl = document.getElementById('playerStripName');
-          if (strip && nameEl) {
-            nameEl.innerText = `👤 ${tgUser.first_name || 'مسافر'}`;
-            strip.style.display = 'flex';
+        } else {
+          // در صورت نبود پارامتر URL (مثلا باز شدن از منو چت)، بازیابی آخرین استایل ذخیره‌شده
+          try {
+            const savedItems = localStorage.getItem('igris_equipped_items');
+            if (savedItems) {
+              const parsed = JSON.parse(savedItems);
+              if (Array.isArray(parsed)) {
+                equippedVarList = parsed.map(Number).filter(Boolean);
+              }
+            }
+            const savedSkin = localStorage.getItem('igris_skin');
+            if (savedSkin) currentSkinIdx = Number(savedSkin);
+            const savedBody = localStorage.getItem('igris_body');
+            if (savedBody === 'slim' || savedBody === 'plus') {
+              currentBodyType = savedBody;
+              document.querySelectorAll('.body-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.getAttribute('data-body') === currentBodyType);
+              });
+            }
+          } catch (e) {}
+
+          if (tg?.initDataUnsafe?.user) {
+            const tgUser = tg.initDataUnsafe.user;
+            const strip = document.getElementById('playerProfileStrip');
+            const nameEl = document.getElementById('playerStripName');
+            if (strip && nameEl) {
+              nameEl.innerText = `👤 ${tgUser.first_name || 'مسافر'}`;
+              strip.style.display = 'flex';
+            }
           }
         }
 
         renderSkinSwatches();
         renderSubtags();
         renderCatalog();
-        renderLayerItemsList();
-        updateDockBadges();
         updateAvatarPreview();
+        renderLayerDrawer();
       } catch (err) {
         console.error("Boot error:", err);
       }

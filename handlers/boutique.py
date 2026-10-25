@@ -28,7 +28,7 @@ from aiogram.types import (
 )
 
 from config import settings
-from database.connection import db
+from handlers.common import hydrate
 from models.player import Player
 from services import avatar, game
 
@@ -513,6 +513,13 @@ async def handle_customizer_webapp_data(message: Message) -> None:
             skin_map = {1: -1, 2: -2, 3: -3, 4: -4, 5: -5}
             skin_tone_id = skin_map.get(skin_idx, -1)
 
+        raw_name = getattr(message.from_user, "full_name", None)
+        full_name = raw_name if isinstance(raw_name, str) else "مسافر"
+        raw_user = getattr(message.from_user, "username", None)
+        username = raw_user if isinstance(raw_user, str) else None
+        player = await hydrate(user_id, full_name, username)
+        is_new_player = player.onboarding_completed == 0
+
         await avatar.save_custom_avatar(
             user_id=user_id,
             var_ids=var_ids,
@@ -520,38 +527,93 @@ async def handle_customizer_webapp_data(message: Message) -> None:
             is_plus_size=is_plus,
         )
 
-        # Mark onboarding completed if new player
-        async with db.write() as conn:
-            await conn.execute(
-                "UPDATE players SET onboarding_completed = 1 "
-                "WHERE user_id = ? AND onboarding_completed = 0",
-                (user_id,),
+        if is_new_player:
+            gender_fa = player.gender if player.gender != "نامشخص" else "پسر"
+            gender_key = "female" if gender_fa == "دختر" else "male"
+            body_stance = (
+                f"base_vn_{skin_idx}" if gender_key == "female" else f"base_boy_{skin_idx}"
+            )
+            player = await game.complete_character_creation(
+                user_id=user_id,
+                display_name=player.display_name,
+                gender=gender_fa,
+                age=player.age,
+                skin_tone=str(skin_tone_id),
+                eye_color="amber",
+                body_stance=body_stance,
+                hair_style="hair1",
+                hair_color="black",
             )
 
         render_url = await avatar.get_player_render_url(user_id)
         photo_payload = await _render_photo_payload(render_url, "custom_avatar.png")
 
-        caption = (
-            "✨ <b>استایل جدید کاراکتر شما با موفقیت ثبت شد!</b>\n"
-            "━━━━━━━━━━━━━━━━━━━━\n"
-            f"👕 <b>تعداد قطعات بر تن:</b> {len(var_ids)} قلم\n"
-            f"🧍 <b>فرم بدنه:</b> {'پلاس' if is_plus else 'اسلیم'}\n\n"
-            "استایل شما در تمامی مبارزات، رویدادها و پروفایل عمومی بازی "
-            "با این ظاهر نمایش داده می‌شود."
-        )
         custom_url = await avatar.get_customizer_url(user_id)
-        markup = InlineKeyboardMarkup(
-            inline_keyboard=[
-                [
-                    InlineKeyboardButton(
-                        text="🎨 ویرایش مجدد در مینی‌اپ",
-                        web_app=WebAppInfo(url=custom_url),
-                    )
-                ],
-                [InlineKeyboardButton(text="👕 کمد لباس", callback_data="wdr:view:0")],
-                [InlineKeyboardButton(text="🚪 بستن", callback_data="btq:close")],
-            ]
-        )
+        if is_new_player:
+            caption = (
+                f"🎉 <b>شناسنامه شهروندی تیرامیکس صادر شد!</b> 🍁\n"
+                "━━━━━━━━━━━━━━━━━━━━\n"
+                f"👤 <b>نام:</b> {player.display_name}\n"
+                f"🎂 <b>سن:</b> {player.age} سال | ⚧ <b>جنسیت:</b> {player.gender}\n"
+                f"🧍 <b>فرم بدنه:</b> {'پلاس' if is_plus else 'اسلیم'}\n"
+                f"👕 <b>پوشش اولیه:</b> {len(var_ids)} قلم لباس انتخابی خودت\n"
+                f"💰 <b>سرمایه اولیه:</b> ۲۵۰ سکه هدیه ورود به شهر\n\n"
+                "✨ <b>کاراکتر شما با موفقیت ساخته شد و آماده زندگی در تیرامیکس است!</b>\n\n"
+                "🚀 <b>گام‌های بعدی برای شروع بازی:</b>\n"
+                "• برای کسب اولین درآمد شهری، روی <b>«💼 رفتن سر کار»</b> بزنید.\n"
+                "• برای آشنایی با تمام قابلیت‌های بازی، <b>«📜 راهنمای کامل»</b> را ببینید.\n"
+                "• برای خرید ست‌های جدید لباس، به <b>«🛍 بوتیک مد»</b> سر بزنید."
+            )
+            markup = InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [
+                        InlineKeyboardButton(
+                            text="💼 رفتن سر کار (شروع درآمد)", callback_data="act:work"
+                        ),
+                        InlineKeyboardButton(
+                            text="📜 راهنمای کامل شهر", callback_data="help:main"
+                        ),
+                    ],
+                    [
+                        InlineKeyboardButton(
+                            text="🛍 ویترین بوتیک و مد",
+                            callback_data=(
+                                "btq:cat:female"
+                                if player.gender == "دختر"
+                                else "btq:cat:male"
+                            ),
+                        ),
+                        InlineKeyboardButton(text="🎒 کمد لباس من", callback_data="wdr:view:0"),
+                    ],
+                    [
+                        InlineKeyboardButton(
+                            text="🎨 ویرایش مجدد در مینی‌اپ",
+                            web_app=WebAppInfo(url=custom_url),
+                        )
+                    ],
+                ]
+            )
+        else:
+            caption = (
+                "✨ <b>استایل جدید کاراکتر شما با موفقیت ثبت شد!</b>\n"
+                "━━━━━━━━━━━━━━━━━━━━\n"
+                f"👕 <b>تعداد قطعات بر تن:</b> {len(var_ids)} قلم\n"
+                f"🧍 <b>فرم بدنه:</b> {'پلاس' if is_plus else 'اسلیم'}\n\n"
+                "استایل شما در تمامی مبارزات، رویدادها و پروفایل عمومی بازی "
+                "با این ظاهر نمایش داده می‌شود."
+            )
+            markup = InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [
+                        InlineKeyboardButton(
+                            text="🎨 ویرایش مجدد در مینی‌اپ",
+                            web_app=WebAppInfo(url=custom_url),
+                        )
+                    ],
+                    [InlineKeyboardButton(text="👕 کمد لباس", callback_data="wdr:view:0")],
+                    [InlineKeyboardButton(text="🚪 بستن", callback_data="btq:close")],
+                ]
+            )
         await message.reply_photo(photo=photo_payload, caption=caption, reply_markup=markup)
     except Exception as exc:
         logger.warning("Error processing customizer web_app_data: %s", exc)

@@ -382,6 +382,10 @@ async def test_compact_binary_wear_deep_link():
         assert av["equipped_var_ids"] == [4024707, 4027798]
         assert av["skin_tone"] == -3
         assert av["is_plus_size"] == 0
+
+        p_res = await game.load_player(test_user_id)
+        assert p_res is not None
+        assert p_res.onboarding_completed == 1
     finally:
         async with db.write() as conn:
             await conn.execute("DELETE FROM player_avatar WHERE user_id = ?", (test_user_id,))

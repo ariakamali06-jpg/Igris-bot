@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import logging
 from typing import Any
@@ -21,7 +22,6 @@ from aiogram.types import (
 )
 
 from config import settings
-from database.connection import db
 from handlers.common import (
     CommandOrText,
     answer_error,
@@ -201,14 +201,16 @@ async def cmd_start_wear(message: Message, state: FSMContext) -> None:
         return
     arg = parts[1]
     if arg.startswith("w_"):
-        await _handle_compact_wear_payload(message, arg[len("w_"):])
+        await _handle_compact_wear_payload(message, arg[len("w_"):], state=state)
         return
     if arg.startswith("wear_"):
-        await _handle_wear_payload(message, arg[len("wear_"):])
+        await _handle_wear_payload(message, arg[len("wear_"):], state=state)
         return
 
 
-async def _handle_compact_wear_payload(message: Message, encoded: str) -> None:
+async def _handle_compact_wear_payload(
+    message: Message, encoded: str, state: FSMContext | None = None
+) -> None:
     """Decode the compact binary Mini App save payload (<64 chars) and persist it."""
     import base64
 
@@ -237,7 +239,8 @@ async def _handle_compact_wear_payload(message: Message, encoded: str) -> None:
             skin_tone_id = skin_map.get(skin_idx, -1)
 
         player = await hydrate(user.id, user.full_name, user.username)
-        is_new_player = player.onboarding_completed == 0
+        fsm_state = (await state.get_state()) if state else None
+        is_new_player = (player.onboarding_completed == 0) or (fsm_state is not None)
 
         await avatar.save_custom_avatar(
             user_id=user.id,
@@ -247,33 +250,105 @@ async def _handle_compact_wear_payload(message: Message, encoded: str) -> None:
         )
 
         if is_new_player:
-            async with db.write() as conn:
-                await conn.execute(
-                    "UPDATE players SET onboarding_completed = 1, skin_tone = ? WHERE user_id = ?",
-                    (str(skin_tone_id), user.id),
-                )
+            fsm_data = {}
+            if state and hasattr(state, "get_data"):
+                res = state.get_data()
+                if asyncio.iscoroutine(res) or hasattr(res, "__await__"):
+                    res = await res
+                if isinstance(res, dict):
+                    fsm_data = res
+
+            raw_name = (
+                fsm_data.get("name")
+                or player.display_name
+                or getattr(user, "first_name", "مسافر")
+                or "مسافر"
+            )
+            name = str(raw_name) if isinstance(raw_name, str) else "مسافر"
+            name = name[:30]
+
+            gender = fsm_data.get("gender") or (
+                "female" if "دختر" in player.gender else "male"
+            )
+            gender_fa = "دختر" if gender in ("female", "دختر") else "پسر"
+            raw_age = fsm_data.get("age") or player.age or 20
+            try:
+                age = int(raw_age)
+            except (ValueError, TypeError):
+                age = 20
+
+            body_stance = (
+                f"base_vn_{skin_idx}" if gender == "female" else f"base_boy_{skin_idx}"
+            )
+            player = await game.complete_character_creation(
+                user_id=user.id,
+                display_name=name,
+                gender=gender_fa,
+                age=age,
+                skin_tone=str(skin_tone_id),
+                eye_color="amber",
+                body_stance=body_stance,
+                hair_style="hair1",
+                hair_color="black",
+            )
+            tracked_msg_ids = list(fsm_data.get("tracked_msg_ids", []))
+            bot_instance = getattr(message, "bot", None)
+            if bot_instance and tracked_msg_ids:
+                for mid in set(tracked_msg_ids):
+                    with contextlib.suppress(Exception):
+                        await bot_instance.delete_message(
+                            chat_id=message.chat.id, message_id=mid
+                        )
+            if state:
+                await state.clear()
 
         render_url = await avatar.get_player_render_url(user.id)
         photo_payload = await avatar.fetch_upscaled_avatar(render_url, scale=2)
 
         custom_url = await avatar.get_customizer_url(user.id)
-        markup = InlineKeyboardMarkup(
-            inline_keyboard=[[
-                InlineKeyboardButton(
-                    text="🎨 باز کردن کاستومایز",
-                    web_app=WebAppInfo(url=custom_url),
-                )
-            ]]
-        )
-
         if is_new_player:
             caption = (
-                "🍁 <b>شناسنامه شهروندی تیرامیکس صادر شد!</b>\n\n"
+                f"🎉 <b>شناسنامه شهروندی تیرامیکس صادر شد!</b> 🍁\n"
+                "━━━━━━━━━━━━━━━━━━━━\n"
                 f"👤 <b>نام:</b> {esc(player.display_name)}\n"
+                f"🎂 <b>سن:</b> {player.age} سال | ⚧ <b>جنسیت:</b> {player.gender}\n"
                 f"🧍 <b>فرم بدنه:</b> {'پلاس' if is_plus else 'اسلیم'}\n"
-                f"👕 <b>قطعات پوشش:</b> {len(var_ids)} قلم\n"
-                f"💰 <b>کیف پول:</b> ۲۵۰ سکه | 🏦 <b>بانک:</b> ۰ سکه\n\n"
-                "✨ <b>کاراکتر شما با موفقیت از طریق مینی‌اپ ساخته شد و بدون بک‌گراند آماده است!</b>"
+                f"👕 <b>پوشش اولیه:</b> {len(var_ids)} قلم لباس انتخابی خودت\n"
+                f"💰 <b>سرمایه اولیه:</b> ۲۵۰ سکه هدیه ورود به شهر\n\n"
+                "✨ <b>کاراکتر شما با موفقیت ساخته شد و آماده زندگی در تیرامیکس است!</b>\n\n"
+                "🚀 <b>گام‌های بعدی برای شروع بازی:</b>\n"
+                "• برای کسب اولین درآمد شهری، روی <b>«💼 رفتن سر کار»</b> بزنید.\n"
+                "• برای آشنایی با تمام قابلیت‌های بازی، <b>«📜 راهنمای کامل»</b> را ببینید.\n"
+                "• برای خرید ست‌های جدید لباس، به <b>«🛍 بوتیک مد»</b> سر بزنید."
+            )
+            markup = InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [
+                        InlineKeyboardButton(
+                            text="💼 رفتن سر کار (شروع درآمد)", callback_data="act:work"
+                        ),
+                        InlineKeyboardButton(
+                            text="📜 راهنمای کامل شهر", callback_data="help:main"
+                        ),
+                    ],
+                    [
+                        InlineKeyboardButton(
+                            text="🛍 ویترین بوتیک و مد",
+                            callback_data=(
+                                "btq:cat:female"
+                                if player.gender == "دختر"
+                                else "btq:cat:male"
+                            ),
+                        ),
+                        InlineKeyboardButton(text="🎒 کمد لباس من", callback_data="wdr:view:0"),
+                    ],
+                    [
+                        InlineKeyboardButton(
+                            text="🎨 ویرایش مجدد در مینی‌اپ",
+                            web_app=WebAppInfo(url=custom_url),
+                        )
+                    ],
+                ]
             )
         else:
             caption = (
@@ -281,6 +356,18 @@ async def _handle_compact_wear_payload(message: Message, encoded: str) -> None:
                 "━━━━━━━━━━━━━━━━━━━━\n"
                 f"👕 <b>قطعات:</b> {len(var_ids)} قلم\n"
                 f"🧍 <b>فرم بدنه:</b> {'پلاس' if is_plus else 'اسلیم'}"
+            )
+            markup = InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [
+                        InlineKeyboardButton(
+                            text="🎨 باز کردن کاستومایز",
+                            web_app=WebAppInfo(url=custom_url),
+                        )
+                    ],
+                    [InlineKeyboardButton(text="👕 کمد لباس", callback_data="wdr:view:0")],
+                    [InlineKeyboardButton(text="🚪 بستن", callback_data="btq:close")],
+                ]
             )
 
         if photo_payload is None:
@@ -292,7 +379,9 @@ async def _handle_compact_wear_payload(message: Message, encoded: str) -> None:
         logger.warning("compact wear_ deep link failed: %s", exc)
 
 
-async def _handle_wear_payload(message: Message, encoded: str) -> None:
+async def _handle_wear_payload(
+    message: Message, encoded: str, state: FSMContext | None = None
+) -> None:
     """Decode the Mini App save payload and persist it as the user's avatar."""
     import base64
     import json as _json
@@ -318,7 +407,8 @@ async def _handle_wear_payload(message: Message, encoded: str) -> None:
 
         # hydrate + ensure_player: اگر کاربر تازه‌کار باشد هم ردیف بازی ساخته می‌شود
         player = await hydrate(user.id, user.full_name, user.username)
-        is_new_player = player.onboarding_completed == 0
+        fsm_state = (await state.get_state()) if state else None
+        is_new_player = (player.onboarding_completed == 0) or (fsm_state is not None)
 
         await avatar.save_custom_avatar(
             user_id=user.id,
@@ -328,33 +418,105 @@ async def _handle_wear_payload(message: Message, encoded: str) -> None:
         )
 
         if is_new_player:
-            async with db.write() as conn:
-                await conn.execute(
-                    "UPDATE players SET onboarding_completed = 1, skin_tone = ? WHERE user_id = ?",
-                    (str(skin_tone_id), user.id),
-                )
+            fsm_data = {}
+            if state and hasattr(state, "get_data"):
+                res = state.get_data()
+                if asyncio.iscoroutine(res) or hasattr(res, "__await__"):
+                    res = await res
+                if isinstance(res, dict):
+                    fsm_data = res
+
+            raw_name = (
+                fsm_data.get("name")
+                or player.display_name
+                or getattr(user, "first_name", "مسافر")
+                or "مسافر"
+            )
+            name = str(raw_name) if isinstance(raw_name, str) else "مسافر"
+            name = name[:30]
+
+            gender = fsm_data.get("gender") or (
+                "female" if "دختر" in player.gender else "male"
+            )
+            gender_fa = "دختر" if gender in ("female", "دختر") else "پسر"
+            raw_age = fsm_data.get("age") or player.age or 20
+            try:
+                age = int(raw_age)
+            except (ValueError, TypeError):
+                age = 20
+
+            body_stance = (
+                f"base_vn_{skin_idx}" if gender == "female" else f"base_boy_{skin_idx}"
+            )
+            player = await game.complete_character_creation(
+                user_id=user.id,
+                display_name=name,
+                gender=gender_fa,
+                age=age,
+                skin_tone=str(skin_tone_id),
+                eye_color="amber",
+                body_stance=body_stance,
+                hair_style="hair1",
+                hair_color="black",
+            )
+            tracked_msg_ids = list(fsm_data.get("tracked_msg_ids", []))
+            bot_instance = getattr(message, "bot", None)
+            if bot_instance and tracked_msg_ids:
+                for mid in set(tracked_msg_ids):
+                    with contextlib.suppress(Exception):
+                        await bot_instance.delete_message(
+                            chat_id=message.chat.id, message_id=mid
+                        )
+            if state:
+                await state.clear()
 
         render_url = await avatar.get_player_render_url(user.id)
         photo_payload = await avatar.fetch_upscaled_avatar(render_url, scale=2)
 
         custom_url = await avatar.get_customizer_url(user.id)
-        markup = InlineKeyboardMarkup(
-            inline_keyboard=[[
-                InlineKeyboardButton(
-                    text="🎨 باز کردن کاستومایز",
-                    web_app=WebAppInfo(url=custom_url),
-                )
-            ]]
-        )
-
         if is_new_player:
             caption = (
-                "🍁 <b>شناسنامه شهروندی تیرامیکس صادر شد!</b>\n\n"
+                f"🎉 <b>شناسنامه شهروندی تیرامیکس صادر شد!</b> 🍁\n"
+                "━━━━━━━━━━━━━━━━━━━━\n"
                 f"👤 <b>نام:</b> {esc(player.display_name)}\n"
+                f"🎂 <b>سن:</b> {player.age} سال | ⚧ <b>جنسیت:</b> {player.gender}\n"
                 f"🧍 <b>فرم بدنه:</b> {'پلاس' if is_plus else 'اسلیم'}\n"
-                f"👕 <b>قطعات پوشش:</b> {len(var_ids)} قلم\n"
-                f"💰 <b>کیف پول:</b> ۲۵۰ سکه | 🏦 <b>بانک:</b> ۰ سکه\n\n"
-                "✨ <b>کاراکتر شما با موفقیت از طریق مینی‌اپ ساخته شد و بدون بک‌گراند آماده است!</b>"
+                f"👕 <b>پوشش اولیه:</b> {len(var_ids)} قلم لباس انتخابی خودت\n"
+                f"💰 <b>سرمایه اولیه:</b> ۲۵۰ سکه هدیه ورود به شهر\n\n"
+                "✨ <b>کاراکتر شما با موفقیت ساخته شد و آماده زندگی در تیرامیکس است!</b>\n\n"
+                "🚀 <b>گام‌های بعدی برای شروع بازی:</b>\n"
+                "• برای کسب اولین درآمد شهری، روی <b>«💼 رفتن سر کار»</b> بزنید.\n"
+                "• برای آشنایی با تمام قابلیت‌های بازی، <b>«📜 راهنمای کامل»</b> را ببینید.\n"
+                "• برای خرید ست‌های جدید لباس، به <b>«🛍 بوتیک مد»</b> سر بزنید."
+            )
+            markup = InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [
+                        InlineKeyboardButton(
+                            text="💼 رفتن سر کار (شروع درآمد)", callback_data="act:work"
+                        ),
+                        InlineKeyboardButton(
+                            text="📜 راهنمای کامل شهر", callback_data="help:main"
+                        ),
+                    ],
+                    [
+                        InlineKeyboardButton(
+                            text="🛍 ویترین بوتیک و مد",
+                            callback_data=(
+                                "btq:cat:female"
+                                if player.gender == "دختر"
+                                else "btq:cat:male"
+                            ),
+                        ),
+                        InlineKeyboardButton(text="🎒 کمد لباس من", callback_data="wdr:view:0"),
+                    ],
+                    [
+                        InlineKeyboardButton(
+                            text="🎨 ویرایش مجدد در مینی‌اپ",
+                            web_app=WebAppInfo(url=custom_url),
+                        )
+                    ],
+                ]
             )
         else:
             caption = (
@@ -362,6 +524,18 @@ async def _handle_wear_payload(message: Message, encoded: str) -> None:
                 "━━━━━━━━━━━━━━━━━━━━\n"
                 f"👕 <b>قطعات:</b> {len(var_ids)} قلم\n"
                 f"🧍 <b>فرم بدنه:</b> {'پلاس' if is_plus else 'اسلیم'}"
+            )
+            markup = InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [
+                        InlineKeyboardButton(
+                            text="🎨 باز کردن کاستومایز",
+                            web_app=WebAppInfo(url=custom_url),
+                        )
+                    ],
+                    [InlineKeyboardButton(text="👕 کمد لباس", callback_data="wdr:view:0")],
+                    [InlineKeyboardButton(text="🚪 بستن", callback_data="btq:close")],
+                ]
             )
 
         if photo_payload is None:
@@ -650,12 +824,7 @@ async def cb_gender(call: CallbackQuery, state: FSMContext) -> None:
     name = data.get("name", (call.from_user.first_name if call.from_user else "مسافر")[:24])
     age = data.get("age", 20)
 
-    # Starter var IDs matching selected gender
-    starter_var_ids = (
-        avatar.STARTER_SETS[101]["var_ids"]
-        if gender == "female"
-        else avatar.STARTER_SETS[201]["var_ids"]
-    )
+    # Starter var IDs matching selected gender (empty so player can dress from scratch)
     custom_url = await avatar.get_customizer_url(
         user_id=call.from_user.id if call.from_user else 0,
         display_name=name,
@@ -664,7 +833,7 @@ async def cb_gender(call: CallbackQuery, state: FSMContext) -> None:
         credits=250,
         skin_tone=-1,
         is_plus_size=0,
-        var_ids=starter_var_ids,
+        var_ids=[],
     )
 
     buttons = [
@@ -886,7 +1055,6 @@ async def _show_starter_set_step(call: CallbackQuery, state: FSMContext) -> None
         starters = avatar.get_starter_sets("male")
 
     name = data.get("name", (call.from_user.first_name if call.from_user else "مسافر")[:24])
-    first_set = starters[0]
     custom_url = await avatar.get_customizer_url(
         user_id=call.from_user.id if call.from_user else 0,
         display_name=name,
@@ -895,7 +1063,7 @@ async def _show_starter_set_step(call: CallbackQuery, state: FSMContext) -> None
         credits=250,
         skin_tone=-1,
         is_plus_size=0,
-        var_ids=first_set["var_ids"],
+        var_ids=[],
     )
 
     buttons = [
@@ -1097,12 +1265,33 @@ async def _finalize_character(
 
     custom_url = await avatar.get_customizer_url(user.id)
     final_markup = InlineKeyboardMarkup(
-        inline_keyboard=[[
-            InlineKeyboardButton(
-                text="🎨 کمد و شخصی‌سازی در مینی‌اپ",
-                web_app=WebAppInfo(url=custom_url),
-            )
-        ]]
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="💼 رفتن سر کار (شروع درآمد)", callback_data="act:work"
+                ),
+                InlineKeyboardButton(
+                    text="📜 راهنمای کامل شهر", callback_data="help:main"
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🛍 ویترین بوتیک و مد",
+                    callback_data=(
+                        "btq:cat:female"
+                        if player.gender == "دختر"
+                        else "btq:cat:male"
+                    ),
+                ),
+                InlineKeyboardButton(text="🎒 کمد لباس من", callback_data="wdr:view:0"),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🎨 کمد و شخصی‌سازی در مینی‌اپ",
+                    web_app=WebAppInfo(url=custom_url),
+                )
+            ],
+        ]
     )
 
     sent_photo = False
