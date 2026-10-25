@@ -252,6 +252,89 @@ async def test_handle_customizer_command():
         markup = call_kwargs["reply_markup"]
         assert markup.inline_keyboard[0][0].web_app is not None
         assert "github.io" in markup.inline_keyboard[0][0].web_app.url
+        assert "?d=" in markup.inline_keyboard[0][0].web_app.url
+    finally:
+        async with db.write() as conn:
+            await conn.execute("DELETE FROM player_avatar WHERE user_id = ?", (test_user_id,))
+            await conn.execute("DELETE FROM inventory WHERE user_id = ?", (test_user_id,))
+            await conn.execute("DELETE FROM players WHERE user_id = ?", (test_user_id,))
+
+
+async def test_get_customizer_url_payload_structure():
+    """Verify get_customizer_url embeds full player stats and equipped items."""
+    import base64
+    test_user_id = 999128
+    player = await game.ensure_player(
+        user_id=test_user_id,
+        username="url_tester",
+        display_name="تستر لینک",
+    )
+    try:
+        await avatar.save_custom_avatar(
+            user_id=test_user_id,
+            var_ids=[555, 666],
+            skin_tone=-3,
+            is_plus_size=0,
+        )
+        url = await avatar.get_customizer_url(test_user_id)
+        assert "?d=" in url
+        b64_part = url.split("?d=")[1]
+        padded = b64_part + "=" * (-len(b64_part) % 4)
+        payload = json.loads(base64.urlsafe_b64decode(padded).decode("utf-8"))
+
+        assert payload["u"] == test_user_id
+        assert payload["name"] == "تستر لینک"
+        assert payload["lvl"] == player.level
+        assert payload["items"] == [555, 666]
+        assert payload["skin"] == 3
+        assert payload["body"] == "slim"
+        assert payload["bot"] == "hermesforrexbot"
+    finally:
+        async with db.write() as conn:
+            await conn.execute("DELETE FROM player_avatar WHERE user_id = ?", (test_user_id,))
+            await conn.execute("DELETE FROM inventory WHERE user_id = ?", (test_user_id,))
+            await conn.execute("DELETE FROM players WHERE user_id = ?", (test_user_id,))
+
+
+async def test_wear_deep_link_completes_onboarding_for_new_player():
+    """When a new player saves from mini-app, onboarding_completed becomes 1."""
+    import base64
+
+    from handlers.onboarding import _handle_wear_payload
+
+    test_user_id = 999129
+    # Fresh player with onboarding_completed = 0
+    await game.ensure_player(
+        user_id=test_user_id,
+        username="fresh_citizen",
+        display_name="شهروند تازه",
+    )
+    p_before = await game.load_player(test_user_id)
+    assert p_before.onboarding_completed == 0
+
+    try:
+        payload = {"skin": 1, "body": "slim", "items": [101, 202]}
+        encoded = base64.urlsafe_b64encode(json.dumps(payload).encode()).decode().rstrip("=")
+        msg = AsyncMock()
+        msg.from_user.id = test_user_id
+        msg.from_user.username = "fresh_citizen"
+        msg.from_user.full_name = "شهروند تازه"
+        msg.reply_photo = AsyncMock()
+        msg.reply = AsyncMock()
+
+        await _handle_wear_payload(msg, encoded)
+
+        p_after = await game.load_player(test_user_id)
+        assert p_after.onboarding_completed == 1
+
+        av = await avatar.get_player_avatar(test_user_id)
+        assert av["equipped_var_ids"] == [101, 202]
+
+        # Verify congratulations caption was sent
+        assert msg.reply.called or msg.reply_photo.called
+        call_kwargs = msg.reply.call_args[1] if msg.reply.called else msg.reply_photo.call_args[1]
+        caption_text = msg.reply.call_args[0][0] if msg.reply.called else call_kwargs["caption"]
+        assert "شناسنامه شهروندی تیرامیکس صادر شد" in caption_text
     finally:
         async with db.write() as conn:
             await conn.execute("DELETE FROM player_avatar WHERE user_id = ?", (test_user_id,))

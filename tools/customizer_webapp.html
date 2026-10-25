@@ -3626,6 +3626,56 @@
       border-radius: 999px;
     }
 
+    /* Player Profile Bar */
+    .player-profile-strip {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 9px 14px;
+      margin: 4px 12px 6px 12px;
+      background: linear-gradient(135deg, rgba(20, 30, 52, 0.95), rgba(14, 21, 38, 0.95));
+      border: 1px solid rgba(139, 92, 246, 0.35);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+      border-radius: 12px;
+      font-size: 0.85rem;
+    }
+    .player-profile-strip .player-meta {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .player-profile-strip .player-name {
+      font-weight: 700;
+      color: #ffffff;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.92rem;
+    }
+    .player-profile-strip .player-sub {
+      font-size: 0.72rem;
+      color: var(--text-muted);
+    }
+    .player-profile-strip .player-stats {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .player-profile-strip .stat-tag {
+      background: rgba(139, 92, 246, 0.18);
+      border: 1px solid rgba(139, 92, 246, 0.4);
+      padding: 3px 8px;
+      border-radius: 8px;
+      font-size: 0.74rem;
+      color: #c4b5fd;
+      font-weight: 600;
+    }
+    .player-profile-strip .stat-tag.coins {
+      background: rgba(234, 179, 8, 0.18);
+      border: 1px solid rgba(234, 179, 8, 0.4);
+      color: #fde047;
+    }
+
     /* Compact Avatar Stage */
     .avatar-stage-card {
       background: radial-gradient(circle at 50% 35%, #182442 0%, #0d1527 100%);
@@ -4570,6 +4620,18 @@
       </button>
     </header>
 
+    <!-- Player Citizen Profile Bar -->
+    <div id="playerProfileStrip" class="player-profile-strip" style="display: none;">
+      <div class="player-meta">
+        <span id="playerStripName" class="player-name">👤 مسافر</span>
+        <span id="playerStripSub" class="player-sub">شهروند تیرامیکس</span>
+      </div>
+      <div class="player-stats">
+        <span id="playerStripLevel" class="stat-tag">⚡ لول ۱</span>
+        <span id="playerStripCoins" class="stat-tag coins">💰 ۲۵۰ سکه</span>
+      </div>
+    </div>
+
     <!-- Compact Avatar Stage -->
     <section class="avatar-stage-card">
       <div class="stage-tools">
@@ -5321,7 +5383,31 @@
       };
       const jsonStr = JSON.stringify(payload);
 
-      // مسیر ۱: sendData در نسخه‌های جدید تلگرام همه‌جا پذیرفته می‌شود
+      // مسیر ۱: دیپ‌لینک wear_ (پایدار در تمامی حالت‌های منو و اینلاین)
+      if (botUsername) {
+        try {
+          const encoded = btoa(unescape(encodeURIComponent(jsonStr))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+          const deepLink = `https://t.me/${botUsername}?start=wear_${encoded}`;
+          showToast('💾 در حال ذخیره و ثبت استایل در ربات...');
+
+          if (tg?.sendData) {
+            try { tg.sendData(jsonStr); } catch (e) {}
+          }
+          if (tg?.openTelegramLink) {
+            tg.openTelegramLink(deepLink);
+          } else {
+            location.href = deepLink;
+          }
+          setTimeout(() => {
+            try { tg.close(); } catch (e) {}
+          }, 800);
+          return;
+        } catch (err) {
+          console.warn("deep-link save failed, trying sendData fallback", err);
+        }
+      }
+
+      // مسیر ۲: sendData تلگرام در صورتی که botUsername موجود نبود
       if (tg?.sendData) {
         try {
           showToast('💾 در حال ذخیره و ثبت روی کاراکتر...');
@@ -5331,28 +5417,11 @@
           }, 600);
           return;
         } catch (err) {
-          console.warn("tg.sendData failed, falling back to deep link", err);
+          console.warn("tg.sendData fallback failed", err);
         }
       }
 
-      // مسیر ۲: دیپ‌لینک wear_ — از هر جا باز شده باشد به بات می‌رسد
-      if (botUsername) {
-        try {
-          const encoded = btoa(jsonStr).replace(/=+$/, ''); // base64url-safe
-          const deepLink = `https://t.me/${botUsername}?start=wear_${encoded}`;
-          showToast('🔗 در حال انتقال به ربات برای ذخیره...');
-          if (tg?.openTelegramLink) {
-            tg.openTelegramLink(deepLink);
-          } else {
-            location.href = deepLink;
-          }
-          return;
-        } catch (err) {
-          console.warn("deep-link fallback failed", err);
-        }
-      }
-
-      // مسیر ۳: باز کردن خارج از تلگرام — مودال آزمایشی مرورگر
+      // مسیر ۳: خارج از تلگرام — مودال مرورگر
       openFallbackModal(payload);
     }
 
@@ -5383,19 +5452,94 @@
     // Bootstrapping
     function boot() {
       try {
-        // استخراج نام کاربری ربات برای ساخت دیپ‌لینک wear_:
-        // تلگرام در start_param / referrer داده اولیه، آن را می‌گذارد؛
-        // در محیط مرورگر هم پارامتر ?bot= پشتیبانی می‌شود.
+        // ۱. استخراج نام کاربری ربات:
         try {
           botUsername =
             (tg?.initDataUnsafe?.start_param || '').toString().split('_')[0] ||
             new URLSearchParams(location.search).get('bot') ||
             window.__IGRIS_BOT_USERNAME__ ||
-            '';
-        } catch (e) { botUsername = window.__IGRIS_BOT_USERNAME__ || ''; }
+            'hermesforrexbot';
+        } catch (e) { botUsername = window.__IGRIS_BOT_USERNAME__ || 'hermesforrexbot'; }
+
+        // ۲. بارگذاری مشخصات کاراکتر و پوشش فعلی از ربات (loadout / d param)
+        let loadoutData = null;
+        try {
+          const urlParams = new URLSearchParams(location.search);
+          let rawD = urlParams.get('d') || urlParams.get('loadout');
+          if (!rawD && location.hash) {
+            const hashMatch = location.hash.match(/[#&](?:d|loadout)=([^&]+)/);
+            if (hashMatch) rawD = hashMatch[1];
+          }
+          if (!rawD && tg?.initDataUnsafe?.start_param) {
+            const sp = tg.initDataUnsafe.start_param.toString();
+            if (sp.startsWith('d_')) rawD = sp.substring(2);
+          }
+          if (rawD) {
+            let b64 = rawD.replace(/-/g, '+').replace(/_/g, '/');
+            while (b64.length % 4) b64 += '=';
+            const jsonStr = decodeURIComponent(escape(atob(b64)));
+            loadoutData = JSON.parse(jsonStr);
+          }
+        } catch (err) {
+          console.warn("Could not parse incoming character loadout:", err);
+        }
+
+        if (loadoutData) {
+          if (loadoutData.bot) {
+            botUsername = loadoutData.bot;
+          }
+          if (loadoutData.skin) {
+            currentSkinIdx = Number(loadoutData.skin);
+          }
+          if (loadoutData.body === 'plus' || loadoutData.body === 'slim') {
+            currentBodyType = loadoutData.body;
+          }
+          // همگام‌سازی دکمه‌های اسلیم / پلاس
+          document.querySelectorAll('.body-btn').forEach(btn => {
+            btn.classList.toggle('active', btn.getAttribute('data-body') === currentBodyType);
+          });
+
+          // نمایش نوار مشخصات کاراکتر
+          if (loadoutData.name) {
+            const strip = document.getElementById('playerProfileStrip');
+            const nameEl = document.getElementById('playerStripName');
+            const subEl = document.getElementById('playerStripSub');
+            const lvlEl = document.getElementById('playerStripLevel');
+            const coinsEl = document.getElementById('playerStripCoins');
+            if (strip && nameEl) {
+              nameEl.innerText = `👤 ${loadoutData.name}`;
+              if (subEl) {
+                subEl.innerText = loadoutData.gen === 'female' ? 'شهروند تیرامیکس (دختر)' : 'شهروند تیرامیکس (پسر)';
+              }
+              if (lvlEl && loadoutData.lvl) {
+                lvlEl.innerText = `⚡ لول ${loadoutData.lvl}`;
+              }
+              if (coinsEl && loadoutData.cr !== undefined) {
+                coinsEl.innerText = `💰 ${Number(loadoutData.cr).toLocaleString('fa-IR')} سکه`;
+              }
+              strip.style.display = 'flex';
+            }
+          }
+
+          // بارگذاری اقلام پوشیده شده فعلی کاراکتر
+          if (Array.isArray(loadoutData.items) && loadoutData.items.length > 0) {
+            equippedVarList = loadoutData.items.map(Number).filter(Boolean);
+          }
+        } else if (tg?.initDataUnsafe?.user) {
+          const tgUser = tg.initDataUnsafe.user;
+          const strip = document.getElementById('playerProfileStrip');
+          const nameEl = document.getElementById('playerStripName');
+          if (strip && nameEl) {
+            nameEl.innerText = `👤 ${tgUser.first_name || 'مسافر'}`;
+            strip.style.display = 'flex';
+          }
+        }
+
         renderSkinSwatches();
         renderSubtags();
         renderCatalog();
+        renderLayerItemsList();
+        updateDockBadges();
         updateAvatarPreview();
       } catch (err) {
         console.error("Boot error:", err);

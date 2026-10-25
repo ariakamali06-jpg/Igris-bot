@@ -28,6 +28,7 @@ from aiogram.types import (
 )
 
 from config import settings
+from database.connection import db
 from models.player import Player
 from services import avatar, game
 
@@ -294,11 +295,12 @@ async def _build_wardrobe_card(
     ]
 
     if settings.webapp_url:
+        custom_url = await avatar.get_customizer_url(user_id)
         options_row.insert(
             0,
             InlineKeyboardButton(
                 text="📱 مینی‌اپ شخصی‌سازی",
-                web_app=WebAppInfo(url=settings.webapp_url),
+                web_app=WebAppInfo(url=custom_url),
             ),
         )
 
@@ -428,12 +430,14 @@ async def handle_avatar_command(message: Message) -> None:
         ]
     )
     if settings.webapp_url:
+        u_id = message.from_user.id if message.from_user else 0
+        custom_url = await avatar.get_customizer_url(u_id)
         markup.inline_keyboard.insert(
             0,
             [
                 InlineKeyboardButton(
                     text="📱 مینی‌اپ شخصی‌سازی کاراکتر",
-                    web_app=WebAppInfo(url=settings.webapp_url),
+                    web_app=WebAppInfo(url=custom_url),
                 )
             ],
         )
@@ -466,11 +470,12 @@ async def handle_customizer_command(message: Message) -> None:
 
     buttons: list[list[InlineKeyboardButton]] = []
     if settings.webapp_url:
+        custom_url = await avatar.get_customizer_url(user_id)
         buttons.append(
             [
                 InlineKeyboardButton(
                     text="📱 باز کردن مینی‌اپ شخصی‌سازی",
-                    web_app=WebAppInfo(url=settings.webapp_url),
+                    web_app=WebAppInfo(url=custom_url),
                 )
             ]
         )
@@ -515,6 +520,14 @@ async def handle_customizer_webapp_data(message: Message) -> None:
             is_plus_size=is_plus,
         )
 
+        # Mark onboarding completed if new player
+        async with db.write() as conn:
+            await conn.execute(
+                "UPDATE players SET onboarding_completed = 1 "
+                "WHERE user_id = ? AND onboarding_completed = 0",
+                (user_id,),
+            )
+
         render_url = await avatar.get_player_render_url(user_id)
         photo_payload = await _render_photo_payload(render_url, "custom_avatar.png")
 
@@ -526,8 +539,15 @@ async def handle_customizer_webapp_data(message: Message) -> None:
             "استایل شما در تمامی مبارزات، رویدادها و پروفایل عمومی بازی "
             "با این ظاهر نمایش داده می‌شود."
         )
+        custom_url = await avatar.get_customizer_url(user_id)
         markup = InlineKeyboardMarkup(
             inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="🎨 ویرایش مجدد در مینی‌اپ",
+                        web_app=WebAppInfo(url=custom_url),
+                    )
+                ],
                 [InlineKeyboardButton(text="👕 کمد لباس", callback_data="wdr:view:0")],
                 [InlineKeyboardButton(text="🚪 بستن", callback_data="btq:close")],
             ]

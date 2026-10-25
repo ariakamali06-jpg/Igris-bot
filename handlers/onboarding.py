@@ -21,6 +21,7 @@ from aiogram.types import (
 )
 
 from config import settings
+from database.connection import db
 from handlers.common import (
     CommandOrText,
     answer_error,
@@ -226,7 +227,8 @@ async def _handle_wear_payload(message: Message, encoded: str) -> None:
             skin_tone_id = skin_map.get(skin_idx, -1)
 
         # hydrate + ensure_player: اگر کاربر تازه‌کار باشد هم ردیف بازی ساخته می‌شود
-        await hydrate(user.id, user.full_name, user.username)
+        player = await hydrate(user.id, user.full_name, user.username)
+        is_new_player = player.onboarding_completed == 0
 
         await avatar.save_custom_avatar(
             user_id=user.id,
@@ -234,23 +236,43 @@ async def _handle_wear_payload(message: Message, encoded: str) -> None:
             skin_tone=skin_tone_id,
             is_plus_size=is_plus,
         )
-        render_url = await avatar.get_player_render_url(user.id)
 
+        if is_new_player:
+            async with db.write() as conn:
+                await conn.execute(
+                    "UPDATE players SET onboarding_completed = 1, skin_tone = ? WHERE user_id = ?",
+                    (str(skin_tone_id), user.id),
+                )
+
+        render_url = await avatar.get_player_render_url(user.id)
         photo_payload = await avatar.fetch_upscaled_avatar(render_url, scale=2)
+
+        custom_url = await avatar.get_customizer_url(user.id)
         markup = InlineKeyboardMarkup(
             inline_keyboard=[[
                 InlineKeyboardButton(
                     text="🎨 باز کردن کاستومایز",
-                    web_app=WebAppInfo(url=settings.webapp_url),
+                    web_app=WebAppInfo(url=custom_url),
                 )
             ]]
         )
-        caption = (
-            "✅ <b>استایل کاراکتر از مینی‌اپ ثبت شد!</b>\n"
-            "━━━━━━━━━━━━━━━━━━━━\n"
-            f"👕 <b>قطعات:</b> {len(var_ids)} قلم\n"
-            f"🧍 <b>فرم بدنه:</b> {'پلاس' if is_plus else 'اسلیم'}"
-        )
+
+        if is_new_player:
+            caption = (
+                "🍁 <b>شناسنامه شهروندی تیرامیکس صادر شد!</b>\n\n"
+                f"👤 <b>نام:</b> {esc(player.display_name)}\n"
+                f"🧍 <b>فرم بدنه:</b> {'پلاس' if is_plus else 'اسلیم'}\n"
+                f"👕 <b>قطعات پوشش:</b> {len(var_ids)} قلم\n"
+                f"💰 <b>کیف پول:</b> ۲۵۰ سکه | 🏦 <b>بانک:</b> ۰ سکه\n\n"
+                "✨ <b>کاراکتر شما با موفقیت از طریق مینی‌اپ ساخته شد و بدون بک‌گراند آماده است!</b>"
+            )
+        else:
+            caption = (
+                "✅ <b>استایل کاراکتر از مینی‌اپ ثبت شد!</b>\n"
+                "━━━━━━━━━━━━━━━━━━━━\n"
+                f"👕 <b>قطعات:</b> {len(var_ids)} قلم\n"
+                f"🧍 <b>فرم بدنه:</b> {'پلاس' if is_plus else 'اسلیم'}"
+            )
 
         if photo_payload is None:
             # رندر کلود از دسترس خارج بود؛ استایل ثبت شد ولی عکس نمی‌فرستیم
@@ -534,6 +556,65 @@ async def cb_gender(call: CallbackQuery, state: FSMContext) -> None:
     await state.update_data(gender=gender, gender_fa=gender_fa)
     await state.set_state(OnboardingState.waiting_for_skin)
 
+    data = await state.get_data()
+    name = data.get("name", (call.from_user.first_name if call.from_user else "مسافر")[:24])
+    age = data.get("age", 20)
+
+    # Starter var IDs matching selected gender
+    starter_var_ids = (
+        avatar.STARTER_SETS[101]["var_ids"]
+        if gender == "female"
+        else avatar.STARTER_SETS[201]["var_ids"]
+    )
+    custom_url = await avatar.get_customizer_url(
+        user_id=call.from_user.id if call.from_user else 0,
+        display_name=name,
+        gender=gender,
+        level=1,
+        credits=250,
+        skin_tone=-1,
+        is_plus_size=0,
+        var_ids=starter_var_ids,
+    )
+
+    buttons = [
+        [
+            InlineKeyboardButton(
+                text="🎨 طراحی زنده در مینی‌اپ تصویری (پیشنهادی)",
+                web_app=WebAppInfo(url=custom_url),
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text="⚡️ انتخاب سریع تیپ اولیه (شروع فوری)",
+                callback_data=f"ob:quick_sets:{gender}",
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text="🎛 تنظیم دستی رنگ پوست و چهره",
+                callback_data=f"ob:manual:{gender}",
+            )
+        ],
+    ]
+    text = (
+        f"✅ <b>هویت ثبت شد:</b>\n"
+        f"👤 نام: <b>{esc(name)}</b> | 🎂 سن: <b>{age} سال</b> | ⚧ جنسیت: <b>{gender_fa}</b>\n\n"
+        "✨ <b>حالا چطور می‌خوای چهره و تیپ کاراکترت رو بسازی؟</b>\n\n"
+        "🔹 <b>طراحی در مینی‌اپ (پیشنهادی):</b> باز شدن صفحه تمام‌لمسی؛ "
+        "مشاهده زنده مو، چهره و لباس‌ها روی مانکن و ذخیره سریع.\n"
+        "🔹 <b>انتخاب سریع تیپ:</b> ورق زدن ست‌های شیک و آماده (کژوال، استریت، کالج) و صدور فوری.\n"
+        "🔹 <b>تنظیم دستی:</b> انتخاب سنتی گزینه‌ها به صورت دکمه‌ای در تلگرام."
+    )
+    msg = editable_message(call)
+    if msg:
+        await target_send(msg, text, buttons)
+
+
+@router.callback_query(F.data.startswith("ob:manual:"))
+async def cb_manual_steps(call: CallbackQuery, state: FSMContext) -> None:
+    await call.answer()
+    await state.set_state(OnboardingState.waiting_for_skin)
     buttons = [
         [InlineKeyboardButton(text="🌕 درجه ۱: بسیار روشن", callback_data="ob:skin:1")],
         [InlineKeyboardButton(text="🌾 درجه ۲: روشن و لطیف", callback_data="ob:skin:2")],
@@ -541,13 +622,16 @@ async def cb_gender(call: CallbackQuery, state: FSMContext) -> None:
         [InlineKeyboardButton(text="🌰 درجه ۴: گندمی و گرم", callback_data="ob:skin:4")],
         [InlineKeyboardButton(text="🍫 درجه ۵: تیره شکلاتی", callback_data="ob:skin:5")],
     ]
-    text = (
-        f"✅ جنسیت: <b>{gender_fa}</b>\n\n"
-        "🎨 <b>مرحله چهارم: رنگ پوست کاراکترت رو انتخاب کن:</b>"
-    )
+    text = "🎨 <b>مرحله چهارم: رنگ پوست کاراکترت رو انتخاب کن:</b>"
     msg = editable_message(call)
     if msg:
         await target_send(msg, text, buttons)
+
+
+@router.callback_query(F.data.startswith("ob:quick_sets:"))
+async def cb_quick_sets(call: CallbackQuery, state: FSMContext) -> None:
+    await call.answer()
+    await _show_starter_set_step(call, state)
 
 
 # ---------------------------------------------------------------------------
@@ -708,15 +792,41 @@ async def _show_starter_set_step(call: CallbackQuery, state: FSMContext) -> None
     data = await state.get_data()
     gender = data.get("gender", "male")
     starters = avatar.get_starter_sets(gender)
+    if not starters:
+        starters = avatar.get_starter_sets("male")
+
+    name = data.get("name", (call.from_user.first_name if call.from_user else "مسافر")[:24])
+    first_set = starters[0]
+    custom_url = await avatar.get_customizer_url(
+        user_id=call.from_user.id if call.from_user else 0,
+        display_name=name,
+        gender=gender,
+        level=1,
+        credits=250,
+        skin_tone=-1,
+        is_plus_size=0,
+        var_ids=first_set["var_ids"],
+    )
 
     buttons = [
-        [InlineKeyboardButton(text=f"👕 {s['name']}", callback_data=f"ob:set:{s['id']}")]
-        for s in starters
+        [
+            InlineKeyboardButton(
+                text="🎨 باز کردن این بخش در مینی‌اپ تصویری",
+                web_app=WebAppInfo(url=custom_url),
+            )
+        ]
     ]
+    for s in starters:
+        buttons.append(
+            [InlineKeyboardButton(text=f"👕 {s['name']}", callback_data=f"ob:set:{s['id']}")]
+        )
+
     text = (
-        "👗 <b>مرحله پایانی: انتخاب استایل و ست لباس اولیه:</b>\n\n"
-        "یکی از ست‌های جدید زیر رو به عنوان تیپ اولیه کاراکترت انتخاب کن:\n"
-        "<i>(این ست به رایگان به کمد لباس و تن کاراکتر شما اضافه می‌شود)</i>"
+        "👗 <b>مرحله پایانی: انتخاب استایل و تیپ اولیه:</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "یکی از ست‌های هماهنگ‌شده زیر رو به عنوان تیپ اولیه انتخاب کن:\n"
+        "<i>(این ست به صورت ۱۰۰٪ رایگان به کمد لباس و تن کاراکتر شما اضافه می‌شود)</i>\n\n"
+        "همچنین می‌تونی دکمه <b>«طراحی در مینی‌اپ»</b> رو بزنی و تمام اجزا رو زنده دستکاری کنی!"
     )
     msg = editable_message(call)
     if msg:
@@ -895,6 +1005,16 @@ async def _finalize_character(
     if hd_bytes:
         photo_payload = BufferedInputFile(hd_bytes, filename="citizen_avatar.png")
 
+    custom_url = await avatar.get_customizer_url(user.id)
+    final_markup = InlineKeyboardMarkup(
+        inline_keyboard=[[
+            InlineKeyboardButton(
+                text="🎨 کمد و شخصی‌سازی در مینی‌اپ",
+                web_app=WebAppInfo(url=custom_url),
+            )
+        ]]
+    )
+
     sent_photo = False
     if bot_instance:
         try:
@@ -902,7 +1022,7 @@ async def _finalize_character(
                 chat_id=chat_id,
                 photo=photo_payload,
                 caption=caption,
-                reply_markup=None,
+                reply_markup=final_markup,
             )
             sent_photo = True
         except Exception as e:
@@ -914,7 +1034,7 @@ async def _finalize_character(
                 await call.message.answer_photo(
                     photo=photo_payload,
                     caption=caption,
-                    reply_markup=None,
+                    reply_markup=final_markup,
                 )
                 sent_photo = True
             except Exception as e:
@@ -924,7 +1044,7 @@ async def _finalize_character(
                 await call.message.reply_photo(
                     photo=photo_payload,
                     caption=caption,
-                    reply_markup=None,
+                    reply_markup=final_markup,
                 )
                 sent_photo = True
             except Exception as e:

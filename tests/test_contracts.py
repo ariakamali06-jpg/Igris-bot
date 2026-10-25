@@ -61,9 +61,9 @@ async def _seed_code(user_id: int, code: str, rows: int) -> None:
                 INSERT INTO ledger (user_id, kind, credits_delta, shards_delta,
                                     balance_after_credits, balance_after_shards,
                                     ref, created_at)
-                VALUES (?, ?, 0, 0, 0, 0, ?, ?)
+                VALUES (?, ?, ?, 0, 0, 0, ?, ?)
                 """,
-                (user_id, kind.value, f"contract-seed:{code}:{i}", current),
+                (user_id, kind.value, 1 if code == "theft" else 0, f"contract-seed:{code}:{i}", current),
             )
 
 

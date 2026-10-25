@@ -777,3 +777,79 @@ async def list_wardrobe(user_id: int) -> list[dict[str, Any]]:
             }
         )
     return result
+
+
+async def get_customizer_url(
+    user_id: int,
+    display_name: str | None = None,
+    level: int | None = None,
+    credits: int | None = None,
+    gender: str | None = None,
+    skin_tone: int | None = None,
+    is_plus_size: int | None = None,
+    var_ids: list[int] | None = None,
+) -> str:
+    """Generate personalized Telegram Mini App URL carrying user loadout."""
+    base_url = settings.webapp_url.rstrip("/")
+
+    # If parameters not provided, load from database
+    if var_ids is None or skin_tone is None or is_plus_size is None:
+        try:
+            player_av = await get_player_avatar(user_id)
+            if var_ids is None:
+                var_ids = list(player_av.get("equipped_var_ids", []))
+            if skin_tone is None:
+                skin_tone = int(player_av.get("skin_tone", -1))
+            if is_plus_size is None:
+                is_plus_size = int(player_av.get("is_plus_size", 0))
+        except Exception:
+            var_ids = var_ids or []
+            skin_tone = skin_tone or -1
+            is_plus_size = is_plus_size or 0
+
+    if display_name is None or level is None or gender is None:
+        try:
+            from services import game
+
+            player = await game.load_player(user_id)
+            if player is not None:
+                display_name = display_name or player.display_name
+                level = level or player.level
+                gender = gender or player.gender
+        except Exception:
+            pass
+
+    if credits is None:
+        try:
+            credits_val, _ = await economy.balances(user_id)
+            credits = credits_val
+        except Exception:
+            credits = 0
+
+    is_plus = bool(is_plus_size)
+    if is_plus:
+        plus_skin_map = {-7: 1, -8: 2, -9: 3, -10: 4, -11: 5, -6: 6}
+        skin_idx = plus_skin_map.get(skin_tone, 1)
+    else:
+        slim_skin_map = {-1: 1, -2: 2, -3: 3, -4: 4, -5: 5}
+        skin_idx = slim_skin_map.get(skin_tone, 1)
+
+    gen_str = "female" if (gender and ("دختر" in gender or gender == "female")) else "male"
+
+    payload = {
+        "u": user_id,
+        "name": display_name or "مسافر",
+        "lvl": level or 1,
+        "cr": credits or 0,
+        "gen": gen_str,
+        "skin": skin_idx,
+        "body": "plus" if is_plus else "slim",
+        "items": var_ids or [],
+        "bot": settings.bot_username or "hermesforrexbot",
+    }
+
+    raw_json = json.dumps(payload, separators=(",", ":"))
+    b64_data = base64.urlsafe_b64encode(raw_json.encode("utf-8")).decode("utf-8").rstrip("=")
+
+    separator = "&" if "?" in base_url else "?"
+    return f"{base_url}{separator}d={b64_data}"
