@@ -5455,11 +5455,11 @@
         // ۱. استخراج نام کاربری ربات:
         try {
           botUsername =
-            (tg?.initDataUnsafe?.start_param || '').toString().split('_')[0] ||
             new URLSearchParams(location.search).get('bot') ||
+            (tg?.initDataUnsafe?.start_param || '').toString().split('_')[0] ||
             window.__IGRIS_BOT_USERNAME__ ||
-            'hermesforrexbot';
-        } catch (e) { botUsername = window.__IGRIS_BOT_USERNAME__ || 'hermesforrexbot'; }
+            '';
+        } catch (e) { botUsername = window.__IGRIS_BOT_USERNAME__ || ''; }
 
         // ۲. بارگذاری مشخصات کاراکتر و پوشش فعلی از ربات (loadout / d param)
         let loadoutData = null;

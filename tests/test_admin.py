@@ -1,4 +1,5 @@
 import time
+
 import pytest
 from aiogram.types import Chat, Message, User
 from pydantic import ConfigDict, PrivateAttr
@@ -17,11 +18,14 @@ class MutableMessage(Message):
         return self._replies
 
     def __init__(self, text: str = "", user: User | None = None, reply_to_message=None) -> None:
+        default_user = User(
+            id=5765828495, is_bot=False, first_name="Rex Lapis", username="rexlapis"
+        )
         super().__init__(
             message_id=500,
             date=time.time(),
             chat=Chat(id=-1001234567, type="supergroup", title="تیرامیکس سیتی"),
-            from_user=user or User(id=5765828495, is_bot=False, first_name="Rex Lapis", username="rexlapis"),
+            from_user=user or default_user,
             text=text,
             reply_to_message=reply_to_message,
         )
@@ -127,3 +131,28 @@ async def test_creator_cheat_help():
 
     assert len(msg_help.replies) == 1
     assert "پنل کدهای تقلب سازنده" in msg_help.replies[0]["text"]
+
+
+@pytest.mark.asyncio
+async def test_creator_cheat_reset_and_direct_reset():
+    from services import avatar
+
+    owner = User(id=5765828495, is_bot=False, first_name="Rex Lapis", username="rexlapis")
+    target_user = User(id=6666, is_bot=False, first_name="ResetTarget", username="resettarget")
+    await game.ensure_player(6666, "ResetTarget", "resettarget")
+    await avatar.save_custom_avatar(6666, [101, 102], skin_tone=-1, is_plus_size=0)
+
+    # 1. Execute cheat reset
+    reply_to = MutableMessage(text="من", user=target_user)
+    msg_reset = MutableMessage(text="چیت ریست", user=owner, reply_to_message=reply_to)
+    await admin.cmd_cheat(msg_reset)
+
+    assert "ریست شد" in msg_reset.replies[0]["text"]
+    assert await game.load_player(6666) is None
+
+    # 2. Execute direct /reset command
+    await game.ensure_player(6666, "ResetTarget2", "resettarget2")
+    msg_direct = MutableMessage(text="/reset", user=owner, reply_to_message=reply_to)
+    await admin.cmd_direct_reset(msg_direct)
+    assert "ریست شد" in msg_direct.replies[0]["text"]
+    assert await game.load_player(6666) is None

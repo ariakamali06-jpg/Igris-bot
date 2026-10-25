@@ -17,7 +17,7 @@ Built with **aiogram 3 + SQLite + Pillow**. Runtime target: **Railway** (single 
 |---|---|
 | `BOT_TOKEN` | توکن از [@BotFather] |
 | `ADMIN_IDS` | شناسه عددی تلگرام ادمین‌ها (جدا با کاما) |
-| `BOT_USERNAME` | `hermesforrexbot` ← **برای ذخیره استایل از مینی‌اپ واجب است (دیپ‌لینک `wear_`)** |
+| `BOT_USERNAME` | نام کاربری ربات در تلگرام بدون @ (اختیاری؛ خودکار از get_me استخراج می‌شود) |
 
 2. Deploy از ریپو — `railway.json` + `Procfile` آماده‌اند؛ دیتابیس روی volume پایدار نگه داشته می‌شود (`DB_PATH`).
 

@@ -9,8 +9,8 @@ from __future__ import annotations
 
 import logging
 
-from aiogram import Router
-from aiogram.filters import CommandObject
+from aiogram import F, Router
+from aiogram.filters import Command, CommandObject
 from aiogram.types import Message
 
 from database.connection import db
@@ -358,18 +358,24 @@ async def cmd_cheat(message: Message, command: CommandObject | None = None) -> N
             )
             return
 
-        # ۱۲. بازنشانی وضعیت ویزارد ثبت‌نام (Reset Onboarding)
-        if action in ("ریست", "reset"):
+        # ۱۲. بازنشانی وضعیت ویزارد ثبت‌نام و حذف کامل کاراکتر (Reset Character)
+        if action in ("ریست", "reset", "reset_char"):
             async with db.write() as conn:
-                await conn.execute(
-                    "UPDATE players SET onboarding_completed = 0 WHERE user_id = ?",
-                    (target_id,),
-                )
+                await conn.execute("DELETE FROM player_avatar WHERE user_id = ?", (target_id,))
+                await conn.execute("DELETE FROM player_wardrobe WHERE user_id = ?", (target_id,))
+                await conn.execute("DELETE FROM loadout WHERE user_id = ?", (target_id,))
+                await conn.execute("DELETE FROM inventory WHERE user_id = ?", (target_id,))
+                await conn.execute("DELETE FROM contracts WHERE user_id = ?", (target_id,))
+                await conn.execute("DELETE FROM properties WHERE owner_id = ?", (target_id,))
+                await conn.execute("DELETE FROM holdings WHERE user_id = ?", (target_id,))
+                await conn.execute("DELETE FROM safe_locks WHERE user_id = ?", (target_id,))
+                await conn.execute("DELETE FROM wallets WHERE user_id = ?", (target_id,))
+                await conn.execute("DELETE FROM players WHERE user_id = ?", (target_id,))
             await message.reply(
-                f"⚡ <b>کد تقلب با موفقیت اجرا شد!</b> 🛠\n\n"
+                f"⚡ <b>حساب کاربری و پروفایل به طور کامل ریست شد!</b> 🛠\n\n"
                 f"👤 <b>هدف:</b> {esc(target_player.display_tag)} (<code>{target_id}</code>)\n"
-                f"🔄 <b>تغییر:</b> وضعیت ثبت‌نام صفر شد. "
-                "بازیکن می‌تواند مجدداً ویزارد ساخت کاراکتر را طی کند."
+                "🔄 <b>تغییر:</b> تمام سوابق، شناسنامه و کمد لباس کاراکتر کاملاً صفر شد.\n"
+                "اکنون می‌توانید با ارسال <code>/start</code> کاراکتر جدید خود را از ابتدا بسازید."
             )
             return
 
@@ -405,3 +411,38 @@ async def cmd_cheat(message: Message, command: CommandObject | None = None) -> N
     except Exception as exc:  # noqa: BLE001
         logger.exception("Admin cheat failed for user %s: %s", user.id, exc)
         await message.reply(f"❌ خطا در اجرای کد تقلب: <code>{esc(str(exc))}</code>")
+
+
+@router.message(Command("reset", "reset_char", "admin_reset_char"))
+@router.message(F.text.lower().in_({"ریست", "ریست کاراکتر", "ریست_کاراکتر"}))
+async def cmd_direct_reset(message: Message) -> None:
+    """دستور مستقیم ریست کامل کاراکتر برای ادمین و سازنده ربات."""
+    user = message.from_user
+    if user is None or not is_admin_or_owner(user.id):
+        return
+    parts = (message.text or "").split()
+    cmd_prefixes = ("/", "ریست", "reset")
+    if parts and any(parts[0].lower().startswith(p) for p in cmd_prefixes):
+        parts = parts[1:]
+    target_id, _ = await _resolve_target(message, parts, user.id)
+    target_player = await game.load_player(target_id)
+    tag = target_player.display_tag if target_player else str(target_id)
+
+    async with db.write() as conn:
+        await conn.execute("DELETE FROM player_avatar WHERE user_id = ?", (target_id,))
+        await conn.execute("DELETE FROM player_wardrobe WHERE user_id = ?", (target_id,))
+        await conn.execute("DELETE FROM loadout WHERE user_id = ?", (target_id,))
+        await conn.execute("DELETE FROM inventory WHERE user_id = ?", (target_id,))
+        await conn.execute("DELETE FROM contracts WHERE user_id = ?", (target_id,))
+        await conn.execute("DELETE FROM properties WHERE owner_id = ?", (target_id,))
+        await conn.execute("DELETE FROM holdings WHERE user_id = ?", (target_id,))
+        await conn.execute("DELETE FROM safe_locks WHERE user_id = ?", (target_id,))
+        await conn.execute("DELETE FROM wallets WHERE user_id = ?", (target_id,))
+        await conn.execute("DELETE FROM players WHERE user_id = ?", (target_id,))
+
+    await message.reply(
+        f"⚡ <b>پروفایل و شناسنامه کاراکتر با موفقیت ریست شد!</b> 🛠\n\n"
+        f"👤 <b>کاربر:</b> {esc(tag)} (<code>{target_id}</code>)\n"
+        "تمامی سوابق، کمد لباس و دارایی‌های کاراکتر صفر شد. "
+        "با ارسال <code>/start</code> فرآیند ساخت مجدد کاراکتر آغاز می‌شود."
+    )

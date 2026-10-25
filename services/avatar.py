@@ -33,6 +33,8 @@ from services import economy
 
 logger = logging.getLogger(__name__)
 
+RUNTIME_BOT_USERNAME: str = ""
+
 # Skin tone definitions (Standard slim: -1 to -6, Plus size: -7 to -12)
 SKIN_TONES_SLIM = [
     (-1, "⚪️ خیلی روشن (Fair)"),
@@ -836,6 +838,8 @@ async def get_customizer_url(
 
     gen_str = "female" if (gender and ("دختر" in gender or gender == "female")) else "male"
 
+    active_bot = RUNTIME_BOT_USERNAME or settings.bot_username
+
     payload = {
         "u": user_id,
         "name": display_name or "مسافر",
@@ -845,7 +849,7 @@ async def get_customizer_url(
         "skin": skin_idx,
         "body": "plus" if is_plus else "slim",
         "items": var_ids or [],
-        "bot": settings.bot_username or "hermesforrexbot",
+        "bot": active_bot,
     }
 
     raw_json = json.dumps(payload, separators=(",", ":"))

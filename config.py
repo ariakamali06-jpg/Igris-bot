@@ -45,7 +45,7 @@ class Settings(BaseSettings):
     )
     # Telegram @username of this bot (without @) — used to build /start
     # deep links like t.me/<bot_username>?start=wear_... from the Mini App.
-    bot_username: str = Field(default="hermesforrexbot", alias="BOT_USERNAME")
+    bot_username: str = Field(default="", alias="BOT_USERNAME")
 
     # --- Channels & Sponsorship ---------------------------------------------
     force_channel_join: bool = Field(default=True, alias="FORCE_CHANNEL_JOIN")

@@ -288,7 +288,7 @@ async def test_get_customizer_url_payload_structure():
         assert payload["items"] == [555, 666]
         assert payload["skin"] == 3
         assert payload["body"] == "slim"
-        assert payload["bot"] == "hermesforrexbot"
+        assert "bot" in payload
     finally:
         async with db.write() as conn:
             await conn.execute("DELETE FROM player_avatar WHERE user_id = ?", (test_user_id,))

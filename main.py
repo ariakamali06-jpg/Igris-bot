@@ -29,6 +29,7 @@ from database.seed import seed_catalog
 from handlers import register_routers
 from handlers.raids import GroupActivityMiddleware
 from logging_conf import setup_logging
+from services import avatar
 from services.assetgen import ensure_assets
 from services.compositor import compositor, load_library
 from services.economy import clear_cooldowns
@@ -111,6 +112,8 @@ async def on_startup(bot: Bot) -> None:
         return
     me = await bot.get_me()
     logger.info("bot online as @%s", me.username)
+    if me.username:
+        avatar.RUNTIME_BOT_USERNAME = me.username
 
     try:
         wh = await bot.get_webhook_info()
@@ -124,13 +127,18 @@ async def on_startup(bot: Bot) -> None:
         try:
             from aiogram.types import MenuButtonWebApp, WebAppInfo
 
+            menu_url = settings.webapp_url
+            if me.username:
+                sep = "&" if "?" in menu_url else "?"
+                menu_url = f"{menu_url}{sep}bot={me.username}"
+
             await bot.set_chat_menu_button(
                 menu_button=MenuButtonWebApp(
                     text="🎨 کاستومایز",
-                    web_app=WebAppInfo(url=settings.webapp_url),
+                    web_app=WebAppInfo(url=menu_url),
                 )
             )
-            logger.info("Chat menu button registered: %s", settings.webapp_url)
+            logger.info("Chat menu button registered: %s", menu_url)
         except Exception as exc:
             logger.warning("Could not set chat menu button: %s", exc)
 
