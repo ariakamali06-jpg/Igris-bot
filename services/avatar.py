@@ -464,6 +464,30 @@ STARTER_SETS: dict[int, dict[str, Any]] = {
         "is_plus_size": 0,
         "price": 0,
     },
+    105: {
+        "id": 105,
+        "name": "👑 استایل مجلسی پرنسسی (Daisies Glam)",
+        "gender": "female",
+        "item_count": 11,
+        "var_ids": [
+            103733, 103734, 103735, 103736, 103748, 103749,
+            103751, 103752, 103753, 103754, 103756,
+        ],
+        "is_plus_size": 0,
+        "price": 0,
+    },
+    205: {
+        "id": 205,
+        "name": "🛹 استایل استریت بوی (Street Boy)",
+        "gender": "male",
+        "item_count": 10,
+        "var_ids": [
+            421051, 421052, 421056, 421059, 421063,
+            421066, 421068, 421071, 421073, 421076,
+        ],
+        "is_plus_size": 0,
+        "price": 0,
+    },
 }
 
 
@@ -868,17 +892,15 @@ async def get_customizer_url(
             skin_tone = skin_tone or -1
             is_plus_size = is_plus_size or 0
 
-    if display_name is None or level is None or gender is None:
-        try:
-            from services import game
+    from services import game
 
-            player = await game.load_player(user_id)
-            if player is not None:
-                display_name = display_name or player.display_name
-                level = level or player.level
-                gender = gender or player.gender
-        except Exception:
-            pass
+    player = await game.load_player(user_id) if user_id else None
+    is_onboarded = bool(player and player.onboarding_completed == 1)
+
+    if (display_name is None or level is None or gender is None) and player is not None:
+        display_name = display_name or player.display_name
+        level = level or player.level
+        gender = gender or player.gender
 
     if credits is None:
         try:
@@ -886,6 +908,27 @@ async def get_customizer_url(
             credits = credits_val
         except Exception:
             credits = 0
+
+    owned_ids: list[int] = []
+    owned_sets: list[dict[str, Any]] = []
+    if is_onboarded and user_id:
+        try:
+            wdr = await list_wardrobe(user_id)
+            for s in wdr:
+                s_vars = [int(v) for v in s.get("var_ids", [])]
+                owned_ids.extend(s_vars)
+                owned_sets.append({
+                    "id": s.get("set_id", 0),
+                    "name": s.get("name", "ست کمد"),
+                    "vars": s_vars,
+                })
+        except Exception:
+            pass
+
+    if is_onboarded and var_ids:
+        owned_ids.extend(var_ids)
+
+    owned_ids = list(dict.fromkeys(owned_ids))
 
     is_plus = bool(is_plus_size)
     if is_plus:
@@ -909,6 +952,9 @@ async def get_customizer_url(
         "body": "plus" if is_plus else "slim",
         "items": var_ids or [],
         "bot": active_bot,
+        "mode": "wardrobe" if is_onboarded else "starter",
+        "owned": owned_ids if is_onboarded else [],
+        "owned_sets": owned_sets if is_onboarded else [],
     }
 
     raw_json = json.dumps(payload, separators=(",", ":"))

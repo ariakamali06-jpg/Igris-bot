@@ -391,3 +391,58 @@ async def test_compact_binary_wear_deep_link():
             await conn.execute("DELETE FROM player_avatar WHERE user_id = ?", (test_user_id,))
             await conn.execute("DELETE FROM inventory WHERE user_id = ?", (test_user_id,))
             await conn.execute("DELETE FROM players WHERE user_id = ?", (test_user_id,))
+
+
+async def test_starter_sets_count_is_five_per_gender():
+    """Verify exactly 5 curated starter sets exist for each gender."""
+    female_starters = avatar.get_starter_sets("female")
+    male_starters = avatar.get_starter_sets("male")
+
+    assert len(female_starters) == 5, f"Expected 5 female starter sets, got {len(female_starters)}"
+    assert len(male_starters) == 5, f"Expected 5 male starter sets, got {len(male_starters)}"
+
+    # Ensure sets 105 and 205 exist with valid piece counts
+    set_105 = avatar.get_set_from_catalog(105)
+    set_205 = avatar.get_set_from_catalog(205)
+    assert set_105 is not None
+    assert set_205 is not None
+    assert len(set_105["var_ids"]) >= 8
+    assert len(set_205["var_ids"]) >= 8
+
+
+async def test_get_customizer_url_starter_vs_wardrobe_mode():
+    """Verify get_customizer_url sets starter mode for new and wardrobe for existing."""
+    import base64
+
+    test_user_id = 999139
+    await game.ensure_player(test_user_id, "Mode Tester", "modetester")
+
+    try:
+        # 1. New player (onboarding_completed == 0) -> mode == 'starter'
+        url_new = await avatar.get_customizer_url(test_user_id)
+        b64_new = url_new.split("?d=")[1]
+        payload_new = json.loads(base64.urlsafe_b64decode(b64_new + "==").decode())
+        assert payload_new["mode"] == "starter"
+        assert payload_new["owned"] == []
+
+        # 2. Complete onboarding & assign starter set
+        await avatar.assign_starter_set(test_user_id, set_id=101, gender="female")
+        async with db.write() as conn:
+            await conn.execute(
+                "UPDATE players SET onboarding_completed = 1 WHERE user_id = ?",
+                (test_user_id,),
+            )
+
+        # 3. Existing player -> mode == 'wardrobe' with owned items
+        url_existing = await avatar.get_customizer_url(test_user_id)
+        b64_exist = url_existing.split("?d=")[1]
+        payload_exist = json.loads(base64.urlsafe_b64decode(b64_exist + "==").decode())
+        assert payload_exist["mode"] == "wardrobe"
+        assert len(payload_exist["owned"]) > 0
+        assert set(avatar.STARTER_SETS[101]["var_ids"]).issubset(set(payload_exist["owned"]))
+        assert len(payload_exist["owned_sets"]) >= 1
+    finally:
+        async with db.write() as conn:
+            await conn.execute("DELETE FROM player_wardrobe WHERE user_id = ?", (test_user_id,))
+            await conn.execute("DELETE FROM player_avatar WHERE user_id = ?", (test_user_id,))
+            await conn.execute("DELETE FROM players WHERE user_id = ?", (test_user_id,))
