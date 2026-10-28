@@ -223,6 +223,7 @@ async def _handle_compact_wear_payload(
         if not data:
             return
         header = data[0]
+        is_male = 1 if ((header >> 7) & 1) else 0
         is_plus = 1 if ((header >> 6) & 1) else 0
         skin_idx = header & 0x3F
         var_ids = []
@@ -267,8 +268,10 @@ async def _handle_compact_wear_payload(
             name = str(raw_name) if isinstance(raw_name, str) else "مسافر"
             name = name[:30]
 
-            gender = fsm_data.get("gender") or (
-                "female" if "دختر" in player.gender else "male"
+            gender = (
+                ("male" if is_male else "female")
+                if is_male or not fsm_data.get("gender")
+                else fsm_data.get("gender", "female")
             )
             gender_fa = "دختر" if gender in ("female", "دختر") else "پسر"
             raw_age = fsm_data.get("age") or player.age or 20
@@ -435,9 +438,13 @@ async def _handle_wear_payload(
             name = str(raw_name) if isinstance(raw_name, str) else "مسافر"
             name = name[:30]
 
-            gender = fsm_data.get("gender") or (
-                "female" if "دختر" in player.gender else "male"
-            )
+            payload_gen = payload.get("gen")
+            if payload_gen:
+                gender = "female" if (payload_gen == "female" or "دختر" in payload_gen) else "male"
+            else:
+                gender = fsm_data.get("gender") or (
+                    "female" if "دختر" in player.gender else "male"
+                )
             gender_fa = "دختر" if gender in ("female", "دختر") else "پسر"
             raw_age = fsm_data.get("age") or player.age or 20
             try:

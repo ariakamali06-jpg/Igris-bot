@@ -3757,6 +3757,40 @@
       gap: 10px;
     }
 
+    .gender-toggle-pill {
+      display: flex;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: 999px;
+      padding: 3px;
+      flex-shrink: 0;
+    }
+
+    .gender-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      font-family: inherit;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 5px 12px;
+      border-radius: 999px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .gender-btn.active.female {
+      background: linear-gradient(135deg, #ec4899, #8b5cf6);
+      color: #fff;
+      box-shadow: 0 2px 8px rgba(236, 72, 153, 0.4);
+    }
+
+    .gender-btn.active.male {
+      background: linear-gradient(135deg, #0ea5e9, #3b82f6);
+      color: #fff;
+      box-shadow: 0 2px 8px rgba(14, 165, 233, 0.4);
+    }
+
     .body-toggle-pill {
       display: flex;
       background: var(--bg-surface);
@@ -4922,9 +4956,32 @@
     function setSkinTone(idx) {
       currentSkinIdx = Number(idx);
       try { localStorage.setItem('igris_skin', String(currentSkinIdx)); } catch (e) {}
-      renderSkinSwatches();
+      setGender(initialGen);
+        renderSkinSwatches();
       updateAvatarPreview();
       hapticFeedback();
+    }
+
+        function setGender(g) {
+      hapticFeedback();
+      currentGender = (g === 'male' || g === 'پسر') ? 'male' : 'female';
+      const femaleBtn = document.getElementById('genderBtnFemale');
+      const maleBtn = document.getElementById('genderBtnMale');
+      if (femaleBtn && maleBtn) {
+        femaleBtn.className = 'gender-btn' + (currentGender === 'female' ? ' active female' : '');
+        maleBtn.className = 'gender-btn' + (currentGender === 'male' ? ' active male' : '');
+      }
+      try {
+        localStorage.setItem('igris_gender', currentGender);
+      } catch (e) {}
+
+      const subEl = document.getElementById('playerStripSub');
+      if (subEl) {
+        subEl.innerText = currentGender === 'female' ? 'شهروند تیرامیکس (دختر)' : 'شهروند تیرامیکس (پسر)';
+      }
+
+      updateZoneCounts();
+      renderCatalog();
     }
 
     function setBodyType(type) {
@@ -5448,6 +5505,7 @@
       const payload = {
         skin: currentSkinIdx,
         body: currentBodyType,
+        gen: currentGender,
         items: equippedVarList // preserves exact user layering
       };
       const jsonStr = JSON.stringify(payload);
@@ -5475,7 +5533,8 @@
       let compactB64 = '';
       try {
         const isPlus = (currentBodyType === 'plus') ? 1 : 0;
-        const header = (isPlus << 6) | (currentSkinIdx & 0x3F);
+        const isMale = (currentGender === 'male') ? 1 : 0;
+        const header = (isMale << 7) | (isPlus << 6) | (currentSkinIdx & 0x3F);
         const bytes = [header];
         for (let i = 0; i < equippedVarList.length; i++) {
           const v = Number(equippedVarList[i]);
@@ -5598,7 +5657,7 @@
             botUsername = loadoutData.bot;
           }
           if (loadoutData.gen) {
-            currentGender = (loadoutData.gen === 'female' || loadoutData.gen === 'دختر') ? 'female' : 'male';
+            initialGen = (loadoutData.gen === 'female' || loadoutData.gen === 'دختر') ? 'female' : 'male';
           }
           if (loadoutData.mode) {
             appMode = loadoutData.mode;
@@ -5657,6 +5716,8 @@
         } else {
           // در صورت نبود پارامتر URL (مثلا باز شدن از منو چت)، بازیابی آخرین استایل ذخیره‌شده
           try {
+            const savedGen = localStorage.getItem('igris_gender');
+            if (savedGen === 'male' || savedGen === 'female') initialGen = savedGen;
             const savedMode = localStorage.getItem('igris_app_mode');
             if (savedMode === 'wardrobe' || savedMode === 'starter') appMode = savedMode;
             const savedOwned = localStorage.getItem('igris_owned_ids');

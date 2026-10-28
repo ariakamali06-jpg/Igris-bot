@@ -555,7 +555,11 @@ async def handle_customizer_webapp_data(message: Message) -> None:
         )
 
         if is_new_player:
-            gender_fa = player.gender if player.gender != "نامشخص" else "پسر"
+            payload_gen = data.get("gen")
+            if payload_gen:
+                gender_fa = "دختر" if (payload_gen == "female" or "دختر" in payload_gen) else "پسر"
+            else:
+                gender_fa = player.gender if player.gender != "نامشخص" else "پسر"
             gender_key = "female" if gender_fa == "دختر" else "male"
             body_stance = (
                 f"base_vn_{skin_idx}" if gender_key == "female" else f"base_boy_{skin_idx}"
