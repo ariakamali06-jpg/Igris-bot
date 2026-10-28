@@ -446,3 +446,20 @@ async def test_get_customizer_url_starter_vs_wardrobe_mode():
             await conn.execute("DELETE FROM player_wardrobe WHERE user_id = ?", (test_user_id,))
             await conn.execute("DELETE FROM player_avatar WHERE user_id = ?", (test_user_id,))
             await conn.execute("DELETE FROM players WHERE user_id = ?", (test_user_id,))
+
+
+async def test_get_customizer_url_gender_enforcement():
+    """Verify get_customizer_url strictly embeds selected gender into payload."""
+    import base64
+
+    # 1. Male gender passed explicitly
+    url_male = await avatar.get_customizer_url(user_id=8881, gender="male")
+    b64_male = url_male.split("?d=")[1]
+    payload_male = json.loads(base64.urlsafe_b64decode(b64_male + "==").decode())
+    assert payload_male["gen"] == "male"
+
+    # 2. Female gender passed explicitly
+    url_female = await avatar.get_customizer_url(user_id=8882, gender="female")
+    b64_female = url_female.split("?d=")[1]
+    payload_female = json.loads(base64.urlsafe_b64decode(b64_female + "==").decode())
+    assert payload_female["gen"] == "female"
