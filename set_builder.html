@@ -2,7 +2,7 @@
 <html lang="fa" dir="rtl">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>👗 استودیوی طراحی و ساخت ست‌های استارتر ایگریس (Set Builder Studio)</title>
 <link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css" rel="stylesheet">
 <style>
@@ -21,66 +21,82 @@
   --text: #f1f5f9;
   --text-muted: #94a3b8;
 }
-* { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Vazirmatn', sans-serif; }
+* { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Vazirmatn', sans-serif; -webkit-tap-highlight-color: transparent; }
 body { background: var(--bg); color: var(--text); padding-bottom: 90px; overflow-x: hidden; }
 
+/* Header */
 header {
   position: sticky; top: 0; z-index: 100;
   background: rgba(9, 13, 22, 0.96);
   backdrop-filter: blur(14px);
   border-bottom: 1px solid var(--border);
-  padding: 12px 20px;
+  padding: 10px 16px;
 }
 .header-wrap {
   max-width: 1560px; margin: 0 auto;
-  display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;
+  display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;
 }
-.title-box h1 { font-size: 1.25rem; font-weight: 800; color: #fff; display: flex; align-items: center; gap: 8px; }
-.title-box p { font-size: 0.8rem; color: var(--text-muted); margin-top: 2px; }
+.title-box h1 { font-size: 1.15rem; font-weight: 800; color: #fff; display: flex; align-items: center; gap: 8px; }
+.title-box p { font-size: 0.75rem; color: var(--text-muted); margin-top: 2px; }
 
-.header-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.header-actions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .btn {
   background: #1e293b; color: #fff; border: 1px solid #334155;
-  padding: 7px 13px; border-radius: 8px; font-size: 0.82rem; font-weight: 600;
-  cursor: pointer; transition: all 0.2s; display: inline-flex; align-items: center; gap: 6px;
-  text-decoration: none;
+  padding: 6px 12px; border-radius: 8px; font-size: 0.8rem; font-weight: 600;
+  cursor: pointer; transition: all 0.2s; display: inline-flex; align-items: center; gap: 5px;
+  text-decoration: none; white-space: nowrap;
 }
 .btn:hover { background: #334155; border-color: #475569; }
 .btn-primary { background: #059669; border-color: #10b981; }
 .btn-primary:hover { background: #10b981; color: #000; }
 .btn-purple { background: #7e22ce; border-color: #a855f7; }
 .btn-purple:hover { background: #9333ea; }
-.btn-pink { background: #db2777; border-color: #ec4899; }
-.btn-pink:hover { background: #f472b6; }
 .btn-amber { background: #b45309; border-color: #f59e0b; }
 .btn-amber:hover { background: #d97706; }
 
-/* Studio Layout (Grid) */
+/* Mobile View Switcher (Visible ONLY on Mobile & Tablet <= 1024px) */
+.mobile-view-tabs {
+  display: none;
+  background: #111827;
+  border-bottom: 1px solid var(--border);
+  padding: 6px 12px;
+  position: sticky; top: 58px; z-index: 95;
+  gap: 6px;
+}
+.mobile-tab-btn {
+  flex: 1; background: #1a2336; border: 1px solid var(--border);
+  color: var(--text-muted); padding: 8px 6px; border-radius: 8px;
+  font-size: 0.8rem; font-weight: 700; cursor: pointer; transition: all 0.2s;
+  display: flex; align-items: center; justify-content: center; gap: 5px; text-align: center;
+}
+.mobile-tab-btn.active {
+  background: linear-gradient(135deg, rgba(16,185,129,0.25), rgba(56,189,248,0.25));
+  color: #fff; border-color: var(--accent-blue);
+  box-shadow: 0 2px 8px rgba(56, 189, 248, 0.25);
+}
+
+@media (max-width: 1024px) {
+  .mobile-view-tabs { display: flex; }
+}
+
+/* Studio Layout (Grid on Desktop, Switchable on Mobile) */
 .studio-layout {
-  max-width: 1560px; margin: 16px auto; padding: 0 16px;
+  max-width: 1560px; margin: 14px auto; padding: 0 16px;
   display: grid;
   grid-template-columns: 360px 1fr;
   gap: 16px;
   align-items: start;
 }
 
-@media (max-width: 1024px) {
-  .studio-layout { grid-template-columns: 1fr; }
-}
-
-/* Mannequin / Set Form Column */
+/* Mannequin Column */
 .left-col {
   display: flex; flex-direction: column; gap: 14px;
-  position: sticky; top: 85px; max-height: calc(100vh - 105px); overflow-y: auto; scrollbar-width: thin;
-}
-
-@media (max-width: 1024px) {
-  .left-col { position: static; max-height: none; }
+  position: sticky; top: 78px; max-height: calc(100vh - 95px); overflow-y: auto; scrollbar-width: thin;
 }
 
 .mannequin-card {
   background: var(--panel-bg); border: 1px solid var(--border);
-  border-radius: 14px; padding: 14px; display: flex; flex-direction: column; align-items: center;
+  border-radius: 14px; padding: 12px; display: flex; flex-direction: column; align-items: center;
   box-shadow: 0 10px 30px rgba(0,0,0,0.4);
 }
 .stage-viewport {
@@ -97,13 +113,13 @@ header {
 .zoom-btn {
   position: absolute; top: 8px; left: 8px;
   background: rgba(15, 23, 42, 0.85); color: #fff; border: 1px solid #475569;
-  border-radius: 8px; width: 32px; height: 32px; cursor: pointer;
-  display: flex; align-items: center; justify-content: center; font-size: 14px;
+  border-radius: 8px; width: 34px; height: 34px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; font-size: 15px;
 }
 .zoom-btn:hover { background: #2563eb; }
 
 .stage-ctrls {
-  width: 100%; display: flex; flex-direction: column; gap: 8px; margin-top: 12px;
+  width: 100%; display: flex; flex-direction: column; gap: 8px; margin-top: 10px;
 }
 .ctrl-row {
   display: flex; justify-content: space-between; align-items: center; gap: 8px;
@@ -114,7 +130,7 @@ header {
 }
 .gender-btn {
   flex: 1; background: transparent; border: none; color: var(--text-muted);
-  font-family: inherit; font-size: 11px; font-weight: 700; padding: 4px 8px;
+  font-family: inherit; font-size: 11px; font-weight: 700; padding: 5px 8px;
   border-radius: 999px; cursor: pointer; transition: all 0.2s;
 }
 .gender-btn.active.female {
@@ -125,28 +141,28 @@ header {
 }
 
 .skin-picker {
-  display: flex; gap: 5px; align-items: center; overflow-x: auto; scrollbar-width: none;
+  display: flex; gap: 6px; align-items: center; overflow-x: auto; scrollbar-width: none;
 }
 .skin-swatch {
-  width: 20px; height: 20px; border-radius: 50%; border: 2px solid transparent; cursor: pointer;
+  width: 22px; height: 22px; border-radius: 50%; border: 2px solid transparent; cursor: pointer;
 }
 .skin-swatch.active { border-color: #fff; transform: scale(1.2); }
 
 /* Set Info Form */
 .set-form-card {
   background: var(--panel-bg); border: 1px solid var(--border);
-  border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 10px;
+  border-radius: 14px; padding: 12px; display: flex; flex-direction: column; gap: 10px;
 }
-.form-title { font-size: 0.9rem; font-weight: 800; color: #fff; display: flex; align-items: center; gap: 6px; }
+.form-title { font-size: 0.88rem; font-weight: 800; color: #fff; display: flex; align-items: center; gap: 6px; }
 .form-input {
   background: #090d16; border: 1px solid #334155; color: #fff;
-  padding: 8px 12px; border-radius: 8px; font-size: 0.85rem; width: 100%;
+  padding: 9px 12px; border-radius: 8px; font-size: 16px; width: 100%; /* 16px prevents iOS auto-zoom */
 }
 .form-input:focus { outline: none; border-color: var(--accent-blue); }
 .save-set-btn {
   background: linear-gradient(135deg, #059669, #10b981);
   color: #000; border: none; font-weight: 800; font-size: 0.9rem;
-  padding: 10px; border-radius: 10px; cursor: pointer; transition: all 0.2s;
+  padding: 12px; border-radius: 10px; cursor: pointer; transition: all 0.2s;
   display: flex; align-items: center; justify-content: center; gap: 6px;
   box-shadow: 0 4px 14px rgba(16, 185, 129, 0.3);
 }
@@ -165,18 +181,18 @@ header {
 }
 .equipped-item-row {
   background: var(--card-bg); border: 1px solid var(--border);
-  border-radius: 8px; padding: 5px 8px; display: flex; align-items: center; justify-content: space-between; gap: 6px;
+  border-radius: 8px; padding: 6px 8px; display: flex; align-items: center; justify-content: space-between; gap: 6px;
 }
 .eq-thumb {
-  width: 32px; height: 32px; image-rendering: pixelated; object-fit: contain; background: #030712; border-radius: 4px;
+  width: 34px; height: 34px; image-rendering: pixelated; object-fit: contain; background: #030712; border-radius: 4px;
 }
 .eq-name {
-  flex: 1; font-size: 0.75rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  flex: 1; font-size: 0.78rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.eq-actions { display: flex; gap: 3px; align-items: center; }
+.eq-actions { display: flex; gap: 4px; align-items: center; }
 .eq-btn {
-  background: #1e293b; border: 1px solid #334155; color: #94a3b8; width: 22px; height: 22px;
-  border-radius: 4px; font-size: 10px; cursor: pointer; display: flex; align-items: center; justify-content: center;
+  background: #1e293b; border: 1px solid #334155; color: #94a3b8; width: 26px; height: 26px;
+  border-radius: 6px; font-size: 11px; cursor: pointer; display: flex; align-items: center; justify-content: center;
 }
 .eq-btn:hover { background: #334155; color: #fff; }
 .eq-btn.del:hover { background: #dc2626; color: #fff; border-color: #ef4444; }
@@ -188,24 +204,25 @@ header {
 
 .browser-header {
   background: var(--panel-bg); border: 1px solid var(--border);
-  border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 10px;
+  border-radius: 14px; padding: 12px; display: flex; flex-direction: column; gap: 10px;
 }
 .search-filter-bar {
-  display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+  display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
 }
 .catalog-search-input {
-  flex: 1; min-width: 220px; background: #090d16; border: 1px solid #334155;
-  color: #fff; padding: 9px 14px; border-radius: 10px; font-size: 0.88rem;
+  flex: 1; min-width: 200px; background: #090d16; border: 1px solid #334155;
+  color: #fff; padding: 9px 12px; border-radius: 10px; font-size: 16px; /* Prevents iOS auto-zoom */
 }
 .catalog-search-input:focus { outline: none; border-color: var(--accent-blue); }
 
 .cat-tabs-row {
-  display: flex; gap: 6px; overflow-x: auto; padding: 2px 0; scrollbar-width: none;
+  display: flex; gap: 6px; overflow-x: auto; padding: 4px 0; scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
 }
 .cat-pill {
   background: #151e2e; color: var(--text-muted); border: 1px solid var(--border);
-  padding: 6px 13px; border-radius: 999px; font-size: 0.8rem; font-weight: 700;
-  cursor: pointer; transition: all 0.2s; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px;
+  padding: 7px 13px; border-radius: 999px; font-size: 0.8rem; font-weight: 700;
+  cursor: pointer; transition: all 0.2s; white-space: nowrap; display: inline-flex; align-items: center; gap: 5px;
 }
 .cat-pill.active {
   background: linear-gradient(135deg, rgba(56, 189, 248, 0.25), rgba(168, 85, 247, 0.25));
@@ -215,7 +232,7 @@ header {
 /* Items Grid */
 .catalog-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
   gap: 12px;
 }
 .item-card {
@@ -237,11 +254,11 @@ header {
   padding: 8px 10px; display: flex; flex-direction: column; gap: 4px; flex: 1;
 }
 .item-card-title {
-  font-size: 0.78rem; font-weight: 700; color: #fff;
+  font-size: 0.8rem; font-weight: 700; color: #fff;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .item-card-set {
-  font-size: 0.68rem; color: var(--text-muted);
+  font-size: 0.7rem; color: var(--text-muted);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .equip-toggle-badge {
@@ -255,13 +272,13 @@ header {
   max-width: 1560px; margin: 28px auto 0 auto; padding: 0 16px;
 }
 .shelf-header {
-  display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;
+  display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;
 }
 .shelf-title { font-size: 1.15rem; font-weight: 800; color: #fff; display: flex; align-items: center; gap: 8px; }
 .shelf-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 16px;
+  gap: 14px;
 }
 .set-shelf-card {
   background: var(--panel-bg); border: 1px solid var(--border);
@@ -280,27 +297,96 @@ header {
   padding: 12px; display: flex; flex-direction: column; gap: 8px; flex: 1;
 }
 .shelf-card-title {
-  font-size: 0.95rem; font-weight: 800; color: #fff;
+  font-size: 0.92rem; font-weight: 800; color: #fff;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .shelf-meta-row {
   display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem; color: var(--text-muted);
 }
 .shelf-actions {
-  display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 6px;
+  display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 4px;
+}
+
+/* Floating Bottom Dock on Mobile (Visible when looking at catalog) */
+.mobile-floating-dock {
+  display: none;
+  position: fixed; bottom: 0; left: 0; right: 0; z-index: 99;
+  background: rgba(17, 24, 39, 0.95);
+  backdrop-filter: blur(12px);
+  border-top: 1px solid var(--border-subtle);
+  padding: 8px 14px;
+  align-items: center; justify-content: space-between; gap: 10px;
+  box-shadow: 0 -4px 20px rgba(0,0,0,0.5);
+}
+.dock-avatar-preview {
+  display: flex; align-items: center; gap: 8px; cursor: pointer;
+}
+.dock-thumb-circle {
+  width: 38px; height: 38px; border-radius: 50%; background: #030712; border: 2px solid var(--accent);
+  overflow: hidden; display: flex; align-items: center; justify-content: center;
+}
+.dock-thumb-circle img {
+  width: 38px; height: 50px; image-rendering: pixelated; object-fit: cover;
+}
+
+/* RESPONSIVE MEDIA QUERIES */
+@media (max-width: 1024px) {
+  .studio-layout {
+    grid-template-columns: 1fr;
+    display: block;
+  }
+  .left-col {
+    position: static; max-height: none;
+  }
+  .shelf-section {
+    margin-top: 16px;
+  }
+  /* Tab controlled visibility on mobile */
+  body.mobile-view-catalog .left-col { display: none; }
+  body.mobile-view-catalog .shelf-section { display: none; }
+  body.mobile-view-catalog .right-col { display: flex; }
+  body.mobile-view-catalog .mobile-floating-dock { display: flex; }
+
+  body.mobile-view-mannequin .right-col { display: none; }
+  body.mobile-view-mannequin .shelf-section { display: none; }
+  body.mobile-view-mannequin .left-col { display: flex; }
+
+  body.mobile-view-shelf .left-col { display: none; }
+  body.mobile-view-shelf .right-col { display: none; }
+  body.mobile-view-shelf .shelf-section { display: block; }
+}
+
+@media (max-width: 640px) {
+  .header-wrap { flex-direction: column; align-items: stretch; }
+  .header-actions { overflow-x: auto; padding-bottom: 4px; scrollbar-width: none; }
+  .catalog-grid {
+    grid-template-columns: repeat(2, 1fr); /* Exactly 2 cards per row on mobile phones */
+    gap: 8px;
+  }
+  .item-thumb-box { height: 120px; }
+  .item-thumb-box img { width: 95px; height: 95px; }
+  .shelf-grid {
+    grid-template-columns: 1fr;
+  }
+  .stage-viewport {
+    width: 190px; height: 290px;
+  }
+  .stage-viewport img {
+    width: 190px; height: 290px;
+  }
 }
 
 /* Toast */
 .toast-msg {
-  position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+  position: fixed; bottom: 65px; left: 50%; transform: translateX(-50%);
   background: #1e293b; color: #fff; border: 1px solid var(--accent);
-  padding: 10px 20px; border-radius: 10px; font-size: 0.85rem; font-weight: 600;
+  padding: 10px 18px; border-radius: 10px; font-size: 0.85rem; font-weight: 600;
   box-shadow: 0 10px 25px -5px rgba(0,0,0,0.5); z-index: 9999;
-  display: none; align-items: center; gap: 8px;
+  display: none; align-items: center; gap: 8px; white-space: nowrap;
 }
 </style>
 </head>
-<body>
+<body class="mobile-view-catalog">
 
 <header>
   <div class="header-wrap">
@@ -309,21 +395,37 @@ header {
       <p>لباس‌ها و اجزای مختلف را انتخاب و ترکیب کنید، ست‌های دلخواهتان را بسازید و ذخیره کنید.</p>
     </div>
     <div class="header-actions">
-      <button class="btn btn-primary" onclick="copyPythonStarterSets()" title="کپی دیکشنری کامل پایتون برای سرور">📋 کپی کد پایتون STARTER_SETS</button>
-      <button class="btn btn-purple" onclick="exportSetsJson()" title="دانلود ست‌های ساخته شده">💾 دانلود ست‌ها (JSON)</button>
+      <button class="btn btn-primary" onclick="copyPythonStarterSets()" title="کپی دیکشنری کامل پایتون برای سرور">📋 کپی پایتون</button>
+      <button class="btn btn-purple" onclick="exportSetsJson()" title="دانلود ست‌های ساخته شده">💾 دانلود JSON</button>
       <label class="btn" style="cursor:pointer;" title="بارگذاری فایل ست‌های قبلی">
-        📥 بارگذاری ست‌ها
+        📥 بارگذاری
         <input type="file" accept=".json" onchange="importSetsJson(event)" style="display:none;">
       </label>
-      <a href="classifier.html" class="btn btn-amber" title="مرتب‌سازی و ویرایش دسته‌بندی آیتم‌ها">🏷 پنل دسته‌بندی آیتم‌ها</a>
+      <a href="classifier.html" class="btn btn-amber" title="مرتب‌سازی و ویرایش دسته‌بندی آیتم‌ها">🏷 پنل دسته‌بندی</a>
       <a href="index.html" class="btn" title="بازگشت به کاستومایزر اصلی بازی">🎮 بازی</a>
     </div>
   </div>
 </header>
 
+<!-- Mobile Navigation Tabs (Shown on Phone & Tablet) -->
+<nav class="mobile-view-tabs">
+  <button id="mobTabCatalog" class="mobile-tab-btn active" onclick="setMobileView('catalog')">
+    <span>🛍</span>
+    <span>کاتالوگ لباس‌ها</span>
+  </button>
+  <button id="mobTabMannequin" class="mobile-tab-btn" onclick="setMobileView('mannequin')">
+    <span>👗</span>
+    <span id="mobMannequinLabel">مانکن و لایه‌ها (۰)</span>
+  </button>
+  <button id="mobTabShelf" class="mobile-tab-btn" onclick="setMobileView('shelf')">
+    <span>🎒</span>
+    <span id="mobShelfLabel">قفسه ست‌ها</span>
+  </button>
+</nav>
+
 <main class="studio-layout">
   <!-- Left Column: Mannequin Stage & Set Form -->
-  <aside class="left-col">
+  <aside id="leftColPanel" class="left-col">
     <!-- Live Mannequin Card -->
     <div class="mannequin-card">
       <div id="stageViewport" class="stage-viewport">
@@ -363,7 +465,7 @@ header {
       </div>
       <div>
         <label style="font-size:0.75rem; color:#94a3b8; display:block; margin-bottom:4px;">نام ست:</label>
-        <input id="setNameInput" class="form-input" type="text" placeholder="مثلاً: 🌸 استایل کژوال پاییزی (Casual Autumn)">
+        <input id="setNameInput" class="form-input" type="text" placeholder="مثلاً: 🌸 استایل کژوال پاییزی">
       </div>
       <div style="display:flex; gap:8px;">
         <div style="flex:1;">
@@ -383,6 +485,10 @@ header {
         <span>💾</span>
         <span>ذخیره این ست در قفسه</span>
       </button>
+
+      <button class="btn btn-amber" style="width:100%; justify-content:center; margin-top:4px;" onclick="setMobileView('catalog')">
+        <span>➕ افزودن لباس‌های بیشتر (رفتن به کاتالوگ)</span>
+      </button>
     </div>
 
     <!-- Equipped Items Drawer -->
@@ -396,15 +502,15 @@ header {
   </aside>
 
   <!-- Right Column: Catalog Browser -->
-  <section class="right-col">
+  <section id="rightColPanel" class="right-col">
     <div class="browser-header">
       <div class="search-filter-bar">
-        <input id="catalogSearchInput" class="catalog-search-input" type="text" placeholder="🔍 جستجوی لباس، مو، عینک یا نام ست در ۹,۲۸۹ آیتم..." oninput="handleCatalogSearch(this.value)">
+        <input id="catalogSearchInput" class="catalog-search-input" type="text" placeholder="🔍 جستجوی لباس، مو یا نام ست در ۹,۲۸۹ آیتم..." oninput="handleCatalogSearch(this.value)">
         <div style="display:flex; gap:4px; align-items:center;">
-          <span style="font-size:0.75rem; color:#94a3b8; font-weight:600;">فیلتر جنسیت:</span>
-          <button id="filterGenAll" class="btn" style="padding:5px 9px; font-size:11px;" onclick="setGenderFilter('all')">همه</button>
-          <button id="filterGenFem" class="btn" style="padding:5px 9px; font-size:11px;" onclick="setGenderFilter('female')">دخترانه</button>
-          <button id="filterGenMale" class="btn" style="padding:5px 9px; font-size:11px;" onclick="setGenderFilter('male')">پسرانه</button>
+          <span style="font-size:0.75rem; color:#94a3b8; font-weight:600;">جنسیت:</span>
+          <button id="filterGenAll" class="btn btn-primary" style="padding:5px 8px; font-size:11px;" onclick="setGenderFilter('all')">همه</button>
+          <button id="filterGenFem" class="btn" style="padding:5px 8px; font-size:11px;" onclick="setGenderFilter('female')">دخترانه</button>
+          <button id="filterGenMale" class="btn" style="padding:5px 8px; font-size:11px;" onclick="setGenderFilter('male')">پسرانه</button>
         </div>
       </div>
 
@@ -422,9 +528,9 @@ header {
     </div>
 
     <!-- Items Grid Container -->
-    <div style="display:flex; justify-content:space-between; align-items:center; margin: 4px 4px 8px 4px;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin: 4px 4px 6px 4px;">
       <span id="catalogCategoryStatus" style="font-size:0.85rem; font-weight:700; color:#38bdf8;">همه اقلام</span>
-      <span id="catalogCountText" style="font-size:0.78rem; color:#94a3b8;"></span>
+      <span id="catalogCountText" style="font-size:0.75rem; color:#94a3b8;"></span>
     </div>
     <div id="catalogGrid" class="catalog-grid"></div>
     <div id="catalogPagination" class="pagination" style="display:flex; justify-content:center; gap:8px; margin-top:16px;"></div>
@@ -432,20 +538,36 @@ header {
 </main>
 
 <!-- Bottom Section: Saved Sets Shelf -->
-<section class="shelf-section">
+<section id="shelfSectionPanel" class="shelf-section">
   <div class="shelf-header">
     <div class="shelf-title">
       <span>🎒 قفسه ست‌های ساخته شده</span>
       <span id="shelfTotalBadge" class="badge badge-total" style="font-size:0.82rem; margin-right:8px;">۰ ست موجود</span>
     </div>
-    <div style="display:flex; gap:8px;">
-      <button class="btn btn-primary" onclick="copyPythonStarterSets()">📋 کپی کد پایتون ست‌ها</button>
-      <button class="btn btn-purple" onclick="exportSetsJson()">💾 خروجی فایل JSON</button>
+    <div style="display:flex; gap:6px;">
+      <button class="btn btn-primary" onclick="copyPythonStarterSets()">📋 کپی پایتون</button>
+      <button class="btn btn-purple" onclick="exportSetsJson()">💾 خروجی JSON</button>
     </div>
   </div>
 
   <div id="savedSetsGrid" class="shelf-grid"></div>
 </section>
+
+<!-- Mobile Floating Dock (Quick Jump to Mannequin) -->
+<div id="mobileFloatingDock" class="mobile-floating-dock">
+  <div class="dock-avatar-preview" onclick="setMobileView('mannequin')">
+    <div class="dock-thumb-circle">
+      <img id="dockMannequinThumb" src="" alt="مانکن">
+    </div>
+    <div>
+      <div id="dockItemCountText" style="font-size:0.8rem; font-weight:800; color:#fff;">۰ قلم بر تن</div>
+      <div style="font-size:0.68rem; color:#38bdf8;">برای پرو و تنظیم لایه‌ها ضربه بزنید 👈</div>
+    </div>
+  </div>
+  <button class="btn btn-primary" style="padding:8px 12px; font-weight:800;" onclick="setMobileView('mannequin')">
+    👗 مشاهده مانکن
+  </button>
+</div>
 
 <div id="toast" class="toast-msg"></div>
 
@@ -529,6 +651,18 @@ function showToast(text) {
   setTimeout(() => { t.style.display = 'none'; }, 3200);
 }
 
+// Mobile View Navigation
+function setMobileView(view) {
+  document.body.classList.remove('mobile-view-catalog', 'mobile-view-mannequin', 'mobile-view-shelf');
+  document.body.classList.add('mobile-view-' + view);
+
+  document.getElementById('mobTabCatalog').classList.toggle('active', view === 'catalog');
+  document.getElementById('mobTabMannequin').classList.toggle('active', view === 'mannequin');
+  document.getElementById('mobTabShelf').classList.toggle('active', view === 'shelf');
+
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
 function toggleZoom() {
   isZoomed = !isZoomed;
   document.getElementById('stageViewport').classList.toggle('zoomed', isZoomed);
@@ -610,8 +744,18 @@ function autoSortLayers(list) {
 }
 
 function updateMannequinPreview() {
+  const url = getRenderUrl(currentEquippedList);
   const img = document.getElementById('mannequinImg');
-  img.src = getRenderUrl(currentEquippedList);
+  if (img) img.src = url;
+
+  const dockThumb = document.getElementById('dockMannequinThumb');
+  if (dockThumb) dockThumb.src = url;
+
+  const dockCount = document.getElementById('dockItemCountText');
+  if (dockCount) dockCount.innerText = currentEquippedList.length + ' قلم بر تن';
+
+  const mobMannequinLabel = document.getElementById('mobMannequinLabel');
+  if (mobMannequinLabel) mobMannequinLabel.innerText = 'مانکن (' + currentEquippedList.length + ')';
 }
 
 function toggleItem(varId) {
@@ -845,7 +989,8 @@ function loadSetIntoStudio(setId) {
   renderEquippedList();
   renderCatalog();
   showToast('👗 ست «' + s.name + '» روی مانکن بارگذاری شد');
-  window.scrollTo({ top: 60, behavior: 'smooth' });
+  setMobileView('mannequin');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
 function deleteSetFromShelf(setId) {
@@ -930,6 +1075,9 @@ function importSetsJson(e) {
 function renderSavedSetsShelf() {
   const badge = document.getElementById('shelfTotalBadge');
   badge.innerText = savedSets.length.toLocaleString('fa-IR') + ' ست موجود';
+
+  const mobShelfLabel = document.getElementById('mobShelfLabel');
+  if (mobShelfLabel) mobShelfLabel.innerText = 'قفسه ست‌ها (' + savedSets.length + ')';
 
   const grid = document.getElementById('savedSetsGrid');
   if (savedSets.length === 0) {

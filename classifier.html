@@ -2,7 +2,7 @@
 <html lang="fa" dir="rtl">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>🏷 پنل دسته‌بندی و ساماندهی دارایی‌های ایگریس (Igris Catalog Classifier Studio)</title>
 <link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css" rel="stylesheet">
 <style>
@@ -200,6 +200,40 @@ header {
   padding: 10px 20px; border-radius: 10px; font-size: 0.85rem; font-weight: 600;
   box-shadow: 0 10px 25px -5px rgba(0,0,0,0.5); z-index: 9999;
   display: none; align-items: center; gap: 8px;
+}
+
+/* Responsive Media Queries */
+@media (max-width: 768px) {
+  header { padding: 10px 12px; }
+  .header-wrap { gap: 8px; }
+  .title-box h1 { font-size: 1.05rem; }
+  .controls {
+    overflow-x: auto; width: 100%; padding-bottom: 4px; scrollbar-width: none;
+    -webkit-overflow-scrolling: touch; flex-wrap: nowrap;
+  }
+  .controls .btn { flex-shrink: 0; }
+  .search-row { gap: 8px; }
+  .search-input-box { width: 100%; min-width: 100%; }
+  .search-input { font-size: 16px; padding: 8px 12px; }
+  .main-container { padding: 0 10px; margin: 12px auto; }
+  .grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 8px !important;
+  }
+  .card-body { padding: 8px; gap: 4px; }
+  .card-title { font-size: 0.78rem; }
+  .card-set { font-size: 0.68rem; }
+  .img-container { height: 130px; }
+  .img-container img { width: 100px; height: 100px; }
+  .cat-select, .sub-select { font-size: 12px; padding: 5px; }
+  .fit-badge-btn { padding: 2px 5px; font-size: 0.65rem; }
+}
+
+@media (max-width: 480px) {
+  .title-box .stats-row { gap: 4px; }
+  .badge { font-size: 0.72rem; padding: 2px 7px; }
+  .mannequin-frame { width: 180px; height: 280px; }
+  .mannequin-frame img { width: 180px; height: 280px; }
 }
 
 /* Fitting Modal */
