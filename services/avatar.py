@@ -363,9 +363,19 @@ async def get_player_render_url(user_id: int, width: int | None = None) -> str:
     if is_plus:
         plus_head_map = {-7: -13, -8: -14, -9: -15, -10: -16, -11: -17, -6: -12}
         head_id = plus_head_map.get(skin_tone, -13)
-        full_vars = equipped + [skin_tone, head_id]
+        skin_ids = [skin_tone, head_id]
     else:
-        full_vars = equipped + [skin_tone]
+        skin_ids = [skin_tone]
+
+    if any(vid < 0 for vid in equipped):
+        full_vars = []
+        for vid in equipped:
+            if vid < 0:
+                full_vars.extend(skin_ids)
+            else:
+                full_vars.append(vid)
+    else:
+        full_vars = equipped + skin_ids
     return get_render_url(full_vars, width=width)
 
 

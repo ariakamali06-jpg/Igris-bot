@@ -169,6 +169,41 @@ header {
 .save-set-btn:hover { filter: brightness(1.1); transform: translateY(-1px); }
 
 /* Equipped List Drawer */
+.equipped-item-row.mannequin-layer-row {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.18), rgba(56, 189, 248, 0.18)) !important;
+  border: 1px solid var(--accent) !important;
+  box-shadow: 0 0 12px rgba(16, 185, 129, 0.25);
+}
+.eq-mannequin-icon {
+  width: 34px; height: 34px; border-radius: 6px; background: rgba(16, 185, 129, 0.25);
+  display: flex; align-items: center; justify-content: center; font-size: 18px; border: 1px solid var(--accent);
+  flex-shrink: 0;
+}
+.mannequin-pos-badge {
+  font-size: 9px; font-weight: 800; background: rgba(56, 189, 248, 0.25); color: #38bdf8;
+  border: 1px solid #38bdf8; border-radius: 4px; padding: 1px 5px;
+}
+.layer-depth-pill {
+  font-size: 9px; font-weight: 800; padding: 1px 5px; border-radius: 4px; white-space: nowrap;
+}
+.layer-depth-pill.front {
+  background: rgba(56, 189, 248, 0.2); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4);
+}
+.layer-depth-pill.back {
+  background: rgba(168, 85, 247, 0.2); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.4);
+}
+.equipped-item-row.item-back {
+  background: #0d1424;
+  border-left: 3px solid #a855f7;
+}
+.equipped-item-row.item-front {
+  background: var(--card-bg);
+  border-left: 3px solid #38bdf8;
+}
+.eq-lock-badge {
+  font-size: 13px; color: var(--accent); padding: 0 4px; display: inline-flex; align-items: center;
+}
+
 .equipped-card {
   background: var(--panel-bg); border: 1px solid var(--border);
   border-radius: 14px; padding: 12px; display: flex; flex-direction: column; gap: 8px;
@@ -583,7 +618,8 @@ let currentSkinIdx = 1;
 let isZoomed = false;
 
 // Equipped items in current set (Array of variation IDs)
-let currentEquippedList = [];
+const MANNEQUIN_LAYER_ID = -1;
+let currentEquippedList = [MANNEQUIN_LAYER_ID];
 
 // Saved Sets Shelf
 let savedSets = [];
@@ -641,7 +677,20 @@ function getSlug(ids) {
 }
 
 function getRenderUrl(varIds) {
-  return 'https://cdn.everskies.com/render/' + getSlug([...varIds, ...getBaseAvatarIds()]) + '.png?m=0';
+  let fullVars = [];
+  let hasMannequin = false;
+  for (const id of varIds) {
+    if (id === MANNEQUIN_LAYER_ID || id < 0 || id === '__BODY__') {
+      fullVars.push(...getBaseAvatarIds());
+      hasMannequin = true;
+    } else if (id > 0) {
+      fullVars.push(id);
+    }
+  }
+  if (!hasMannequin) {
+    fullVars.push(...getBaseAvatarIds());
+  }
+  return 'https://cdn.everskies.com/render/' + getSlug(fullVars) + '.png?m=0';
 }
 
 function showToast(text) {
@@ -731,7 +780,13 @@ function handleCatalogSearch(val) {
 
 // Sorting layers canonically
 function autoSortLayers(list) {
+  // Ensure MANNEQUIN_LAYER_ID is present
+  const withMannequin = list.includes(MANNEQUIN_LAYER_ID) ? list.slice() : [...list, MANNEQUIN_LAYER_ID];
+
   const rankOf = v => {
+    if (v === MANNEQUIN_LAYER_ID || v < 0 || v === '__BODY__') {
+      return LAYER_ORDER.indexOf('__BODY__');
+    }
     const it = ITEMS_MAP.get(v);
     if (!it) return LAYER_ORDER.length;
     const subIdx = LAYER_ORDER.indexOf(it.s);
@@ -740,7 +795,7 @@ function autoSortLayers(list) {
     if (catIdx !== -1) return catIdx;
     return LAYER_ORDER.length;
   };
-  return list.slice().sort((a, b) => rankOf(a) - rankOf(b));
+  return withMannequin.sort((a, b) => rankOf(a) - rankOf(b));
 }
 
 function updateMannequinPreview() {
@@ -751,14 +806,16 @@ function updateMannequinPreview() {
   const dockThumb = document.getElementById('dockMannequinThumb');
   if (dockThumb) dockThumb.src = url;
 
+  const clothingCount = currentEquippedList.filter(v => v > 0).length;
   const dockCount = document.getElementById('dockItemCountText');
-  if (dockCount) dockCount.innerText = currentEquippedList.length + ' قلم بر تن';
+  if (dockCount) dockCount.innerText = clothingCount + ' قلم بر تن';
 
   const mobMannequinLabel = document.getElementById('mobMannequinLabel');
-  if (mobMannequinLabel) mobMannequinLabel.innerText = 'مانکن (' + currentEquippedList.length + ')';
+  if (mobMannequinLabel) mobMannequinLabel.innerText = 'مانکن (' + clothingCount + ')';
 }
 
 function toggleItem(varId) {
+  if (varId === MANNEQUIN_LAYER_ID || varId < 0) return;
   const idx = currentEquippedList.indexOf(varId);
   if (idx !== -1) {
     currentEquippedList.splice(idx, 1);
@@ -782,6 +839,7 @@ function toggleItem(varId) {
 }
 
 function removeEquippedItem(varId) {
+  if (varId === MANNEQUIN_LAYER_ID || varId < 0) return;
   const idx = currentEquippedList.indexOf(varId);
   if (idx !== -1) {
     currentEquippedList.splice(idx, 1);
@@ -804,37 +862,72 @@ function moveLayer(varId, direction) {
 }
 
 function clearEquipped() {
-  currentEquippedList = [];
+  currentEquippedList = [MANNEQUIN_LAYER_ID];
   updateMannequinPreview();
   renderEquippedList();
   renderCatalog();
-  showToast('🗑 مانکن خالی شد');
+  showToast('🗑 همه لباس‌ها پاک شدند (مانکن پایه حفظ شد)');
 }
 
 function renderEquippedList() {
+  const clothingCount = currentEquippedList.filter(v => v > 0).length;
   const countEl = document.getElementById('equippedCountLabel');
-  countEl.innerText = '🎒 اقلام بر تن (' + currentEquippedList.length + ' قطعه)';
+  if (countEl) countEl.innerText = '🎒 اقلام بر تن (' + clothingCount + ' قطعه)';
 
   const container = document.getElementById('equippedListContainer');
-  if (currentEquippedList.length === 0) {
-    container.innerHTML = '<div style="text-align:center; padding:20px; font-size:0.75rem; color:#64748b;">هیچ آیتمی انتخاب نشده است. از کاتالوگ لباس‌ها را انتخاب کنید.</div>';
-    return;
-  }
+  const mannequinIdx = currentEquippedList.indexOf(MANNEQUIN_LAYER_ID);
+  const totalLayers = currentEquippedList.length;
 
   container.innerHTML = currentEquippedList.map((varId, idx) => {
+    // 1. Mannequin Layer Row
+    if (varId === MANNEQUIN_LAYER_ID || varId < 0) {
+      const isTop = idx === 0;
+      const isBottom = idx === totalLayers - 1;
+      const itemsAbove = idx; // count of items in front of body
+      const itemsBelow = totalLayers - 1 - idx; // count of items behind body
+
+      return `
+        <div class="equipped-item-row mannequin-layer-row">
+          <div class="eq-mannequin-icon">🧍</div>
+          <div class="eq-name">
+            <div style="color: #38bdf8; font-weight: 800; display:flex; align-items:center; gap:6px;">
+              <span>🧍 مانکن کاراکتر (بدن پایه)</span>
+              <span class="mannequin-pos-badge">لایه ${idx + 1}</span>
+            </div>
+            <span style="font-size:0.68rem; color:#94a3b8;">
+              ${itemsAbove} قلم در «رو» | ${itemsBelow} قلم در «پشت» مانکن
+            </span>
+          </div>
+          <div class="eq-actions">
+            <button class="eq-btn" onclick="moveLayer(-1, -1)" ${isTop ? 'disabled style="opacity:0.3; cursor:not-allowed;"' : ''} title="حرکت مانکن به جلو (روتر)">🔼</button>
+            <button class="eq-btn" onclick="moveLayer(-1, 1)" ${isBottom ? 'disabled style="opacity:0.3; cursor:not-allowed;"' : ''} title="حرکت مانکن به عقب (زیرتر)">🔽</button>
+            <span class="eq-lock-badge" title="بدن پایه مانکن همیشه در لایه‌ها حضور دارد">🔒</span>
+          </div>
+        </div>
+      `;
+    }
+
+    // 2. Regular Item Row
     const it = ITEMS_MAP.get(varId) || { n: 'آیتم #' + varId, s: 'قطعه', st: '' };
     const thumbUrl = 'https://cdn.everskies.com/render/' + getSlug([varId]) + '.png?m=1';
+    const isTop = idx === 0;
+    const isBottom = idx === totalLayers - 1;
+    const isFront = idx < mannequinIdx;
+
     return `
-      <div class="equipped-item-row">
-        <img class="eq-thumb" src="${thumbUrl}" onerror="this.onerror=null; this.src='https://cdn.everskies.com/render/${getSlug([varId])}.png?m=0';">
+      <div class="equipped-item-row ${isFront ? 'item-front' : 'item-back'}">
+        <img class="eq-thumb" src="${thumbUrl}" onerror="this.onerror=null; this.src='https://cdn.everskies.com/render/' + getSlug([varId]) + '.png?m=0';">
         <div class="eq-name" title="${it.n}">
-          <div>${it.n}</div>
-          <span style="font-size:0.65rem; color:#64748b;">${it.s || ''}</span>
+          <div style="display:flex; align-items:center; gap:5px;">
+            <span class="layer-depth-pill ${isFront ? 'front' : 'back'}">${isFront ? 'روی بدن' : 'پشت بدن'}</span>
+            <span>${it.n}</span>
+          </div>
+          <span style="font-size:0.65rem; color:#64748b;">${it.s || it.c} | لایه ${idx + 1}</span>
         </div>
         <div class="eq-actions">
-          <button class="eq-btn" onclick="moveLayer(${varId}, -1)" title="انتقال روتر (جلو)">🔼</button>
-          <button class="eq-btn" onclick="moveLayer(${varId}, 1)" title="انتقال زیرتر (عقب)">🔽</button>
-          <button class="eq-btn del" onclick="removeEquippedItem(${varId})" title="حذف">✕</button>
+          <button class="eq-btn" onclick="moveLayer(${varId}, -1)" ${isTop ? 'disabled style="opacity:0.3; cursor:not-allowed;"' : ''} title="انتقال روتر (جلو)">🔼</button>
+          <button class="eq-btn" onclick="moveLayer(${varId}, 1)" ${isBottom ? 'disabled style="opacity:0.3; cursor:not-allowed;"' : ''} title="انتقال زیرتر (عقب)">🔽</button>
+          <button class="eq-btn del" onclick="removeEquippedItem(${varId})" title="حذف این آیتم">✕</button>
         </div>
       </div>
     `;
@@ -934,6 +1027,47 @@ function goToCatalogPage(p) {
 
 // --- Saved Sets Shelf Functions ---
 function saveCurrentSetToShelf() {
+  const clothingItems = currentEquippedList.filter(id => id > 0);
+  if (clothingItems.length === 0) {
+    alert('⚠️ لطفاً ابتدا حداقل چند قطعه لباس تن مانکن کنید تا ست شکل بگیرد!');
+    return;
+  }
+
+  const nameInput = document.getElementById('setNameInput').value.trim();
+  const idInput = Number(document.getElementById('setIdInput').value.trim());
+  const gender = document.getElementById('setGenderSelect').value;
+
+  const finalName = nameInput || ('ست استارتر ' + (gender === 'female' ? 'دخترانه' : 'پسرانه') + ' #' + (savedSets.length + 1));
+  const finalId = idInput || (savedSets.length > 0 ? Math.max(...savedSets.map(s => s.id)) + 1 : (gender === 'female' ? 101 : 201));
+
+  if (!currentEquippedList.includes(MANNEQUIN_LAYER_ID)) {
+    currentEquippedList = autoSortLayers(currentEquippedList);
+  }
+
+  const existingIdx = savedSets.findIndex(s => s.id === finalId);
+  const newSet = {
+    id: finalId,
+    name: finalName,
+    gender: gender,
+    var_ids: currentEquippedList.slice(),
+    item_count: clothingItems.length,
+    is_plus_size: currentBodyType === 'plus' ? 1 : 0
+  };
+
+  if (existingIdx !== -1) {
+    savedSets[existingIdx] = newSet;
+    showToast('✅ ست «' + finalName + '» به‌روزرسانی شد!');
+  } else {
+    savedSets.push(newSet);
+    showToast('✨ ست جدید «' + finalName + '» در قفسه ذخیره شد!');
+  }
+
+  persistSavedSets();
+  renderSavedSetsShelf();
+  return;
+}
+
+function _old_saveCurrentSetToShelf_disabled() {
   if (currentEquippedList.length === 0) {
     alert('⚠️ لطفاً ابتدا حداقل چند قطعه لباس تن مانکن کنید تا ست شکل بگیرد!');
     return;
@@ -983,7 +1117,12 @@ function loadSetIntoStudio(setId) {
   setBodyType(s.is_plus_size ? 'plus' : 'slim');
   document.getElementById('setNameInput').value = s.name;
   document.getElementById('setIdInput').value = s.id;
-  currentEquippedList = s.var_ids.slice();
+  let vars = s.var_ids.slice();
+  if (!vars.includes(MANNEQUIN_LAYER_ID)) {
+    vars.push(MANNEQUIN_LAYER_ID);
+    vars = autoSortLayers(vars);
+  }
+  currentEquippedList = vars;
 
   updateMannequinPreview();
   renderEquippedList();
