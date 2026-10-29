@@ -831,7 +831,8 @@ async def cb_gender(call: CallbackQuery, state: FSMContext) -> None:
     name = data.get("name", (call.from_user.first_name if call.from_user else "مسافر")[:24])
     age = data.get("age", 20)
 
-    # Starter var IDs matching selected gender (empty so player can dress from scratch)
+    # Starter var IDs matching selected gender (default bottom item so mannequin is clothed)
+    starter_bottom = [avatar.DEFAULT_STARTER_BOTTOM.get(gender, 272755)]
     custom_url = await avatar.get_customizer_url(
         user_id=call.from_user.id if call.from_user else 0,
         display_name=name,
@@ -840,7 +841,7 @@ async def cb_gender(call: CallbackQuery, state: FSMContext) -> None:
         credits=250,
         skin_tone=-1,
         is_plus_size=0,
-        var_ids=[],
+        var_ids=starter_bottom,
     )
 
     buttons = [
@@ -1062,6 +1063,7 @@ async def _show_starter_set_step(call: CallbackQuery, state: FSMContext) -> None
         starters = avatar.get_starter_sets("male")
 
     name = data.get("name", (call.from_user.first_name if call.from_user else "مسافر")[:24])
+    starter_bottom = [avatar.DEFAULT_STARTER_BOTTOM.get(gender, 272755)]
     custom_url = await avatar.get_customizer_url(
         user_id=call.from_user.id if call.from_user else 0,
         display_name=name,
@@ -1070,7 +1072,7 @@ async def _show_starter_set_step(call: CallbackQuery, state: FSMContext) -> None
         credits=250,
         skin_tone=-1,
         is_plus_size=0,
-        var_ids=[],
+        var_ids=starter_bottom,
     )
 
     buttons = [

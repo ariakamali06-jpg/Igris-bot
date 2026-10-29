@@ -5432,19 +5432,36 @@
     function clearAllEquipped() {
       if (equippedVarList.length === 0) return;
       hapticFeedback();
-      equippedVarList = [];
+      const defaultBottom = (currentGender === 'female') ? 4027832 : 272755;
+      equippedVarList = [defaultBottom];
       try { localStorage.setItem('igris_equipped_items', JSON.stringify(equippedVarList)); } catch (e) {}
       updateAvatarPreview();
       updateCatalogEquippedStates();
       renderLayerDrawer();
-      showToast('🗑 همه اقلام تن‌پوش کاراکتر پاک شدند');
+      showToast('🗑 لباس‌ها پاک شدند (شلوار پایه حفظ شد)');
     }
 
     // Save & Submission Handler — دو مسیره:
     // ۱) sendData (وقتی تلگرام آن را قبول کند — دریافت سریع بدون خروج)
     // ۲) دیپ‌لینک /start wear_<b64> (همیشه کار می‌کند؛ حتی از منوی شیشه‌ای)
+    function hasBottomEquipped() {
+      return equippedVarList.some(vId => {
+        const it = ITEMS_BY_VAR.get(vId);
+        if (!it) return false;
+        return it.z === 'bottom' || it.tag === 'bottom' || it.s === 'dress' || it.tag === 'dress' || it.s === 'skirts' || it.s === 'pants';
+      });
+    }
+
     function submitAvatar() {
       hapticFeedback();
+
+      // اعتبارسنجی حداقل یک پوشش پایین‌تنه (شلوار / دامن / پیراهن)
+      if (!hasBottomEquipped()) {
+        showToast('⚠️ کاراکتر شما باید حداقل یک لباس برای پایین‌تنه (شلوار یا دامن) داشته باشد!');
+        selectZone('bottom');
+        return;
+      }
+
       const payload = {
         skin: currentSkinIdx,
         body: currentBodyType,
@@ -5700,6 +5717,14 @@
               nameEl.innerText = `👤 ${tgUser.first_name || 'مسافر'}`;
               strip.style.display = 'flex';
             }
+          }
+        }
+
+        if (!hasBottomEquipped()) {
+          const defaultBottom = (currentGender === 'female') ? 4027832 : 272755;
+          if (!equippedVarList.includes(defaultBottom)) {
+            equippedVarList.unshift(defaultBottom);
+            try { localStorage.setItem('igris_equipped_items', JSON.stringify(equippedVarList)); } catch (e) {}
           }
         }
 

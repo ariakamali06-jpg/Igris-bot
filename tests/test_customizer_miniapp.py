@@ -463,3 +463,23 @@ async def test_get_customizer_url_gender_enforcement():
     b64_female = url_female.split("?d=")[1]
     payload_female = json.loads(base64.urlsafe_b64decode(b64_female + "==").decode())
     assert payload_female["gen"] == "female"
+
+
+async def test_bottom_wear_enforcement():
+    """Verify bottom-wear validation ensures character is never naked without pants/skirt."""
+    # 1. has_bottom_item correctly identifies bottoms vs non-bottoms
+    assert avatar.has_bottom_item([272755]) is True  # male pants
+    assert avatar.has_bottom_item([4027832]) is True  # female skirt
+    assert avatar.has_bottom_item([103751]) is True  # dress
+    assert avatar.has_bottom_item([]) is False  # empty
+    assert avatar.has_bottom_item([4024707]) is False  # hair only
+
+    # 2. ensure_bottom_item equips default bottom if none equipped
+    male_ensured = avatar.ensure_bottom_item([4024707], gender="male")
+    assert 272755 in male_ensured
+    female_ensured = avatar.ensure_bottom_item([4024707], gender="female")
+    assert 4027832 in female_ensured
+
+    # 3. If already has bottom, ensure_bottom_item does not duplicate or alter
+    already_good = avatar.ensure_bottom_item([499836], gender="male")
+    assert already_good == [499836]

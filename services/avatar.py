@@ -490,6 +490,36 @@ STARTER_SETS: dict[int, dict[str, Any]] = {
     },
 }
 
+# -----------------------------------------------------------------------------
+# Bottom-wear / Pants Validation & Defaults
+# -----------------------------------------------------------------------------
+
+BOTTOM_VAR_IDS: set[int] = {
+    # Female bottoms & full dresses
+    4027832, 3623984, 297737, 4584787, 103751, 103753,
+    # Male bottoms
+    272755, 499836, 321613, 502342, 421066,
+}
+
+DEFAULT_STARTER_BOTTOM: dict[str, int] = {
+    "female": 4027832,  # دامن مشکی کژوال
+    "male": 272755,     # شلوار اسلش بنددار
+}
+
+
+def has_bottom_item(var_ids: list[int]) -> bool:
+    """Return True if at least one bottom item or dress is present."""
+    return any(v in BOTTOM_VAR_IDS for v in var_ids)
+
+
+def ensure_bottom_item(var_ids: list[int], gender: str = "male") -> list[int]:
+    """Ensure at least one bottom clothing item is equipped, adding default if missing."""
+    if has_bottom_item(var_ids):
+        return var_ids
+    gen_key = "female" if (gender and ("دختر" in gender or gender == "female")) else "male"
+    default_bottom = DEFAULT_STARTER_BOTTOM.get(gen_key, 272755)
+    return [default_bottom] + var_ids
+
 
 # -----------------------------------------------------------------------------
 # Boutique Stock & Rotation
