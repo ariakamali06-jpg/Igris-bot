@@ -106,9 +106,14 @@ def get_render_url(
     if not variation_ids:
         return ""
 
-    pos_ids = [vid for vid in variation_ids if vid >= 0]
-    neg_ids = [vid for vid in variation_ids if vid < 0]
-    ordered_ids = pos_ids + neg_ids
+    # Reorder only if negative ID was passed at index 0 accidentally;
+    # otherwise preserve exact layer order so items behind mannequin stay behind!
+    if variation_ids and variation_ids[0] < 0 and all(vid > 0 for vid in variation_ids[1:]):
+        pos_ids = [vid for vid in variation_ids if vid >= 0]
+        neg_ids = [vid for vid in variation_ids if vid < 0]
+        ordered_ids = pos_ids + neg_ids
+    else:
+        ordered_ids = variation_ids
 
     raw_b64 = base64.b64encode(json.dumps(ordered_ids).encode("utf-8")).decode("utf-8")
     slug = raw_b64.rstrip("=")
@@ -384,136 +389,84 @@ async def get_player_render_url(user_id: int, width: int | None = None) -> str:
 # -----------------------------------------------------------------------------
 
 STARTER_SETS: dict[int, dict[str, Any]] = {
-    101: {
-        "id": 101,
-        "name": "🌸 استایل کژوال دخترانه (Casual Girl)",
-        "gender": "female",
-        "item_count": 8,
-        "var_ids": [4024707, 4027798, 4027823, 4027826, 4027832, 4027838, 4027839, 4027840],
-        "is_plus_size": 0,
-        "price": 0,
-    },
-    102: {
-        "id": 102,
-        "name": "✨ یونیفرم کالج و مدرسه (School Time)",
-        "gender": "female",
-        "item_count": 8,
-        "var_ids": [3623948, 3623958, 3623964, 3623978, 3623984, 3623991, 3624003, 3624005],
-        "is_plus_size": 0,
-        "price": 0,
-    },
-    103: {
-        "id": 103,
-        "name": "🎀 استایل شیک آکادمی (Academy Chic)",
-        "gender": "female",
-        "item_count": 12,
-        "var_ids": [
-            297694, 297700, 297703, 297709, 297713, 297719,
-            297725, 298928, 297737, 297743, 298590, 298591,
-        ],
-        "is_plus_size": 0,
-        "price": 0,
-    },
-    104: {
-        "id": 104,
-        "name": "🏙 استایل خیابانی شیک (Urban Chic)",
-        "gender": "female",
-        "item_count": 11,
-        "var_ids": [
-            4582094, 4582095, 4582116, 4584726, 4584745, 4584760,
-            4584761, 4584787, 4584788, 4586437, 4586447,
-        ],
-        "is_plus_size": 0,
-        "price": 0,
-    },
+    # --- Male Sets ---
     201: {
         "id": 201,
-        "name": "🕶 استریت‌ویر مدرن (Modern Streetwear)",
+        "name": "Starter Pack (Boys) #1",
         "gender": "male",
-        "item_count": 13,
-        "var_ids": [
-            272737, 272738, 272740, 272744, 272746, 272749,
-            272751, 272753, 272755, 272757, 272758, 272759, 274743,
-        ],
-        "is_plus_size": 0,
-        "price": 0,
-    },
-    202: {
-        "id": 202,
-        "name": "⚡️ استایل فشن شهری (Urban Fashion)",
-        "gender": "male",
-        "item_count": 11,
-        "var_ids": [
-            499821, 499824, 499827, 499833, 499834, 499835,
-            499836, 499838, 499843, 499846, 499847,
-        ],
+        "item_count": 6,
+        "var_ids": [28144, 5546, 6494, 33817, 58359, 116590],
         "is_plus_size": 0,
         "price": 0,
     },
     203: {
         "id": 203,
-        "name": "🎩 پالتو و کت شیک زمستانی (Winter Coat)",
+        "name": "Starter Pack (Boys) #2",
         "gender": "male",
-        "item_count": 12,
-        "var_ids": [
-            321579, 321585, 321592, 321598, 321599, 321604,
-            321610, 321613, 321614, 321620, 321626, 321632,
-        ],
+        "item_count": 9,
+        "var_ids": [321585, 321592, 321598, 321604, 321610, 321613, 321614, 321620, 321626],
         "is_plus_size": 0,
         "price": 0,
     },
-    204: {
-        "id": 204,
-        "name": "✨ استایل ترندی کره‌ای (Trendy K-Style)",
-        "gender": "male",
-        "item_count": 9,
-        "var_ids": [
-            502323, 502324, 502329, 502333, 502335,
-            502339, 502342, 502343, 502353,
-        ],
+    # --- Female Sets ---
+    101: {
+        "id": 101,
+        "name": "Starter Pack (Girls) #1",
+        "gender": "female",
+        "item_count": 10,
+        "var_ids": [23301, 1748, 1702, 2545, 3159, 3146, 1320, 25736, 2547, 2254],
+        "is_plus_size": 0,
+        "price": 0,
+    },
+    208: {
+        "id": 208,
+        "name": "Starter Pack (Girls) #2",
+        "gender": "female",
+        "item_count": 10,
+        "var_ids": [100762, 100764, 100726, 100750, 2143, 2161, 100736, 100734, 2142, 100742],
+        "is_plus_size": 0,
+        "price": 0,
+    },
+    209: {
+        "id": 209,
+        "name": "Starter Pack (Girls) #3",
+        "gender": "female",
+        "item_count": 10,
+        "var_ids": [6631, 5905, 2143, 3427, 2509, 100736, 2696, 3734, 1709, 2142],
         "is_plus_size": 0,
         "price": 0,
     },
     105: {
         "id": 105,
-        "name": "👑 استایل مجلسی پرنسسی (Daisies Glam)",
+        "name": "Starter Pack (Girls) #4",
         "gender": "female",
         "item_count": 11,
         "var_ids": [
-            103733, 103734, 103735, 103736, 103748, 103749,
-            103751, 103752, 103753, 103754, 103756,
-        ],
-        "is_plus_size": 0,
-        "price": 0,
-    },
-    205: {
-        "id": 205,
-        "name": "🛹 استایل استریت بوی (Street Boy)",
-        "gender": "male",
-        "item_count": 10,
-        "var_ids": [
-            421051, 421052, 421056, 421059, 421063,
-            421066, 421068, 421071, 421073, 421076,
+            103733, 103735, 103736, 103752, 103748, 103756,
+            103734, 103749, 103751, 103753, 103754,
         ],
         "is_plus_size": 0,
         "price": 0,
     },
 }
+
+# Alias 207 to set 101 (Starter Pack Girls #1) for backward compatibility
+STARTER_SETS[207] = STARTER_SETS[101]
 
 # -----------------------------------------------------------------------------
 # Bottom-wear / Pants Validation & Defaults
 # -----------------------------------------------------------------------------
 
 BOTTOM_VAR_IDS: set[int] = {
-    # Female bottoms & full dresses
-    4027832, 3623984, 297737, 4584787, 103751, 103753,
-    # Male bottoms
-    272755, 499836, 321613, 502342, 421066,
+    # Current curated starter bottoms & dresses
+    116590, 321613, 23301, 6631, 103733, 100764,
+    # Legacy bottoms (for database compatibility)
+    4027832, 3623984, 297737, 4584787, 103751, 103753, 272755, 499836, 502342, 421066,
 }
 
 DEFAULT_STARTER_BOTTOM: dict[str, int] = {
-    "female": 4027832,  # دامن مشکی کژوال
-    "male": 272755,     # شلوار اسلش بنددار
+    "female": 23301,   # baggy trousers (Starter Pack Girls #1)
+    "male": 116590,    # upcycled pants (Starter Pack Boys #1)
 }
 
 

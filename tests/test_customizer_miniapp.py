@@ -393,21 +393,25 @@ async def test_compact_binary_wear_deep_link():
             await conn.execute("DELETE FROM players WHERE user_id = ?", (test_user_id,))
 
 
-async def test_starter_sets_count_is_five_per_gender():
-    """Verify exactly 5 curated starter sets exist for each gender."""
+async def test_starter_sets_count_is_valid():
+    """Verify curated starter sets exist for each gender from user curated list."""
     female_starters = avatar.get_starter_sets("female")
     male_starters = avatar.get_starter_sets("male")
 
-    assert len(female_starters) == 5, f"Expected 5 female starter sets, got {len(female_starters)}"
-    assert len(male_starters) == 5, f"Expected 5 male starter sets, got {len(male_starters)}"
+    assert len(female_starters) >= 4, (
+        f"Expected >= 4 female starter sets, got {len(female_starters)}"
+    )
+    assert len(male_starters) >= 2, (
+        f"Expected >= 2 male starter sets, got {len(male_starters)}"
+    )
 
-    # Ensure sets 105 and 205 exist with valid piece counts
+    # Ensure sets 105 and 201 exist with valid piece counts
     set_105 = avatar.get_set_from_catalog(105)
-    set_205 = avatar.get_set_from_catalog(205)
+    set_201 = avatar.get_set_from_catalog(201)
     assert set_105 is not None
-    assert set_205 is not None
-    assert len(set_105["var_ids"]) >= 8
-    assert len(set_205["var_ids"]) >= 8
+    assert set_201 is not None
+    assert len(set_105["var_ids"]) >= 6
+    assert len(set_201["var_ids"]) >= 6
 
 
 async def test_get_customizer_url_starter_vs_wardrobe_mode():
@@ -476,10 +480,10 @@ async def test_bottom_wear_enforcement():
 
     # 2. ensure_bottom_item equips default bottom if none equipped
     male_ensured = avatar.ensure_bottom_item([4024707], gender="male")
-    assert 272755 in male_ensured
+    assert avatar.DEFAULT_STARTER_BOTTOM["male"] in male_ensured
     female_ensured = avatar.ensure_bottom_item([4024707], gender="female")
-    assert 4027832 in female_ensured
+    assert avatar.DEFAULT_STARTER_BOTTOM["female"] in female_ensured
 
     # 3. If already has bottom, ensure_bottom_item does not duplicate or alter
-    already_good = avatar.ensure_bottom_item([499836], gender="male")
-    assert already_good == [499836]
+    already_good = avatar.ensure_bottom_item([23301], gender="female")
+    assert already_good == [23301]

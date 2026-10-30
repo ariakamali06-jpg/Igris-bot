@@ -832,7 +832,7 @@ async def cb_gender(call: CallbackQuery, state: FSMContext) -> None:
     age = data.get("age", 20)
 
     # Starter var IDs matching selected gender (default bottom item so mannequin is clothed)
-    starter_bottom = [avatar.DEFAULT_STARTER_BOTTOM.get(gender, 272755)]
+    starter_bottom = [avatar.DEFAULT_STARTER_BOTTOM.get(gender, 116590)]
     custom_url = await avatar.get_customizer_url(
         user_id=call.from_user.id if call.from_user else 0,
         display_name=name,
@@ -1063,7 +1063,7 @@ async def _show_starter_set_step(call: CallbackQuery, state: FSMContext) -> None
         starters = avatar.get_starter_sets("male")
 
     name = data.get("name", (call.from_user.first_name if call.from_user else "مسافر")[:24])
-    starter_bottom = [avatar.DEFAULT_STARTER_BOTTOM.get(gender, 272755)]
+    starter_bottom = [avatar.DEFAULT_STARTER_BOTTOM.get(gender, 116590)]
     custom_url = await avatar.get_customizer_url(
         user_id=call.from_user.id if call.from_user else 0,
         display_name=name,
