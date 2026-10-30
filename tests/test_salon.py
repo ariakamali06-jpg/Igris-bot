@@ -283,3 +283,37 @@ async def test_salon_callbacks_navigation(monkeypatch):
     await dp.feed_update(bot, Update(update_id=14, callback_query=call_set_nose))
     st_nose = await salon.get_player_salon_state(user_id)
     assert st_nose["nose_style"] == "nose_petite"
+
+
+async def test_salon_real_hair_equipped_and_preserved_in_wardrobe():
+    """Verify changing hair in salon puts real Everskies IDs on avatar and wardrobe preserves it."""
+    from services import avatar
+
+    user_id = 90006
+    await game.ensure_player(
+        user_id=user_id, username="barber_avatar", display_name="Barber Avatar"
+    )
+    async with db.write() as conn:
+        await conn.execute("UPDATE players SET gender = 'پسر' WHERE user_id = ?", (user_id,))
+    await economy.grant(user_id, credits=5000, kind=ActivityKind.ADMIN)
+
+    # 1. Equip boy hairstyle in salon: hair_eboy (6494)
+    res_hair = await salon.change_hair_paid(user_id, "hair_eboy")
+    assert res_hair["success"]
+
+    av = await avatar.get_player_avatar(user_id)
+    assert 6494 in av["equipped_var_ids"]
+
+    # 2. Player changes clothes in wardrobe (saving only shirt and pants)
+    await avatar.save_custom_avatar(
+        user_id=user_id,
+        var_ids=[33817, 116590],  # only clothing items
+        skin_tone=-1,
+        is_plus_size=0,
+    )
+
+    # 3. Avatar must still have hair 6494 preserved!
+    av2 = await avatar.get_player_avatar(user_id)
+    assert 6494 in av2["equipped_var_ids"]
+    assert 33817 in av2["equipped_var_ids"]
+    assert 116590 in av2["equipped_var_ids"]

@@ -39,6 +39,201 @@ SKIN_TONES: list[dict[str, Any]] = [
 ]
 SKIN_BY_ID = {item["id"]: item for item in SKIN_TONES}
 
+# -----------------------------------------------------------------------------
+# Real Everskies Variation IDs Catalogs for Salon & Barber
+# -----------------------------------------------------------------------------
+
+HAIR_CATALOG: dict[str, dict[str, Any]] = {
+    # Legacy / general keys (backward-compatible)
+    "hair1": {
+        "name": "🎀 کژوال بلند موج‌دار / فید",
+        "gender": "unisex",
+        "var_ids": [3159, 3146],
+        "fee": HAIR_CHANGE_FEE,
+    },
+    "hair2": {
+        "name": "🌸 لایه‌ای مدرن کره‌ای / ولف‌کات",
+        "gender": "unisex",
+        "var_ids": [2509, 2142],
+        "fee": HAIR_CHANGE_FEE,
+    },
+    "hair3": {
+        "name": "⚡️ دم‌اسبی پرانرژی / فرق بغل",
+        "gender": "unisex",
+        "var_ids": [321585, 321626],
+        "fee": HAIR_CHANGE_FEE,
+    },
+    "hair4": {
+        "name": "💇‍♀️ باب کوتاه شهری / بلند رها",
+        "gender": "unisex",
+        "var_ids": [118303],
+        "fee": HAIR_CHANGE_FEE,
+    },
+    "hair5": {
+        "name": "✨ شینیون ابریشمی / بوکات",
+        "gender": "unisex",
+        "var_ids": [103734, 103748],
+        "fee": HAIR_CHANGE_FEE,
+    },
+    # Curated Boy Hairstyles
+    "hair_eboy": {
+        "name": "✂️ موی آشفته ای‌بوی (E-Boy Messy)",
+        "gender": "male",
+        "var_ids": [6494],
+        "fee": HAIR_CHANGE_FEE,
+    },
+    "hair_classic_part": {
+        "name": "✂️ موی کلاسیک فرق‌بغل (Side Part)",
+        "gender": "male",
+        "var_ids": [321585, 321626],
+        "fee": HAIR_CHANGE_FEE,
+    },
+    "hair_spiky_dark": {
+        "name": "✂️ موی کوتاه اسپایکی (Spiky Dark)",
+        "gender": "male",
+        "var_ids": [1409],
+        "fee": HAIR_CHANGE_FEE,
+    },
+    "hair_mullet": {
+        "name": "✂️ مالت ترندی کره‌ای (Messy Mullet)",
+        "gender": "male",
+        "var_ids": [1415, 1416],
+        "fee": HAIR_CHANGE_FEE,
+    },
+    "street_fade": {
+        "name": "🕶 فید خیابانی مدرن (Street Fade)",
+        "gender": "male",
+        "var_ids": [1719],
+        "fee": HAIR_CHANGE_FEE,
+    },
+    "raven_shag": {
+        "name": "🦅 کلاغی آشفته و راک (Raven Shag)",
+        "gender": "male",
+        "var_ids": [1368],
+        "fee": HAIR_CHANGE_FEE,
+    },
+    # Curated Girl Hairstyles
+    "hair_wet_wavy": {
+        "name": "✂️ موی خیس موج‌دار آرتیست (Wet Wavy)",
+        "gender": "female",
+        "var_ids": [3159, 3146],
+        "fee": HAIR_CHANGE_FEE,
+    },
+    "hair_angel_curls": {
+        "name": "✂️ فر لولیتای پلاتینیوم (Angel Curls)",
+        "gender": "female",
+        "var_ids": [2161, 2142],
+        "fee": HAIR_CHANGE_FEE,
+    },
+    "hair_y2k_straight": {
+        "name": "✂️ موی لایه‌ای و صاف (Y2K Straight)",
+        "gender": "female",
+        "var_ids": [2509, 2142],
+        "fee": HAIR_CHANGE_FEE,
+    },
+    "hair_daisy_glam": {
+        "name": "✂️ موی مجلسی گل بابونه (Daisy Glam)",
+        "gender": "female",
+        "var_ids": [103734, 103748],
+        "fee": HAIR_CHANGE_FEE,
+    },
+    "hair_pigtails": {
+        "name": "✂️ موی خرگوشی پاستلی (Pigtails)",
+        "gender": "female",
+        "var_ids": [1349, 1352],
+        "fee": HAIR_CHANGE_FEE,
+    },
+    "hair_bob": {
+        "name": "✂️ باب کوتاه کلاسیک (Flipped Bob)",
+        "gender": "female",
+        "var_ids": [118303],
+        "fee": HAIR_CHANGE_FEE,
+    },
+}
+
+ALL_SALON_HAIR_VAR_IDS: set[int] = {
+    vid for h in HAIR_CATALOG.values() for vid in h["var_ids"]
+} | {
+    6494, 321585, 321626, 3159, 3146, 2161, 2509, 103734, 103748,
+    1349, 1352, 118303, 1409, 1415, 1416, 1719, 1368, 1316, 1382,
+    1384, 1419, 1430,
+}
+
+# Eyes & Lenses Catalog
+EYES_CATALOG: dict[str, dict[str, Any]] = {
+    "eyes1_1": {
+        "name": "🌸 شاداب و گرد (Sweet Round)",
+        "var_ids": [1702],
+        "fee": EYES_CHANGE_FEE,
+    },
+    "eyes2_1": {
+        "name": "⚡️ تیز و جسور (Fierce Sharp)",
+        "var_ids": [58359],
+        "fee": EYES_CHANGE_FEE,
+    },
+    "eyes3_1": {
+        "name": "🕊 خونسرد و کشیده (Cool Almond)",
+        "var_ids": [321598],
+        "fee": EYES_CHANGE_FEE,
+    },
+    "eyes4_1": {
+        "name": "🔥 چشم‌های معصوم فرشته (Angel Eyes)",
+        "var_ids": [2143],
+        "fee": EYES_CHANGE_FEE,
+    },
+    "eyes_glam": {
+        "name": "✨ میکاپ چشم مجلسی و شاین (Daisy Eyes)",
+        "var_ids": [103736],
+        "fee": EYES_CHANGE_FEE,
+    },
+    "arcane_eye_mark": {
+        "name": "✨ کک‌ومک اکلیلی و درخشان (Sparkly Freckles)",
+        "var_ids": [103753],
+        "fee": EYES_CHANGE_FEE,
+    },
+}
+
+ALL_SALON_EYES_VAR_IDS: set[int] = {
+    vid for e in EYES_CATALOG.values() for vid in e["var_ids"]
+} | {58359, 321598, 1702, 2143, 103736, 103753}
+
+# Lips & Lipstick Catalog
+LIPS_CATALOG: dict[str, dict[str, Any]] = {
+    "lip_natural_nude": {
+        "name": "💄 رژ نود طبیعی مات",
+        "var_ids": [1388],
+        "fee": LIPS_CHANGE_FEE,
+    },
+    "lip_velvet_cherry": {
+        "name": "🍒 رژ بنفش مخملی (Purple Lipstick)",
+        "var_ids": [103752],
+        "fee": LIPS_CHANGE_FEE,
+    },
+    "lip_royal_wine": {
+        "name": "🍷 رژ شرابی اشرافی تیره",
+        "var_ids": [2295],
+        "fee": LIPS_CHANGE_FEE,
+    },
+    "lip_peach_gloss": {
+        "name": "🍑 رژ شاین هلویی براق",
+        "var_ids": [103754],
+        "fee": LIPS_CHANGE_FEE,
+    },
+    "lip_clean_natural": {
+        "name": "💄 لب طبیعی بدون رژ",
+        "var_ids": [],
+        "fee": LIPS_CHANGE_FEE,
+    },
+}
+
+ALL_SALON_LIPS_VAR_IDS: set[int] = {
+    vid for lip in LIPS_CATALOG.values() for vid in lip["var_ids"]
+} | {103752, 1388, 2295, 103754}
+
+ALL_SALON_FEATURE_VAR_IDS: set[int] = (
+    ALL_SALON_HAIR_VAR_IDS | ALL_SALON_EYES_VAR_IDS | ALL_SALON_LIPS_VAR_IDS
+)
+
 # Hair catalog (combining items & base models)
 HAIR_STYLES: dict[str, str] = {
     "hair1": "🎀 کژوال بلند موج‌دار / فید",
@@ -235,15 +430,34 @@ async def change_hair_paid(
                 (style_key, user_id),
             )
 
-    # Also record in player_avatar makeup_data
+    # 2. Update player_avatar equipped_var_ids with real Everskies variation IDs!
     av = await avatar.get_player_avatar(user_id)
+    cur_vars = list(av.get("equipped_var_ids", []))
+    cleaned_vars = [v for v in cur_vars if v not in ALL_SALON_HAIR_VAR_IDS]
+
+    hair_entry = HAIR_CATALOG.get(style_key)
+    new_vids = list(hair_entry["var_ids"]) if hair_entry else []
+    updated_vars = new_vids + cleaned_vars
+
+    now_ts = int(time.time())
     makeup = av.get("makeup_data") or {}
     makeup["hair_style"] = style_key
     if color_key:
         makeup["hair_color"] = color_key
-    await _save_makeup_data(user_id, makeup)
 
-    hair_lbl = HAIR_STYLES.get(style_key, style_key)
+    async with db.write() as conn:
+        await conn.execute(
+            """
+            UPDATE player_avatar
+            SET equipped_var_ids = ?, makeup_data = ?, updated_at = ?
+            WHERE user_id = ?
+            """,
+            (json.dumps(updated_vars), json.dumps(makeup), now_ts, user_id),
+        )
+
+    avatar.invalidate_avatar_cache(user_id)
+
+    hair_lbl = hair_entry["name"] if hair_entry else HAIR_STYLES.get(style_key, style_key)
     col_lbl = HAIR_COLORS.get(color_key or "", "")
     col_str = f" با رنگ {col_lbl}" if col_lbl else ""
 
@@ -287,13 +501,32 @@ async def change_eyes_paid(
             )
 
     av = await avatar.get_player_avatar(user_id)
+    cur_vars = list(av.get("equipped_var_ids", []))
+    cleaned_vars = [v for v in cur_vars if v not in ALL_SALON_EYES_VAR_IDS]
+
+    eye_entry = EYES_CATALOG.get(eye_style)
+    new_vids = list(eye_entry["var_ids"]) if eye_entry else []
+    updated_vars = new_vids + cleaned_vars
+
+    now_ts = int(time.time())
     makeup = av.get("makeup_data") or {}
     makeup["eye_style"] = eye_style
     if eye_color:
         makeup["eye_color"] = eye_color
-    await _save_makeup_data(user_id, makeup)
 
-    e_lbl = EYE_SHAPES.get(eye_style, eye_style)
+    async with db.write() as conn:
+        await conn.execute(
+            """
+            UPDATE player_avatar
+            SET equipped_var_ids = ?, makeup_data = ?, updated_at = ?
+            WHERE user_id = ?
+            """,
+            (json.dumps(updated_vars), json.dumps(makeup), now_ts, user_id),
+        )
+
+    avatar.invalidate_avatar_cache(user_id)
+
+    e_lbl = eye_entry["name"] if eye_entry else EYE_SHAPES.get(eye_style, eye_style)
     c_lbl = EYE_COLORS.get(eye_color or "", "")
     c_str = f" و لنز {c_lbl}" if c_lbl else ""
 
@@ -378,7 +611,7 @@ async def change_ears_paid(user_id: int, ear_style: str) -> dict[str, Any]:
 
 async def change_lips_paid(user_id: int, lip_style: str) -> dict[str, Any]:
     """Change lips makeup and lipstick (costs LIPS_CHANGE_FEE)."""
-    if lip_style not in LIP_STYLES:
+    if lip_style not in LIP_STYLES and lip_style not in LIPS_CATALOG:
         return {"success": False, "message": "❌ مدل رژ لب نامعتبر است."}
 
     credits_bal, _ = await economy.balances(user_id)
@@ -394,11 +627,30 @@ async def change_lips_paid(user_id: int, lip_style: str) -> dict[str, Any]:
     await economy.spend(user_id, credits=LIPS_CHANGE_FEE, kind=ActivityKind.SALON)
 
     av = await avatar.get_player_avatar(user_id)
+    cur_vars = list(av.get("equipped_var_ids", []))
+    cleaned_vars = [v for v in cur_vars if v not in ALL_SALON_LIPS_VAR_IDS]
+
+    lip_entry = LIPS_CATALOG.get(lip_style)
+    new_vids = list(lip_entry["var_ids"]) if lip_entry else []
+    updated_vars = new_vids + cleaned_vars
+
+    now_ts = int(time.time())
     makeup = av.get("makeup_data") or {}
     makeup["lip_style"] = lip_style
-    await _save_makeup_data(user_id, makeup)
 
-    lbl = LIP_STYLES[lip_style]
+    async with db.write() as conn:
+        await conn.execute(
+            """
+            UPDATE player_avatar
+            SET equipped_var_ids = ?, makeup_data = ?, updated_at = ?
+            WHERE user_id = ?
+            """,
+            (json.dumps(updated_vars), json.dumps(makeup), now_ts, user_id),
+        )
+
+    avatar.invalidate_avatar_cache(user_id)
+
+    lbl = lip_entry["name"] if lip_entry else LIP_STYLES.get(lip_style, lip_style)
     return {
         "success": True,
         "fee": LIPS_CHANGE_FEE,

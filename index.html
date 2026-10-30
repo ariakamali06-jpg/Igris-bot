@@ -5187,7 +5187,15 @@
     function getAvailableItems() {
       if (appMode === 'wardrobe') {
         const ownedSet = new Set(ownedItemIds.length > 0 ? ownedItemIds : equippedVarList);
-        const pool = RAW_ITEMS.filter(it => ownedSet.has(it.v));
+        // در کمد شخصی فقط لباس‌ها و اکسسوری‌ها نمایش داده می‌شوند؛ مو، چشم و میکاپ در آرایشگاه تنظیم می‌شوند
+        const pool = RAW_ITEMS.filter(it => {
+          if (!ownedSet.has(it.v)) return false;
+          const isHair = it.c === 'hair' || it.s === 'hair_base' || it.s === 'hair_front' || it.s === 'hair_back' || it.s === 'hair_extensions';
+          const isFace = it.c === 'makeup' || it.c === 'face_eyes' || it.c === 'face_lips' || it.c === 'face_nose' || it.s === 'eyes' || it.s === 'lips' || it.s === 'eyeshadow_lashes' || it.s === 'freckles_moles' || it.s === 'body_parts';
+          const isHeadAccessory = it.s === 'headbands_clips' || it.s === 'hats' || it.s === 'earrings' || it.s === 'glasses';
+          if (isHeadAccessory) return true;
+          return !isHair && !isFace;
+        });
         for (const vId of ownedSet) {
           if (!ITEMS_BY_VAR.has(vId)) {
             const dynamicItem = { v: vId, n: `قلم کمد #${vId}`, z: 'extra', tag: 'misc', s: 'misc', st: 'کمد شخصی', g: currentGender, img: '' };
@@ -5782,6 +5790,14 @@
         }
 
         renderSkinSwatches();
+        if (appMode === 'wardrobe') {
+          // مخفی‌سازی سولاریوم و تب مو/چهره از کمد؛ مو و چهره در آرایشگاه مدیریت می‌شوند
+          const skinPicker = document.getElementById('skinTonePicker');
+          if (skinPicker) skinPicker.style.display = 'none';
+          const headTab = document.querySelector('.zone-tab-btn[data-zone="head"]');
+          if (headTab) headTab.style.display = 'none';
+          if (currentZone === 'head') currentZone = 'sets';
+        }
         renderSubtags();
         renderCatalog();
         updateAvatarPreview();

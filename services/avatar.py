@@ -133,6 +133,11 @@ _AVATAR_HD_CACHE: OrderedDict[str, bytes] = OrderedDict()
 _MAX_HD_CACHE: int = 150
 
 
+def invalidate_avatar_cache(user_id: int | None = None) -> None:
+    """Clear in-memory HD avatar cache to ensure immediate live renders."""
+    _AVATAR_HD_CACHE.clear()
+
+
 async def fetch_upscaled_avatar(render_url: str, scale: int = 4) -> bytes | None:
     """Fetch avatar PNG from Everskies CDN and upscale using Nearest Neighbor.
 
@@ -361,10 +366,22 @@ async def save_custom_avatar(
     owned_sets: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Save player custom avatar composition from customizer / Mini App."""
-    await get_player_avatar(user_id)  # ensure row exists
+    cur_av = await get_player_avatar(user_id)  # ensure row exists
     now_ts = int(time.time())
     active_set = 9999 if var_ids else None
     clean_vars = [int(v) for v in var_ids if int(v) > 0]
+
+    # حفظ و ترکیب مو، چشم و اجزای صورت بازیکن در صورتی که در اقلام ارسالی کمد نباشند
+    try:
+        from services import salon
+
+        cur_vars = cur_av.get("equipped_var_ids", [])
+        cur_face_features = [v for v in cur_vars if v in salon.ALL_SALON_FEATURE_VAR_IDS]
+        for f_id in cur_face_features:
+            if f_id not in clean_vars:
+                clean_vars.append(f_id)
+    except Exception:
+        pass
 
     async with db.write() as conn:
         await conn.execute(

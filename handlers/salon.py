@@ -134,21 +134,31 @@ async def _build_makeup_menu(user_id: int) -> tuple[str, str, InlineKeyboardMark
 
 
 async def _build_hair_menu(user_id: int) -> tuple[str, str, InlineKeyboardMarkup]:
-    """Generate hairstyle and hair color picker."""
+    """Generate hairstyle and hair color picker tailored to player gender."""
     st = await salon.get_player_salon_state(user_id)
+    p_gen = (st.get("gender") or "").lower()
+    is_male = any(k in p_gen for k in ("مرد", "پسر", "boy", "male"))
+
     caption = (
-        f"✂️ <b>پیرایش، مدل مو و رنگ مو</b>\n"
-        f"💵 هزینه هر تغییر: <b>{salon.HAIR_CHANGE_FEE:,}</b> سکه\n"
-        f"💰 موجودی: <b>{st['credits']:,}</b> سکه\n"
+        f"✂️ <b>پیرایش و سالن تخصصی مو تیرامیکس</b>\n"
+        f"💵 هزینه هر مدل مو: <b>{salon.HAIR_CHANGE_FEE:,}</b> سکه\n"
+        f"💰 موجودی شما: <b>{st['credits']:,}</b> سکه\n"
         f"👤 استایل فعلی: <b>{st['hair_label']}</b> ({st['hair_color_label']})\n\n"
-        f"مدل مو یا رنگ دلخواهتان را انتخاب کنید:"
+        f"مدل موی مورد نظرت رو لمس کن تا در لحظه بر سر کاراکتر بنشیند:"
     )
 
     buttons: list[list[InlineKeyboardButton]] = []
-    # Hairstyle list
-    for k, v in list(salon.HAIR_STYLES.items())[:6]:
+    # Filter catalog by player gender
+    target_gender = "male" if is_male else "female"
+    curated_hairs = [
+        (k, defn["name"])
+        for k, defn in salon.HAIR_CATALOG.items()
+        if defn["gender"] in (target_gender, "unisex")
+    ]
+
+    for k, name in curated_hairs:
         mark = " ✅" if k == st["hair_style"] else ""
-        buttons.append([_nav_btn(f"{v}{mark}", f"sal:set_hair:{k}")])
+        buttons.append([_nav_btn(f"{name}{mark}", f"sal:set_hair:{k}")])
 
     # Hair colors
     color_row1 = [
@@ -163,7 +173,7 @@ async def _build_hair_menu(user_id: int) -> tuple[str, str, InlineKeyboardMarkup
     ]
     buttons.append(color_row1)
     buttons.append(color_row2)
-    buttons.append([_nav_btn("🔙 بازگشت به سالن میکاپ", "sal:makeup")])
+    buttons.append([_nav_btn("🔙 بازگشت به سالن چهره", "sal:makeup")])
 
     return st["render_url"], caption, InlineKeyboardMarkup(inline_keyboard=buttons)
 
@@ -333,9 +343,13 @@ async def cmd_salon_entry(message: Message) -> None:
 
         render_url, caption, markup = await _build_salon_menu(user.id)
         if render_url:
-            await message.reply_photo(photo=render_url, caption=caption, reply_markup=markup)
+            from handlers.boutique import _render_photo_payload
+            photo_payload = await _render_photo_payload(render_url, "salon.png")
+            await message.reply_photo(
+                photo=photo_payload, caption=caption, reply_markup=markup, parse_mode="HTML"
+            )
         else:
-            await message.reply(caption, reply_markup=markup)
+            await message.reply(caption, reply_markup=markup, parse_mode="HTML")
     except Exception as exc:  # noqa: BLE001
         await answer_error(exc, message=message)
 
@@ -510,14 +524,16 @@ async def _update_view(
     caption: str,
     markup: InlineKeyboardMarkup,
 ) -> None:
-    """Update message media or text without chat spam."""
+    """Update message media or text without chat spam using fresh HD bytes."""
     if not call.message:
         return
 
     if render_url:
-        media = InputMediaPhoto(media=render_url, caption=caption)
+        from handlers.boutique import _render_photo_payload
+        photo_payload = await _render_photo_payload(render_url, "salon.png")
+        media = InputMediaPhoto(media=photo_payload, caption=caption, parse_mode="HTML")
         with contextlib.suppress(TelegramBadRequest):
             await call.message.edit_media(media=media, reply_markup=markup)
     else:
         with contextlib.suppress(TelegramBadRequest):
-            await call.message.edit_text(text=caption, reply_markup=markup)
+            await call.message.edit_text(text=caption, reply_markup=markup, parse_mode="HTML")
