@@ -578,3 +578,50 @@ async def test_outfit_switch_menu_and_custom_preset_saving():
             await conn.execute("DELETE FROM player_wardrobe WHERE user_id = ?", (test_user_id,))
             await conn.execute("DELETE FROM player_avatar WHERE user_id = ?", (test_user_id,))
             await conn.execute("DELETE FROM players WHERE user_id = ?", (test_user_id,))
+
+
+async def test_wardrobe_message_live_refresh_on_miniapp_save():
+    """Verify that if player has an open wardrobe card, Mini App save refreshes it in-place."""
+    import base64
+    from unittest.mock import AsyncMock, MagicMock
+
+    from handlers.onboarding import _handle_compact_wear_payload
+
+    test_user_id = 999335
+    await game.ensure_player(test_user_id, "Live Refresh Tester", "liverefresh")
+
+    try:
+        # Mock active wardrobe message tracking
+        avatar.set_user_wardrobe_message(test_user_id, chat_id=-10012345, message_id=888)
+
+        # Mock incoming message with bot instance
+        msg = AsyncMock()
+        msg.from_user.id = test_user_id
+        msg.from_user.full_name = "Live Refresh Tester"
+        msg.from_user.username = "liverefresh"
+        msg.reply_photo = AsyncMock()
+        msg.reply = AsyncMock()
+        mock_bot = MagicMock()
+        mock_bot.edit_message_media = AsyncMock()
+        msg.bot = mock_bot
+
+        # Save new look via compact payload
+        header = 1  # slim, skin 1, female 0
+        raw_bytes = bytearray([header])
+        for v in [28144, 33817, 116590]:
+            raw_bytes.extend([(v >> 16) & 0xFF, (v >> 8) & 0xFF, v & 0xFF])
+        b64 = base64.urlsafe_b64encode(bytes(raw_bytes)).decode().rstrip("=")
+
+        await _handle_compact_wear_payload(msg, b64)
+
+        # Verify bot.edit_message_media was called on the tracked wardrobe message!
+        assert mock_bot.edit_message_media.called
+        call_kwargs = mock_bot.edit_message_media.call_args.kwargs
+        assert call_kwargs["chat_id"] == -10012345
+        assert call_kwargs["message_id"] == 888
+    finally:
+        avatar.clear_user_wardrobe_message(test_user_id)
+        async with db.write() as conn:
+            await conn.execute("DELETE FROM player_wardrobe WHERE user_id = ?", (test_user_id,))
+            await conn.execute("DELETE FROM player_avatar WHERE user_id = ?", (test_user_id,))
+            await conn.execute("DELETE FROM players WHERE user_id = ?", (test_user_id,))

@@ -840,6 +840,22 @@ async def buy_boutique_set(
     return final_price, set_info
 
 
+
+_USER_WARDROBE_MSG: dict[int, tuple[int, int]] = {}
+
+def set_user_wardrobe_message(user_id: int, chat_id: int, message_id: int) -> None:
+    """Remember the user's active wardrobe message to update it in-place after Mini App saves."""
+    _USER_WARDROBE_MSG[user_id] = (chat_id, message_id)
+
+def get_user_wardrobe_message(user_id: int) -> tuple[int, int] | None:
+    """Retrieve the active wardrobe message (chat_id, message_id) for the user."""
+    return _USER_WARDROBE_MSG.get(user_id)
+
+def clear_user_wardrobe_message(user_id: int) -> None:
+    """Clear tracked wardrobe message when closed."""
+    _USER_WARDROBE_MSG.pop(user_id, None)
+
+
 async def list_wardrobe(user_id: int) -> list[dict[str, Any]]:
     """Return all sets owned by the player in their wardrobe, active set first."""
     player_av = await get_player_avatar(user_id)

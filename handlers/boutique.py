@@ -467,7 +467,8 @@ async def handle_wardrobe_command(message: Message) -> None:
     )
     render_url, caption, markup = await _build_wardrobe_card(user_id=user_id, index=0)
     photo_payload = await _render_photo_payload(render_url, "wardrobe.png")
-    await message.reply_photo(photo=photo_payload, caption=caption, reply_markup=markup)
+    sent = await message.reply_photo(photo=photo_payload, caption=caption, reply_markup=markup)
+    avatar.set_user_wardrobe_message(user_id, sent.chat.id, sent.message_id)
 
 
 @router.message(Command("avatar"))
@@ -632,6 +633,21 @@ async def handle_customizer_webapp_data(message: Message) -> None:
         render_url = await avatar.get_player_render_url(user_id)
         photo_payload = await _render_photo_payload(render_url, "custom_avatar.png")
 
+        # اگر کاربر پیام کمد بازی داشت، آن پیام را درجا با عکس جدید ویرایش کن
+        bot_instance = getattr(message, "bot", None)
+        wdr_msg = avatar.get_user_wardrobe_message(user_id)
+        if wdr_msg and bot_instance:
+            w_chat_id, w_msg_id = wdr_msg
+            with contextlib.suppress(Exception):
+                w_url, w_cap, w_mark = await _build_wardrobe_card(user_id=user_id, index=0)
+                w_photo = await _render_photo_payload(w_url, "wardrobe.png")
+                await bot_instance.edit_message_media(
+                    chat_id=w_chat_id,
+                    message_id=w_msg_id,
+                    media=InputMediaPhoto(media=w_photo, caption=w_cap, parse_mode="HTML"),
+                    reply_markup=w_mark,
+                )
+
         custom_url = await avatar.get_customizer_url(user_id)
         if is_new_player:
             caption = (
@@ -776,6 +792,7 @@ async def handle_boutique_callback(call: CallbackQuery) -> None:
         return
 
     if action == "close":
+        avatar.clear_user_wardrobe_message(user_id)
         await call.answer()
         with contextlib.suppress(TelegramBadRequest):
             await call.message.delete()
@@ -931,9 +948,11 @@ async def handle_wardrobe_callback(call: CallbackQuery) -> None:
         await call.answer()
         return
 
+    avatar.set_user_wardrobe_message(user_id, call.message.chat.id, call.message.message_id)
+
     if action in ("open", "nav", "view"):
         idx = int(parts[2]) if len(parts) > 2 else 0
-        render_url, caption, markup = await _build_wardrobe_card(user_id=user_id, index=idx)
+        render_url, caption, markup = await _build_wardrobe_card(user_id=user_id, index=0)
         photo_payload = await _render_photo_payload(render_url, "wardrobe.png")
         with contextlib.suppress(TelegramBadRequest):
             await call.message.edit_media(

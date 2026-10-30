@@ -5667,7 +5667,7 @@
 
         if (loadoutData) {
           if (loadoutData.bot) {
-            botUsername = loadoutData.bot;
+            botUsername = (loadoutData.bot || '').replace(/^@/, '').trim();
           }
           if (loadoutData.gen) {
             currentGender = (loadoutData.gen === 'female' || loadoutData.gen === 'دختر') ? 'female' : 'male';

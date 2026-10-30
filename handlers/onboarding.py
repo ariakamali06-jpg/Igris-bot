@@ -16,6 +16,7 @@ from aiogram.types import (
     CallbackQuery,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
+    InputMediaPhoto,
     Message,
     User,
     WebAppInfo,
@@ -240,6 +241,7 @@ async def _handle_compact_wear_payload(
             skin_tone_id = skin_map.get(skin_idx, -1)
 
         player = await hydrate(user.id, user.full_name, user.username)
+        bot_instance = getattr(message, "bot", None)
         fsm_state = (await state.get_state()) if state else None
         is_new_player = (player.onboarding_completed == 0) or (fsm_state is not None)
 
@@ -319,6 +321,25 @@ async def _handle_compact_wear_payload(
 
         render_url = await avatar.get_player_render_url(user.id)
         photo_payload = await avatar.fetch_upscaled_avatar(render_url, scale=2)
+
+        # اگر کاربر کارت کمد بازی در چت داشت، همان پیام را درجا نوسازی کن
+        from handlers import boutique as btq_h
+        wdr_msg = avatar.get_user_wardrobe_message(user.id)
+        if wdr_msg and bot_instance:
+            w_chat_id, w_msg_id = wdr_msg
+            with contextlib.suppress(Exception):
+                w_url, w_cap, w_mark = await btq_h._build_wardrobe_card(
+                    user_id=user.id, index=0
+                )
+                w_photo = await btq_h._render_photo_payload(w_url, "wardrobe.png")
+                await bot_instance.edit_message_media(
+                    chat_id=w_chat_id,
+                    message_id=w_msg_id,
+                    media=InputMediaPhoto(
+                        media=w_photo, caption=w_cap, parse_mode="HTML"
+                    ),
+                    reply_markup=w_mark,
+                )
 
         custom_url = await avatar.get_customizer_url(user.id)
         if is_new_player:
@@ -422,6 +443,7 @@ async def _handle_wear_payload(
 
         # hydrate + ensure_player: اگر کاربر تازه‌کار باشد هم ردیف بازی ساخته می‌شود
         player = await hydrate(user.id, user.full_name, user.username)
+        bot_instance = getattr(message, "bot", None)
         fsm_state = (await state.get_state()) if state else None
         is_new_player = (player.onboarding_completed == 0) or (fsm_state is not None)
 
@@ -491,6 +513,25 @@ async def _handle_wear_payload(
 
         render_url = await avatar.get_player_render_url(user.id)
         photo_payload = await avatar.fetch_upscaled_avatar(render_url, scale=2)
+
+        # اگر کاربر کارت کمد بازی در چت داشت، همان پیام را درجا نوسازی کن
+        from handlers import boutique as btq_h
+        wdr_msg = avatar.get_user_wardrobe_message(user.id)
+        if wdr_msg and bot_instance:
+            w_chat_id, w_msg_id = wdr_msg
+            with contextlib.suppress(Exception):
+                w_url, w_cap, w_mark = await btq_h._build_wardrobe_card(
+                    user_id=user.id, index=0
+                )
+                w_photo = await btq_h._render_photo_payload(w_url, "wardrobe.png")
+                await bot_instance.edit_message_media(
+                    chat_id=w_chat_id,
+                    message_id=w_msg_id,
+                    media=InputMediaPhoto(
+                        media=w_photo, caption=w_cap, parse_mode="HTML"
+                    ),
+                    reply_markup=w_mark,
+                )
 
         custom_url = await avatar.get_customizer_url(user.id)
         if is_new_player:
