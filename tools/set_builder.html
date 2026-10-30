@@ -779,24 +779,22 @@ function handleCatalogSearch(val) {
   renderCatalog();
 }
 
-// Sorting layers canonically
+// Sorting layers canonically — مانکن همیشه در آخرین لایه (پایین‌ترین لایه، زیر همه لباس‌ها)
 function autoSortLayers(list) {
-  // Ensure MANNEQUIN_LAYER_ID is present
-  const withMannequin = list.includes(MANNEQUIN_LAYER_ID) ? list.slice() : [...list, MANNEQUIN_LAYER_ID];
+  const withoutMannequin = list.filter(v => v !== MANNEQUIN_LAYER_ID && v > 0);
 
   const rankOf = v => {
-    if (v === MANNEQUIN_LAYER_ID || v < 0 || v === '__BODY__') {
-      return 99999; // مانکن پایه به طور پیش‌فرض در پایین‌ترین لایه (پایین لیست) قرار می‌گیرد
-    }
     const it = ITEMS_MAP.get(v);
-    if (!it) return LAYER_ORDER.length;
+    if (!it) return 500;
     const subIdx = LAYER_ORDER.indexOf(it.s);
     if (subIdx !== -1) return subIdx;
     const catIdx = LAYER_ORDER.indexOf(it.c);
     if (catIdx !== -1) return catIdx;
-    return LAYER_ORDER.length;
+    return 500;
   };
-  return withMannequin.sort((a, b) => rankOf(a) - rankOf(b));
+  const sortedClothes = withoutMannequin.sort((a, b) => rankOf(a) - rankOf(b));
+  // مانکن پایه به صورت پیش‌فرض در انتهای لیست (پایین‌ترین لایه، زیر همه لباس‌ها) قرار می‌گیرد
+  return [...sortedClothes, MANNEQUIN_LAYER_ID];
 }
 
 function updateMannequinPreview() {
@@ -820,20 +818,31 @@ function toggleItem(varId) {
   const idx = currentEquippedList.indexOf(varId);
   if (idx !== -1) {
     currentEquippedList.splice(idx, 1);
+    showToast('🗑 قلم از مانکن خارج شد');
   } else {
-    // Check if item is part of a hair set
+    // آیتم‌های جدید همیشه به صورت پیش‌فرض اول اول (روترین لایه، روی بدن) قرار می‌گیرند
     const item = ITEMS_MAP.get(varId);
     if (item && item.st && HAIR_SETS[item.st] && HAIR_SETS[item.st].length > 1 && item.c === 'hair') {
       const setParts = HAIR_SETS[item.st].map(p => p.v);
       setParts.forEach(pId => {
-        if (!currentEquippedList.includes(pId)) currentEquippedList.push(pId);
+        const pIdx = currentEquippedList.indexOf(pId);
+        if (pIdx !== -1) currentEquippedList.splice(pIdx, 1);
       });
-      showToast('🧩 ست موی کامل (' + setParts.length + ' تکه) اضافه شد');
+      // افزودن تمام قطعات مو در اول اول لیست
+      currentEquippedList.unshift(...setParts);
+      showToast('🧩 ست موی کامل (' + setParts.length + ' تکه) به روترین لایه اضافه شد');
     } else {
-      currentEquippedList.push(varId);
+      // آیتم به صورت پیش‌فرض اول اول انتخاب می‌شود و روی بدن قرار می‌گیرد
+      currentEquippedList.unshift(varId);
+      showToast('✨ قلم بر تن مانکن نشست (روترین لایه)');
     }
   }
-  currentEquippedList = autoSortLayers(currentEquippedList);
+
+  // اطمینان از اینکه مانکن پایه در لایه‌ها حضور دارد (اگر نیست، به انتهای لایه‌ها اضافه شود)
+  if (!currentEquippedList.includes(MANNEQUIN_LAYER_ID)) {
+    currentEquippedList.push(MANNEQUIN_LAYER_ID);
+  }
+
   updateMannequinPreview();
   renderEquippedList();
   renderCatalog();
@@ -1121,7 +1130,6 @@ function loadSetIntoStudio(setId) {
   let vars = s.var_ids.slice();
   if (!vars.includes(MANNEQUIN_LAYER_ID)) {
     vars.push(MANNEQUIN_LAYER_ID);
-    vars = autoSortLayers(vars);
   }
   currentEquippedList = vars;
 

@@ -5094,8 +5094,8 @@
         }
         showToast('🗑 قلم از تن کاراکتر خارج شد');
       } else {
-        // Equip: first as a raw list, then applyEquipped sorts it automatically
-        equippedVarList.push(vId);
+        // Equip: پیش‌فرض همیشه در اول اول (روترین لایه، روی همه لباس‌ها) قرار می‌گیرد
+        equippedVarList.unshift(vId);
         showToast('✨ قلم روی کاراکتر پوشیده شد');
 
         // Check if item belongs to a multi-piece hair set
