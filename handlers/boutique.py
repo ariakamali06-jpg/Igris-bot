@@ -302,23 +302,26 @@ async def _build_wardrobe_card(
     else:
         nav_row = [InlineKeyboardButton(text=f"✨ {total} ست موجود", callback_data="noop")]
 
-    if is_active:
-        equip_row = [
-            InlineKeyboardButton(text="✅ در حال حاضر بر تن دارید", callback_data="noop")
-        ]
-    else:
-        equip_row = [
+    # دکمه‌های تعویض لباس و مدیریت ست‌های کمد
+    action_row: list[InlineKeyboardButton] = []
+    if not is_active:
+        action_row.append(
             InlineKeyboardButton(
                 text="👕 پوشیدن این ست",
                 callback_data=f"wdr:equip:{set_id}:{idx}",
             )
-        ]
+        )
+    action_row.append(
+        InlineKeyboardButton(
+            text="🔄 تعویض لباس (انتخاب ست)",
+            callback_data="wdr:sets_list:0",
+        )
+    )
 
     options_row = [
         InlineKeyboardButton(
-            text="💇‍♀️ آرایشگاه و سولاریوم (پولی)", callback_data="sal:menu"
+            text="💇‍♀️ آرایشگاه و چهره", callback_data="sal:menu"
         ),
-        InlineKeyboardButton(text="❌ درآوردن لباس", callback_data=f"wdr:unequip:{idx}"),
     ]
 
     if settings.webapp_url:
@@ -337,9 +340,57 @@ async def _build_wardrobe_card(
     ]
 
     markup = InlineKeyboardMarkup(
-        inline_keyboard=[nav_row, equip_row, options_row, bottom_row]
+        inline_keyboard=[nav_row, action_row, options_row, bottom_row]
     )
     return render_url, caption, markup
+
+
+async def _build_outfit_switch_menu(
+    user_id: int,
+) -> tuple[str, str, InlineKeyboardMarkup]:
+    """Generate change-outfit menu listing all available owned sets with 1-tap equip."""
+    items = await avatar.list_wardrobe(user_id)
+    player_av = await avatar.get_player_avatar(user_id)
+    equipped_vars = player_av.get("equipped_var_ids", [])
+    active_set_id = player_av.get("active_set_id")
+    render_url = await avatar.get_player_render_url(user_id)
+
+    clean_eq_set = set(int(v) for v in equipped_vars if int(v) > 0)
+
+    caption = (
+        "🔄 <b>منوی تعویض لباس و انتخاب ست</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "روی هر کدام از ست‌های زیر بزنید تا بلافاصله بر تن کاراکتر شما بنشیند:\n"
+    )
+
+    buttons: list[list[InlineKeyboardButton]] = []
+    for idx, s in enumerate(items):
+        s_id = s["set_id"]
+        is_cur = (
+            (active_set_id is not None and s_id == active_set_id)
+            or (bool(clean_eq_set) and set(s.get("var_ids", [])) == clean_eq_set)
+        )
+        if is_cur:
+            btn_text = f"✅ {s['name']} (بر تن)"
+            cb = "noop"
+        else:
+            btn_text = f"👕 {s['name']} ({s['item_count']} تکه)"
+            cb = f"wdr:equip:{s_id}:{idx}"
+        buttons.append([InlineKeyboardButton(text=btn_text, callback_data=cb)])
+
+    if settings.webapp_url:
+        custom_url = await avatar.get_customizer_url(user_id)
+        buttons.append(
+            [
+                InlineKeyboardButton(
+                    text="📱 طراحی و شخصی‌سازی در مینی‌اپ",
+                    web_app=WebAppInfo(url=custom_url),
+                )
+            ]
+        )
+
+    buttons.append([InlineKeyboardButton(text="🔙 بازگشت به کمد", callback_data="wdr:open:0")])
+    return render_url, caption, InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
 async def _build_skin_menu(user_id: int) -> tuple[str, str, InlineKeyboardMarkup]:
@@ -547,11 +598,13 @@ async def handle_customizer_webapp_data(message: Message) -> None:
         player = await hydrate(user_id, full_name, username)
         is_new_player = player.onboarding_completed == 0
 
+        custom_set = data.get("custom_set")
         await avatar.save_custom_avatar(
             user_id=user_id,
             var_ids=var_ids,
             skin_tone=skin_tone_id,
             is_plus_size=is_plus,
+            custom_set=custom_set,
         )
 
         if is_new_player:
@@ -867,12 +920,24 @@ async def handle_wardrobe_callback(call: CallbackQuery) -> None:
     parts = call.data.split(":")
     action = parts[1] if len(parts) > 1 else ""
 
+    if action == "sets_list":
+        render_url, caption, markup = await _build_outfit_switch_menu(user_id=user_id)
+        photo_payload = await _render_photo_payload(render_url, "wardrobe.png")
+        with contextlib.suppress(TelegramBadRequest):
+            await call.message.edit_media(
+                media=InputMediaPhoto(media=photo_payload, caption=caption, parse_mode="HTML"),
+                reply_markup=markup,
+            )
+        await call.answer()
+        return
+
     if action in ("open", "nav", "view"):
         idx = int(parts[2]) if len(parts) > 2 else 0
         render_url, caption, markup = await _build_wardrobe_card(user_id=user_id, index=idx)
+        photo_payload = await _render_photo_payload(render_url, "wardrobe.png")
         with contextlib.suppress(TelegramBadRequest):
             await call.message.edit_media(
-                media=InputMediaPhoto(media=render_url, caption=caption, parse_mode="HTML"),
+                media=InputMediaPhoto(media=photo_payload, caption=caption, parse_mode="HTML"),
                 reply_markup=markup,
             )
         await call.answer()
@@ -883,14 +948,15 @@ async def handle_wardrobe_callback(call: CallbackQuery) -> None:
         idx = int(parts[3]) if len(parts) > 3 else 0
         try:
             await avatar.equip_set(user_id, set_id)
-            await call.answer("👕 لباس بر تن کاراکتر شما نشانده شد!", show_alert=True)
+            await call.answer("👕 لباس با موفقیت بر تن کاراکتر شما نشست!", show_alert=True)
         except Exception as exc:
             await call.answer(f"خطا: {exc}", show_alert=True)
 
         render_url, caption, markup = await _build_wardrobe_card(user_id=user_id, index=idx)
+        photo_payload = await _render_photo_payload(render_url, "wardrobe.png")
         with contextlib.suppress(TelegramBadRequest):
             await call.message.edit_media(
-                media=InputMediaPhoto(media=render_url, caption=caption, parse_mode="HTML"),
+                media=InputMediaPhoto(media=photo_payload, caption=caption, parse_mode="HTML"),
                 reply_markup=markup,
             )
         return

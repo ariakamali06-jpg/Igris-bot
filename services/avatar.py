@@ -313,16 +313,59 @@ async def unequip(user_id: int) -> None:
         )
 
 
+async def add_set_to_wardrobe(
+    user_id: int,
+    set_id: int,
+    set_name: str,
+    gender: str,
+    var_ids: list[int],
+    is_plus_size: int = 0,
+    price_paid: int = 0,
+) -> None:
+    """Add a clothing set to the player's wardrobe and persist it."""
+    now_ts = int(time.time())
+    clean_vars = [int(v) for v in var_ids if int(v) > 0]
+    async with db.write() as conn:
+        await conn.execute(
+            """
+            INSERT INTO player_wardrobe
+                (user_id, set_id, set_name, gender, item_count,
+                 var_ids, is_plus_size, price_paid, acquired_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(user_id, set_id) DO UPDATE SET
+                set_name = excluded.set_name,
+                item_count = excluded.item_count,
+                var_ids = excluded.var_ids,
+                is_plus_size = excluded.is_plus_size
+            """,
+            (
+                user_id,
+                set_id,
+                set_name,
+                gender,
+                len(clean_vars),
+                json.dumps(clean_vars),
+                is_plus_size,
+                price_paid,
+                now_ts,
+            ),
+        )
+
+
 async def save_custom_avatar(
     user_id: int,
     var_ids: list[int],
     skin_tone: int = -1,
     is_plus_size: int = 0,
+    custom_set: dict[str, Any] | None = None,
+    owned_sets: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Save player custom avatar composition from customizer / Mini App."""
     await get_player_avatar(user_id)  # ensure row exists
     now_ts = int(time.time())
     active_set = 9999 if var_ids else None
+    clean_vars = [int(v) for v in var_ids if int(v) > 0]
+
     async with db.write() as conn:
         await conn.execute(
             """
@@ -334,9 +377,9 @@ async def save_custom_avatar(
                 updated_at = ?
             WHERE user_id = ?
             """,
-            (json.dumps(var_ids), skin_tone, is_plus_size, active_set, now_ts, user_id),
+            (json.dumps(clean_vars), skin_tone, is_plus_size, active_set, now_ts, user_id),
         )
-        if var_ids:
+        if clean_vars:
             await conn.execute(
                 """
                 INSERT INTO player_wardrobe
@@ -349,13 +392,31 @@ async def save_custom_avatar(
                     is_plus_size = excluded.is_plus_size,
                     acquired_at = excluded.acquired_at
                 """,
-                (user_id, len(var_ids), json.dumps(var_ids), is_plus_size, now_ts),
+                (user_id, len(clean_vars), json.dumps(clean_vars), is_plus_size, now_ts),
             )
+
+    # Persist custom set if created by the player in the Mini App
+    if custom_set and isinstance(custom_set, dict):
+        cs_name = str(custom_set.get("name") or "ست اختصاصی").strip()[:35]
+        cs_vars = [int(x) for x in custom_set.get("vars", []) if int(x) > 0]
+        if cs_vars:
+            cs_id = int(custom_set.get("id") or (now_ts % 100000 + 10000))
+            await add_set_to_wardrobe(
+                user_id=user_id,
+                set_id=cs_id,
+                set_name=cs_name,
+                gender="unisex",
+                var_ids=cs_vars,
+                is_plus_size=is_plus_size,
+            )
+
     return {
         "user_id": user_id,
-        "equipped_var_ids": var_ids,
+        "equipped_var_ids": clean_vars,
         "skin_tone": skin_tone,
         "is_plus_size": is_plus_size,
+        "active_set_id": active_set,
+        "render_url": get_render_url(clean_vars + [skin_tone]),
     }
 
 
@@ -780,7 +841,11 @@ async def buy_boutique_set(
 
 
 async def list_wardrobe(user_id: int) -> list[dict[str, Any]]:
-    """List all sets owned by the player, including custom active loadout if equipped."""
+    """Return all sets owned by the player in their wardrobe, active set first."""
+    player_av = await get_player_avatar(user_id)
+    equipped = player_av.get("equipped_var_ids", [])
+    active_set_id = player_av.get("active_set_id")
+
     async with db.read() as conn:
         cursor = await conn.execute(
             """
@@ -788,39 +853,44 @@ async def list_wardrobe(user_id: int) -> list[dict[str, Any]]:
                    is_plus_size, price_paid, acquired_at
             FROM player_wardrobe
             WHERE user_id = ?
-            ORDER BY acquired_at DESC
+            ORDER BY id DESC
             """,
             (user_id,),
         )
         rows = await cursor.fetchall()
-        await cursor.close()
 
     result: list[dict[str, Any]] = []
     for r in rows:
         var_ids = json.loads(r["var_ids"] or "[]")
+        clean_vids = [int(v) for v in var_ids if int(v) > 0]
         result.append(
             {
                 "id": r["id"],
                 "set_id": r["set_id"],
                 "name": r["set_name"],
                 "gender": r["gender"],
-                "item_count": r["item_count"],
-                "var_ids": var_ids,
+                "item_count": len(clean_vids),
+                "var_ids": clean_vids,
                 "is_plus_size": r["is_plus_size"],
                 "price_paid": r["price_paid"],
                 "acquired_at": r["acquired_at"],
-                "render_url": get_render_url(var_ids),
+                "render_url": get_render_url(clean_vids),
             }
         )
 
-    # Check if player currently has custom clothes equipped on their body
-    player_av = await get_player_avatar(user_id)
-    equipped = player_av.get("equipped_var_ids", [])
+    # If player is wearing clothes, ensure set 9999 or active set is properly represented
     if equipped:
-        already_in_wardrobe = any(
-            set(r.get("var_ids", [])) == set(equipped) for r in result
-        )
-        if not already_in_wardrobe:
+        clean_equipped = [int(v) for v in equipped if int(v) > 0]
+        has_9999 = False
+        for s in result:
+            if s["set_id"] == 9999:
+                s["var_ids"] = clean_equipped
+                s["item_count"] = len(clean_equipped)
+                s["render_url"] = get_render_url(clean_equipped)
+                has_9999 = True
+                break
+
+        if not has_9999:
             now_ts = player_av.get("updated_at", int(time.time()))
             is_plus = player_av.get("is_plus_size", 0)
             async with db.write() as conn:
@@ -836,7 +906,7 @@ async def list_wardrobe(user_id: int) -> list[dict[str, Any]]:
                         is_plus_size = excluded.is_plus_size,
                         acquired_at = excluded.acquired_at
                     """,
-                    (user_id, len(equipped), json.dumps(equipped), is_plus, now_ts),
+                    (user_id, len(clean_equipped), json.dumps(clean_equipped), is_plus, now_ts),
                 )
             result.insert(
                 0,
@@ -845,17 +915,27 @@ async def list_wardrobe(user_id: int) -> list[dict[str, Any]]:
                     "set_id": 9999,
                     "name": "✨ استایل اختصاصی (بر تن)",
                     "gender": "unisex",
-                    "item_count": len(equipped),
-                    "var_ids": equipped,
+                    "item_count": len(clean_equipped),
+                    "var_ids": clean_equipped,
                     "is_plus_size": is_plus,
                     "price_paid": 0,
                     "acquired_at": now_ts,
-                    "render_url": get_render_url(equipped),
+                    "render_url": get_render_url(clean_equipped),
                 },
             )
 
-    return result
+    # Sort so that the ACTIVE set (or 9999) is ALWAYS at index 0 of wardrobe
+    clean_eq_set = set(int(v) for v in equipped if int(v) > 0)
 
+    def _sort_key(s: dict[str, Any]) -> tuple[int, int, int]:
+        is_cur = (
+            (active_set_id is not None and s["set_id"] == active_set_id)
+            or (bool(clean_eq_set) and set(s.get("var_ids", [])) == clean_eq_set)
+        )
+        return (0 if is_cur else 1, 0 if s["set_id"] == 9999 else 1, -s.get("id", 0))
+
+    result.sort(key=_sort_key)
+    return result
 
 async def get_customizer_url(
     user_id: int,

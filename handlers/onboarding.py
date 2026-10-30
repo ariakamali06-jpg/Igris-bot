@@ -294,6 +294,18 @@ async def _handle_compact_wear_payload(
                 hair_style="hair1",
                 hair_color="black",
             )
+            # ثبت ست استارتر در کمد لباس کاربر به عنوان دارایی دائمی
+            starter_set_id = 201 if is_male else 101
+            st = avatar.STARTER_SETS.get(starter_set_id)
+            if st:
+                await avatar.add_set_to_wardrobe(
+                    user_id=user.id,
+                    set_id=st["id"],
+                    set_name=st["name"],
+                    gender=st["gender"],
+                    var_ids=st["var_ids"],
+                    is_plus_size=st.get("is_plus_size", 0),
+                )
             tracked_msg_ids = list(fsm_data.get("tracked_msg_ids", []))
             bot_instance = getattr(message, "bot", None)
             if bot_instance and tracked_msg_ids:

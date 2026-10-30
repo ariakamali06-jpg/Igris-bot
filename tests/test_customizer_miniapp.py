@@ -487,3 +487,94 @@ async def test_bottom_wear_enforcement():
     # 3. If already has bottom, ensure_bottom_item does not duplicate or alter
     already_good = avatar.ensure_bottom_item([23301], gender="female")
     assert already_good == [23301]
+
+
+async def test_wardrobe_items_not_deleted_on_unequip():
+    """Verify taking off an item in Mini App does not delete it from owned wardrobe."""
+    import base64
+
+    test_user_id = 999333
+    await game.ensure_player(test_user_id, "Unequip Tester", "unequiptester")
+
+    try:
+        # 1. Player is assigned starter set 207 (10 pieces)
+        await avatar.assign_starter_set(test_user_id, set_id=207, gender="female")
+        async with db.write() as conn:
+            await conn.execute(
+                "UPDATE players SET onboarding_completed = 1 WHERE user_id = ?",
+                (test_user_id,),
+            )
+
+        # Starter set has 10 pieces including boots 1748
+        st_vars = avatar.STARTER_SETS[207]["var_ids"]
+        assert 1748 in st_vars
+
+        # 2. Player opens customizer, unequips boots (1748), and saves 9 pieces
+        unequipped_vars = [v for v in st_vars if v != 1748]
+        await avatar.save_custom_avatar(
+            user_id=test_user_id,
+            var_ids=unequipped_vars,
+            skin_tone=-1,
+            is_plus_size=0,
+        )
+
+        # 3. Check customizer URL: boots 1748 MUST STILL be in owned items!
+        url = await avatar.get_customizer_url(test_user_id)
+        b64_data = url.split("?d=")[1]
+        payload = json.loads(base64.urlsafe_b64decode(b64_data + "==").decode())
+
+        assert payload["mode"] == "wardrobe"
+        # Equipped items is 9
+        assert 1748 not in payload["items"]
+        # BUT owned items STILL has 1748 (not deleted)!
+        assert 1748 in payload["owned"]
+        assert set(st_vars).issubset(set(payload["owned"]))
+    finally:
+        async with db.write() as conn:
+            await conn.execute("DELETE FROM player_wardrobe WHERE user_id = ?", (test_user_id,))
+            await conn.execute("DELETE FROM player_avatar WHERE user_id = ?", (test_user_id,))
+            await conn.execute("DELETE FROM players WHERE user_id = ?", (test_user_id,))
+
+
+async def test_outfit_switch_menu_and_custom_preset_saving():
+    """Verify change-outfit menu lists all owned sets and custom preset saving works."""
+    from handlers.boutique import _build_outfit_switch_menu
+
+    test_user_id = 999334
+    await game.ensure_player(test_user_id, "Switch Tester", "switchtester")
+
+    try:
+        # 1. Assign starter set
+        await avatar.assign_starter_set(test_user_id, set_id=201, gender="male")
+
+        # 2. Add custom preset set
+        await avatar.add_set_to_wardrobe(
+            user_id=test_user_id,
+            set_id=10555,
+            set_name="✨ تیپ شیک خیابانی",
+            gender="male",
+            var_ids=[28144, 33817, 116590],
+        )
+
+        # 3. Build outfit switcher menu
+        render_url, caption, markup = await _build_outfit_switch_menu(test_user_id)
+        assert "منوی تعویض لباس" in caption
+        assert render_url.startswith("https://cdn.everskies.com/render/")
+
+        # Verify buttons list the sets
+        btn_texts = [
+            b.text for row in markup.inline_keyboard for b in row if b.text
+        ]
+        assert any("تیپ شیک خیابانی" in t for t in btn_texts)
+        assert any("Starter Pack (Boys) #1" in t for t in btn_texts)
+
+        # 4. Verify list_wardrobe puts active look at index 0
+        wdr = await avatar.list_wardrobe(test_user_id)
+        assert len(wdr) >= 2
+        # Current active look is index 0
+        assert wdr[0]["set_id"] in (201, 9999)
+    finally:
+        async with db.write() as conn:
+            await conn.execute("DELETE FROM player_wardrobe WHERE user_id = ?", (test_user_id,))
+            await conn.execute("DELETE FROM player_avatar WHERE user_id = ?", (test_user_id,))
+            await conn.execute("DELETE FROM players WHERE user_id = ?", (test_user_id,))

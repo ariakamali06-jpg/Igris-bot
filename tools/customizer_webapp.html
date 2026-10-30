@@ -4870,9 +4870,7 @@
         tg.ready();
         tg.expand();
         if (tg.MainButton) {
-          tg.MainButton.setText("💾 ذخیره روی کاراکتر (۰ قلم)");
-          tg.MainButton.onClick(submitAvatar);
-          tg.MainButton.show();
+          tg.MainButton.hide(); // استفاده انحصاری از دکمه شناور روی صفحه جهت جلوگیری از دو دکمه شدن
         }
       } catch (err) {
         console.warn("Telegram WebApp init warning:", err);
@@ -5221,6 +5219,16 @@
 
         const q = searchQuery;
         const shownSets = setsToRender.filter(s => !q || s.name.toLowerCase().includes(q));
+
+        const createBannerHtml = (appMode === 'wardrobe') ? `
+          <div style="grid-column: 1/-1; background: linear-gradient(135deg, rgba(16,185,129,0.15), rgba(56,189,248,0.15)); border: 1px dashed var(--accent); border-radius: 12px; padding: 12px; text-align: center; margin-bottom: 8px;">
+            <div style="font-size: 13px; font-weight: 800; color: #fff; margin-bottom: 4px;">✨ ساخت ست آماده از لباس‌های بر تن</div>
+            <p style="font-size: 11px; color: var(--text-muted); margin-bottom: 8px;">این استایلی که الان پوشیده‌ای را به عنوان یک ست ذخیره کن تا همیشه با ۱ کلیک در اختیارت باشد.</p>
+            <button class="btn btn-primary" style="padding: 7px 16px; font-size: 12px; border-radius: 999px; margin: 0 auto; cursor:pointer;" onclick="openCreatePresetModal()">
+              💾 ذخیره استایل فعلی به عنوان ست آماده
+            </button>
+          </div>
+        ` : '';
         statusText.innerText = (appMode === 'wardrobe') ? '🧥 ست‌های کمد شما' : '✨ ست‌های آغازین بازی';
         countText.innerText = `${shownSets.length.toLocaleString('fa-IR')} ست موجود`;
 
@@ -5234,7 +5242,7 @@
           return;
         }
 
-        grid.innerHTML = shownSets.map(s => {
+        grid.innerHTML = createBannerHtml + shownSets.map(s => {
           const varIds = s.vars || [];
           const slug = getSlug([...varIds, -1]);
           const thumbUrl = `https://cdn.everskies.com/render/${slug}.png?m=0`;
@@ -5452,6 +5460,47 @@
       });
     }
 
+        let lastCreatedPreset = null;
+    function openCreatePresetModal() {
+      if (equippedVarList.length === 0) {
+        showToast('⚠️ ابتدا حداقل چند قطعه لباس تن کاراکتر کنید!');
+        return;
+      }
+      hapticFeedback();
+      const modal = document.getElementById('createPresetModal');
+      const input = document.getElementById('presetNameInput');
+      if (modal) modal.classList.add('active');
+      if (input) {
+        input.value = `ست اختصاصی #${ownedSetsList.length + 1}`;
+        input.focus();
+      }
+    }
+
+    function closeCreatePresetModal(e) {
+      if (e) e.stopPropagation();
+      const modal = document.getElementById('createPresetModal');
+      if (modal) modal.classList.remove('active');
+    }
+
+    function confirmCreatePreset() {
+      const input = document.getElementById('presetNameInput');
+      const name = (input?.value || '').trim() || `ست کمد #${ownedSetsList.length + 1}`;
+      const newPreset = {
+        id: Date.now() % 100000 + 10000,
+        name: `✨ ${name.replace(/[✨]/g, '').trim()}`,
+        vars: equippedVarList.slice()
+      };
+      ownedSetsList.unshift(newPreset);
+      lastCreatedPreset = newPreset;
+      try {
+        localStorage.setItem('igris_owned_sets', JSON.stringify(ownedSetsList));
+      } catch (e) {}
+
+      closeCreatePresetModal();
+      showToast(`✨ ست «${newPreset.name}» در کمد شما ذخیره شد!`);
+      renderCatalog();
+    }
+
     function submitAvatar() {
       hapticFeedback();
 
@@ -5466,7 +5515,9 @@
         skin: currentSkinIdx,
         body: currentBodyType,
         gen: currentGender,
-        items: equippedVarList // preserves exact user layering
+        items: equippedVarList, // preserves exact user layering
+        custom_set: lastCreatedPreset,
+        owned_sets: ownedSetsList
       };
       const jsonStr = JSON.stringify(payload);
 
@@ -5481,8 +5532,10 @@
 
       // ذخیره وضعیت کمد و تبدیل به حالت کمد شخصی بعد از ذخیره
       appMode = 'wardrobe';
-      if (!ownedItemIds || ownedItemIds.length === 0) {
-        ownedItemIds = equippedVarList.slice();
+      // افزودن اقلام بر تن به کمد بدون حذف اقلام قبلی
+      if (!Array.isArray(ownedItemIds)) ownedItemIds = [];
+      for (const id of equippedVarList) {
+        if (!ownedItemIds.includes(id)) ownedItemIds.push(id);
       }
       try {
         localStorage.setItem('igris_app_mode', 'wardrobe');
@@ -5744,5 +5797,27 @@
       boot();
     }
   </script>
+  <!-- Create Custom Preset Set Modal -->
+  <div id="createPresetModal" class="drawer-backdrop" onclick="closeCreatePresetModal(event)">
+    <div class="drawer-sheet" style="max-height: 280px; padding: 18px;" onclick="event.stopPropagation()">
+      <div class="drawer-drag-bar"></div>
+      <div style="font-size: 14px; font-weight: 800; color: #fff; margin-bottom: 6px; display:flex; align-items:center; gap:6px;">
+        <span>✨ ساخت ست جدید از لباس‌های بر تن</span>
+      </div>
+      <p style="font-size: 11px; color: var(--text-muted); margin-bottom: 12px;">
+        لباس‌هایی که اکنون بر تن دارید با این نام در کمد شما ذخیره می‌شوند و هر زمان بخواهید با ۱ کلیک قابل پوشیدن هستند.
+      </p>
+      <input id="presetNameInput" class="search-input" type="text" placeholder="مثلاً: استایل مهمونی من" style="margin-bottom: 12px; font-size: 14px;">
+      <div style="display:flex; gap:8px;">
+        <button class="btn btn-primary" style="flex:1; padding: 10px; border-radius: 8px; font-weight: 800; font-family:inherit; cursor:pointer;" onclick="confirmCreatePreset()">
+          💾 ذخیره در کمد
+        </button>
+        <button class="btn" style="padding: 10px 14px; border-radius: 8px; font-family:inherit; cursor:pointer;" onclick="closeCreatePresetModal()">
+          انصراف
+        </button>
+      </div>
+    </div>
+  </div>
+
 </body>
 </html>
