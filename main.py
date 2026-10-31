@@ -160,10 +160,24 @@ async def run() -> None:
         )
         sys.exit(2)
 
+    session = None
+    if settings.telegram_api_server:
+        from aiogram.client.session.aiohttp import AiohttpSession
+        from aiogram.client.telegram import TelegramAPIServer
+
+        session = AiohttpSession(
+            api=TelegramAPIServer.from_base(settings.telegram_api_server.rstrip("/"))
+        )
+    elif settings.proxy_url:
+        from aiogram.client.session.aiohttp import AiohttpSession
+
+        session = AiohttpSession(proxy=settings.proxy_url)
+
     if settings.dry_run:
         # Boot everything except the network loop: useful for smoke tests.
         bot = Bot(
             token=settings.bot_token,
+            session=session,
             default=DefaultBotProperties(parse_mode=ParseMode.HTML),
         )
         try:
@@ -176,6 +190,7 @@ async def run() -> None:
 
     bot = Bot(
         token=settings.bot_token,
+        session=session,
         default=DefaultBotProperties(parse_mode=ParseMode.HTML),
     )
     dp = Dispatcher()

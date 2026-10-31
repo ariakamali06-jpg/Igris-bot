@@ -46,6 +46,9 @@ class Settings(BaseSettings):
     # Telegram @username of this bot (without @) — used to build /start
     # deep links like t.me/<bot_username>?start=wear_... from the Mini App.
     bot_username: str = Field(default="", alias="BOT_USERNAME")
+    # Custom Telegram Bot API URL / Reverse Proxy (e.g. Cloudflare Worker or local Bot API)
+    telegram_api_server: str = Field(default="", alias="TELEGRAM_API_SERVER")
+    proxy_url: str = Field(default="", alias="PROXY_URL")
 
     # --- Channels & Sponsorship ---------------------------------------------
     force_channel_join: bool = Field(default=True, alias="FORCE_CHANNEL_JOIN")
