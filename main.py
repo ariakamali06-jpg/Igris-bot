@@ -165,13 +165,17 @@ async def run() -> None:
         from aiogram.client.session.aiohttp import AiohttpSession
         from aiogram.client.telegram import TelegramAPIServer
 
+        logger.info("Connecting via custom Telegram API server: %s", settings.telegram_api_server)
         session = AiohttpSession(
             api=TelegramAPIServer.from_base(settings.telegram_api_server.rstrip("/"))
         )
     elif settings.proxy_url:
         from aiogram.client.session.aiohttp import AiohttpSession
 
+        logger.info("Connecting via proxy: %s", settings.proxy_url)
         session = AiohttpSession(proxy=settings.proxy_url)
+    else:
+        logger.info("Connecting directly to official Telegram Bot API (api.telegram.org)")
 
     if settings.dry_run:
         # Boot everything except the network loop: useful for smoke tests.
