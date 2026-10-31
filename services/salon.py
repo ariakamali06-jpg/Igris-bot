@@ -17,6 +17,12 @@ from typing import Any
 from database.connection import db
 from models.enums import ActivityKind
 from services import avatar, economy
+from services.avatar import (
+    ALL_COSMETIC_VAR_IDS,
+    ALL_EYES_VAR_IDS,
+    ALL_HAIR_VAR_IDS,
+    ALL_LIPS_VAR_IDS,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -44,38 +50,7 @@ SKIN_BY_ID = {item["id"]: item for item in SKIN_TONES}
 # -----------------------------------------------------------------------------
 
 HAIR_CATALOG: dict[str, dict[str, Any]] = {
-    # Legacy / general keys (backward-compatible)
-    "hair1": {
-        "name": "🎀 کژوال بلند موج‌دار / فید",
-        "gender": "unisex",
-        "var_ids": [3159, 3146],
-        "fee": HAIR_CHANGE_FEE,
-    },
-    "hair2": {
-        "name": "🌸 لایه‌ای مدرن کره‌ای / ولف‌کات",
-        "gender": "unisex",
-        "var_ids": [2509, 2142],
-        "fee": HAIR_CHANGE_FEE,
-    },
-    "hair3": {
-        "name": "⚡️ دم‌اسبی پرانرژی / فرق بغل",
-        "gender": "unisex",
-        "var_ids": [321585, 321626],
-        "fee": HAIR_CHANGE_FEE,
-    },
-    "hair4": {
-        "name": "💇‍♀️ باب کوتاه شهری / بلند رها",
-        "gender": "unisex",
-        "var_ids": [118303],
-        "fee": HAIR_CHANGE_FEE,
-    },
-    "hair5": {
-        "name": "✨ شینیون ابریشمی / بوکات",
-        "gender": "unisex",
-        "var_ids": [103734, 103748],
-        "fee": HAIR_CHANGE_FEE,
-    },
-    # Curated Boy Hairstyles
+    # Boys Hairstyles (ONLY REAL HAIR ITEMS, ZERO CLOTHES!)
     "hair_eboy": {
         "name": "✂️ موی آشفته ای‌بوی (E-Boy Messy)",
         "gender": "male",
@@ -112,7 +87,7 @@ HAIR_CATALOG: dict[str, dict[str, Any]] = {
         "var_ids": [1368],
         "fee": HAIR_CHANGE_FEE,
     },
-    # Curated Girl Hairstyles
+    # Girls Hairstyles (ONLY REAL HAIR ITEMS, ZERO CLOTHES!)
     "hair_wet_wavy": {
         "name": "✂️ موی خیس موج‌دار آرتیست (Wet Wavy)",
         "gender": "female",
@@ -122,19 +97,19 @@ HAIR_CATALOG: dict[str, dict[str, Any]] = {
     "hair_angel_curls": {
         "name": "✂️ فر لولیتای پلاتینیوم (Angel Curls)",
         "gender": "female",
-        "var_ids": [2161, 2142],
+        "var_ids": [2161],
         "fee": HAIR_CHANGE_FEE,
     },
     "hair_y2k_straight": {
         "name": "✂️ موی لایه‌ای و صاف (Y2K Straight)",
         "gender": "female",
-        "var_ids": [2509, 2142],
+        "var_ids": [2509],
         "fee": HAIR_CHANGE_FEE,
     },
     "hair_daisy_glam": {
-        "name": "✂️ موی مجلسی گل بابونه (Daisy Glam)",
+        "name": "✂️ شینیون با هاله اکلیلی (Daisy Sparkles)",
         "gender": "female",
-        "var_ids": [103734, 103748],
+        "var_ids": [103748],
         "fee": HAIR_CHANGE_FEE,
     },
     "hair_pigtails": {
@@ -149,17 +124,39 @@ HAIR_CATALOG: dict[str, dict[str, Any]] = {
         "var_ids": [118303],
         "fee": HAIR_CHANGE_FEE,
     },
+    # Backward compatible keys
+    "hair1": {
+        "name": "🎀 کژوال بلند موج‌دار / فید",
+        "gender": "unisex",
+        "var_ids": [3159, 3146],
+        "fee": HAIR_CHANGE_FEE,
+    },
+    "hair2": {
+        "name": "🌸 لایه‌ای مدرن کره‌ای / ولف‌کات",
+        "gender": "unisex",
+        "var_ids": [2509],
+        "fee": HAIR_CHANGE_FEE,
+    },
+    "hair3": {
+        "name": "⚡️ دم‌اسبی پرانرژی / فرق بغل",
+        "gender": "unisex",
+        "var_ids": [321585, 321626],
+        "fee": HAIR_CHANGE_FEE,
+    },
+    "hair4": {
+        "name": "💇‍♀️ باب کوتاه شهری / بلند رها",
+        "gender": "unisex",
+        "var_ids": [118303],
+        "fee": HAIR_CHANGE_FEE,
+    },
+    "hair5": {
+        "name": "✨ شینیون ابریشمی / هاله اکلیل",
+        "gender": "unisex",
+        "var_ids": [103748],
+        "fee": HAIR_CHANGE_FEE,
+    },
 }
 
-ALL_SALON_HAIR_VAR_IDS: set[int] = {
-    vid for h in HAIR_CATALOG.values() for vid in h["var_ids"]
-} | {
-    6494, 321585, 321626, 3159, 3146, 2161, 2509, 103734, 103748,
-    1349, 1352, 118303, 1409, 1415, 1416, 1719, 1368, 1316, 1382,
-    1384, 1419, 1430,
-}
-
-# Eyes & Lenses Catalog
 EYES_CATALOG: dict[str, dict[str, Any]] = {
     "eyes1_1": {
         "name": "🌸 شاداب و گرد (Sweet Round)",
@@ -173,17 +170,12 @@ EYES_CATALOG: dict[str, dict[str, Any]] = {
     },
     "eyes3_1": {
         "name": "🕊 خونسرد و کشیده (Cool Almond)",
-        "var_ids": [321598],
+        "var_ids": [1694],
         "fee": EYES_CHANGE_FEE,
     },
     "eyes4_1": {
         "name": "🔥 چشم‌های معصوم فرشته (Angel Eyes)",
         "var_ids": [2143],
-        "fee": EYES_CHANGE_FEE,
-    },
-    "eyes_glam": {
-        "name": "✨ میکاپ چشم مجلسی و شاین (Daisy Eyes)",
-        "var_ids": [103736],
         "fee": EYES_CHANGE_FEE,
     },
     "arcane_eye_mark": {
@@ -193,11 +185,6 @@ EYES_CATALOG: dict[str, dict[str, Any]] = {
     },
 }
 
-ALL_SALON_EYES_VAR_IDS: set[int] = {
-    vid for e in EYES_CATALOG.values() for vid in e["var_ids"]
-} | {58359, 321598, 1702, 2143, 103736, 103753}
-
-# Lips & Lipstick Catalog
 LIPS_CATALOG: dict[str, dict[str, Any]] = {
     "lip_natural_nude": {
         "name": "💄 رژ نود طبیعی مات",
@@ -226,13 +213,10 @@ LIPS_CATALOG: dict[str, dict[str, Any]] = {
     },
 }
 
-ALL_SALON_LIPS_VAR_IDS: set[int] = {
-    vid for lip in LIPS_CATALOG.values() for vid in lip["var_ids"]
-} | {103752, 1388, 2295, 103754}
-
-ALL_SALON_FEATURE_VAR_IDS: set[int] = (
-    ALL_SALON_HAIR_VAR_IDS | ALL_SALON_EYES_VAR_IDS | ALL_SALON_LIPS_VAR_IDS
-)
+ALL_SALON_HAIR_VAR_IDS: set[int] = ALL_HAIR_VAR_IDS
+ALL_SALON_EYES_VAR_IDS: set[int] = ALL_EYES_VAR_IDS
+ALL_SALON_LIPS_VAR_IDS: set[int] = ALL_LIPS_VAR_IDS
+ALL_SALON_FEATURE_VAR_IDS: set[int] = ALL_COSMETIC_VAR_IDS
 
 # Hair catalog (combining items & base models)
 HAIR_STYLES: dict[str, str] = {

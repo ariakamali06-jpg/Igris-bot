@@ -267,7 +267,7 @@ async def set_skin_tone(user_id: int, skin_tone: int, is_plus_size: int = 0) -> 
 
 
 async def equip_set(user_id: int, set_id: int) -> dict[str, Any]:
-    """Equip an owned set from player wardrobe."""
+    """Equip an owned set from player wardrobe, cleanly replacing clothing without merging."""
     async with db.read() as conn:
         cursor = await conn.execute(
             """
@@ -283,8 +283,23 @@ async def equip_set(user_id: int, set_id: int) -> dict[str, Any]:
         raise AvatarError("این ست لباس در کمد شما یافت نشد!")
 
     var_ids = json.loads(row["var_ids"] or "[]")
+    clean_vars = [int(v) for v in var_ids if int(v) > 0]
     is_plus = row["is_plus_size"]
     now_ts = int(time.time())
+
+    # Get current player avatar to preserve salon hair/eyes if the equipped set is purely clothing
+    cur_av = await get_player_avatar(user_id)
+    cur_vars = cur_av.get("equipped_var_ids", [])
+
+    set_has_hair = any(v in ALL_HAIR_VAR_IDS for v in clean_vars)
+    if not set_has_hair:
+        cur_hair = [v for v in cur_vars if v in ALL_HAIR_VAR_IDS]
+        clean_vars = cur_hair + clean_vars
+
+    set_has_eyes = any(v in ALL_EYES_VAR_IDS for v in clean_vars)
+    if not set_has_eyes:
+        cur_eyes = [v for v in cur_vars if v in ALL_EYES_VAR_IDS]
+        clean_vars = cur_eyes + clean_vars
 
     async with db.write() as conn:
         await conn.execute(
@@ -293,13 +308,15 @@ async def equip_set(user_id: int, set_id: int) -> dict[str, Any]:
             SET active_set_id = ?, equipped_var_ids = ?, is_plus_size = ?, updated_at = ?
             WHERE user_id = ?
             """,
-            (set_id, json.dumps(var_ids), is_plus, now_ts, user_id),
+            (set_id, json.dumps(clean_vars), is_plus, now_ts, user_id),
         )
+
+    invalidate_avatar_cache(user_id)
 
     return {
         "set_id": set_id,
         "set_name": row["set_name"],
-        "var_ids": var_ids,
+        "var_ids": clean_vars,
         "is_plus_size": is_plus,
     }
 
@@ -365,23 +382,50 @@ async def save_custom_avatar(
     custom_set: dict[str, Any] | None = None,
     owned_sets: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    """Save player custom avatar composition from customizer / Mini App."""
+    """Save player custom avatar composition from customizer / Mini App without clothes stacking."""
     cur_av = await get_player_avatar(user_id)  # ensure row exists
     now_ts = int(time.time())
-    active_set = 9999 if var_ids else None
     clean_vars = [int(v) for v in var_ids if int(v) > 0]
+    cur_vars = cur_av.get("equipped_var_ids", [])
 
-    # حفظ و ترکیب مو، چشم و اجزای صورت بازیکن در صورتی که در اقلام ارسالی کمد نباشند
-    try:
-        from services import salon
+    # If incoming items do not have hair/eyes (because user was styling clothes in wardrobe mode),
+    # preserve player's current hair/eyes from cur_av:
+    if not any(v in ALL_HAIR_VAR_IDS for v in clean_vars):
+        cur_hair = [v for v in cur_vars if v in ALL_HAIR_VAR_IDS]
+        clean_vars = cur_hair + clean_vars
 
-        cur_vars = cur_av.get("equipped_var_ids", [])
-        cur_face_features = [v for v in cur_vars if v in salon.ALL_SALON_FEATURE_VAR_IDS]
-        for f_id in cur_face_features:
-            if f_id not in clean_vars:
-                clean_vars.append(f_id)
-    except Exception:
-        pass
+    if not any(v in ALL_EYES_VAR_IDS for v in clean_vars):
+        cur_eyes = [v for v in cur_vars if v in ALL_EYES_VAR_IDS]
+        clean_vars = cur_eyes + clean_vars
+
+    if not any(v in ALL_LIPS_VAR_IDS for v in clean_vars):
+        cur_lips = [v for v in cur_vars if v in ALL_LIPS_VAR_IDS]
+        clean_vars = cur_lips + clean_vars
+
+    if not any(v in ALL_MAKEUP_VAR_IDS for v in clean_vars):
+        cur_mu = [v for v in cur_vars if v in ALL_MAKEUP_VAR_IDS]
+        clean_vars = cur_mu + clean_vars
+
+    if not any(v in ALL_SKIN_MOD_VAR_IDS for v in clean_vars):
+        cur_sm = [v for v in cur_vars if v in ALL_SKIN_MOD_VAR_IDS]
+        clean_vars = cur_sm + clean_vars
+
+    # Check if clean_vars matches an owned set exactly
+    active_set = 9999
+    async with db.read() as conn:
+        cur = await conn.execute(
+            "SELECT set_id, var_ids FROM player_wardrobe WHERE user_id = ? AND set_id != 9999",
+            (user_id,),
+        )
+        owned_rows = await cur.fetchall()
+        await cur.close()
+
+    clean_set = set(clean_vars)
+    for r in owned_rows:
+        r_vars = set(json.loads(r["var_ids"] or "[]"))
+        if r_vars == clean_set:
+            active_set = r["set_id"]
+            break
 
     async with db.write() as conn:
         await conn.execute(
@@ -396,7 +440,7 @@ async def save_custom_avatar(
             """,
             (json.dumps(clean_vars), skin_tone, is_plus_size, active_set, now_ts, user_id),
         )
-        if clean_vars:
+        if active_set == 9999 and clean_vars:
             await conn.execute(
                 """
                 INSERT INTO player_wardrobe
@@ -410,6 +454,12 @@ async def save_custom_avatar(
                     acquired_at = excluded.acquired_at
                 """,
                 (user_id, len(clean_vars), json.dumps(clean_vars), is_plus_size, now_ts),
+            )
+        elif active_set != 9999:
+            # Player is wearing a known set; remove 9999 so it doesn't linger
+            await conn.execute(
+                "DELETE FROM player_wardrobe WHERE user_id = ? AND set_id = 9999",
+                (user_id,),
             )
 
     # Persist custom set if created by the player in the Mini App
@@ -426,6 +476,8 @@ async def save_custom_avatar(
                 var_ids=cs_vars,
                 is_plus_size=is_plus_size,
             )
+
+    invalidate_avatar_cache(user_id)
 
     return {
         "user_id": user_id,
@@ -541,6 +593,69 @@ BOTTOM_VAR_IDS: set[int] = {
     # Legacy bottoms (for database compatibility)
     4027832, 3623984, 297737, 4584787, 103751, 103753, 272755, 499836, 502342, 421066,
 }
+
+# -----------------------------------------------------------------------------
+# Strict Categorization: Cosmetic / Face / Hair vs Clothing
+# -----------------------------------------------------------------------------
+
+ALL_HAIR_VAR_IDS: set[int] = {
+    6494,    # E-boy messy hair (male)
+    321585,  # Classic side-part front (male)
+    321626,  # Classic side-part back (male)
+    1409,    # Spiky dark hair (male)
+    1415,    # Messy mullet base (male)
+    1416,    # Messy mullet hair (male)
+    1368,    # Raven shag (male)
+    1719,    # Short hair (male)
+    1316,    # Pastel hair
+    1382,    # Split hair base
+    1384,    # Split hair back
+    1419,    # Hair base
+    1430,    # Hair back
+    3159,    # Wet hair short (female)
+    3146,    # Wet hair long back (female)
+    2161,    # Angel Tini hair (female)
+    2509,    # Straight layer black hair (female)
+    103748,  # Hair Sparkles (female)
+    1340,    # Bangs
+    1343,    # Long hair
+    1349,    # Pigtails ver 2
+    1352,    # Pigtails ver 1
+    118303,  # Flipped bob
+}
+
+ALL_EYES_VAR_IDS: set[int] = {
+    58359,   # Ikari eyes (male)
+    1702,    # Lashes / eyes (female)
+    2143,    # Angel lashes / eyes (female)
+    1694,    # Anime eye
+    1522,    # Eyelashes
+}
+
+ALL_LIPS_VAR_IDS: set[int] = {
+    103752,  # Purple lipstick
+    1388,    # Black lip
+    2295,    # Lip tint
+    119976,  # Lip tint
+}
+
+ALL_MAKEUP_VAR_IDS: set[int] = {
+    103753,  # Sparkly freckles
+    103754,  # Glossy shadow
+    1387,    # Black eyeshadow
+    1510,    # Forehead circle
+    1523,    # Face makeup
+}
+
+ALL_SKIN_MOD_VAR_IDS: set[int] = {
+    100736,  # Angel skin overlay
+    2142,    # Matte face overlay
+}
+
+ALL_COSMETIC_VAR_IDS: set[int] = (
+    ALL_HAIR_VAR_IDS | ALL_EYES_VAR_IDS | ALL_LIPS_VAR_IDS |
+    ALL_MAKEUP_VAR_IDS | ALL_SKIN_MOD_VAR_IDS
+)
 
 DEFAULT_STARTER_BOTTOM: dict[str, int] = {
     "female": 23301,   # baggy trousers (Starter Pack Girls #1)
@@ -911,9 +1026,29 @@ async def list_wardrobe(user_id: int) -> list[dict[str, Any]]:
             }
         )
 
-    # If player is wearing clothes, ensure set 9999 or active set is properly represented
-    if equipped:
-        clean_equipped = [int(v) for v in equipped if int(v) > 0]
+    clean_equipped = [int(v) for v in equipped if int(v) > 0]
+    clean_eq_set = set(clean_equipped)
+    player_clothes = {v for v in clean_equipped if v not in ALL_COSMETIC_VAR_IDS}
+
+    # Check if currently equipped clothes match an owned set or active_set_id
+    matched_set = None
+    for s in result:
+        if s["set_id"] == 9999:
+            continue
+        set_clothes = {v for v in s["var_ids"] if v not in ALL_COSMETIC_VAR_IDS}
+        if (
+            (active_set_id is not None and s["set_id"] == active_set_id)
+            or (bool(player_clothes) and set_clothes == player_clothes)
+            or (set(s["var_ids"]) == clean_eq_set)
+        ):
+            matched_set = s
+            break
+
+    # If the user is wearing an owned set, remove any stale set 9999
+    if matched_set:
+        result = [s for s in result if s["set_id"] != 9999]
+    elif clean_equipped:
+        # Player is wearing a custom mix-and-match not identical to any owned set
         has_9999 = False
         for s in result:
             if s["set_id"] == 9999:
@@ -926,21 +1061,6 @@ async def list_wardrobe(user_id: int) -> list[dict[str, Any]]:
         if not has_9999:
             now_ts = player_av.get("updated_at", int(time.time()))
             is_plus = player_av.get("is_plus_size", 0)
-            async with db.write() as conn:
-                await conn.execute(
-                    """
-                    INSERT INTO player_wardrobe
-                        (user_id, set_id, set_name, gender, item_count,
-                         var_ids, is_plus_size, price_paid, acquired_at)
-                    VALUES (?, 9999, '✨ استایل اختصاصی (بر تن)', 'unisex', ?, ?, ?, 0, ?)
-                    ON CONFLICT(user_id, set_id) DO UPDATE SET
-                        item_count = excluded.item_count,
-                        var_ids = excluded.var_ids,
-                        is_plus_size = excluded.is_plus_size,
-                        acquired_at = excluded.acquired_at
-                    """,
-                    (user_id, len(clean_equipped), json.dumps(clean_equipped), is_plus, now_ts),
-                )
             result.insert(
                 0,
                 {
@@ -957,9 +1077,7 @@ async def list_wardrobe(user_id: int) -> list[dict[str, Any]]:
                 },
             )
 
-    # Sort so that the ACTIVE set (or 9999) is ALWAYS at index 0 of wardrobe
-    clean_eq_set = set(int(v) for v in equipped if int(v) > 0)
-
+    # Sort so that the ACTIVE set is ALWAYS at index 0 of wardrobe
     def _sort_key(s: dict[str, Any]) -> tuple[int, int, int]:
         is_cur = (
             (active_set_id is not None and s["set_id"] == active_set_id)

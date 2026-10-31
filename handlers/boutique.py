@@ -967,11 +967,11 @@ async def handle_wardrobe_callback(call: CallbackQuery) -> None:
         idx = int(parts[3]) if len(parts) > 3 else 0
         try:
             await avatar.equip_set(user_id, set_id)
-            await call.answer("👕 لباس با موفقیت بر تن کاراکتر شما نشست!", show_alert=True)
+            await call.answer("👕 ست لباس با موفقیت بر تن کاراکتر شما نشست!", show_alert=True)
         except Exception as exc:
             await call.answer(f"خطا: {exc}", show_alert=True)
 
-        render_url, caption, markup = await _build_wardrobe_card(user_id=user_id, index=idx)
+        render_url, caption, markup = await _build_wardrobe_card(user_id=user_id, index=0)
         photo_payload = await _render_photo_payload(render_url, "wardrobe.png")
         with contextlib.suppress(TelegramBadRequest):
             await call.message.edit_media(

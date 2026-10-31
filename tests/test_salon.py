@@ -12,7 +12,7 @@ from aiogram.types import CallbackQuery, Chat, Message, Update, User
 from database.connection import db
 from database.seed import seed_catalog
 from models.enums import ActivityKind
-from services import economy, game, salon
+from services import avatar, economy, game, salon
 
 pytestmark = pytest.mark.asyncio
 
@@ -317,3 +317,98 @@ async def test_salon_real_hair_equipped_and_preserved_in_wardrobe():
     assert 6494 in av2["equipped_var_ids"]
     assert 33817 in av2["equipped_var_ids"]
     assert 116590 in av2["equipped_var_ids"]
+
+
+async def test_salon_changing_hair_does_not_strip_jacket_or_clothing():
+    """Verify changing hair NEVER removes cropped sweater 103734 or clothes (no naked bug)."""
+    user_id = 90007
+    await game.ensure_player(
+        user_id=user_id, username="daisy_girl", display_name="Daisy Girl"
+    )
+    async with db.write() as conn:
+        await conn.execute("UPDATE players SET gender = 'دختر' WHERE user_id = ?", (user_id,))
+    await economy.grant(user_id, credits=5000, kind=ActivityKind.ADMIN)
+
+    # 1. Player is wearing Set 105 which has cropped sweater 103734 and dress 103733
+    await avatar.assign_starter_set(user_id, set_id=105, gender="female")
+    av = await avatar.get_player_avatar(user_id)
+    assert 103734 in av["equipped_var_ids"]  # Cropped sweater
+    assert 103733 in av["equipped_var_ids"]  # Dress
+    assert 103736 in av["equipped_var_ids"]  # Knee socks
+
+    # 2. Player changes hairstyle in salon to hair_angel_curls (2161)
+    res_hair = await salon.change_hair_paid(user_id, "hair_angel_curls")
+    assert res_hair["success"]
+
+    # 3. VERIFY CROPPED SWEATER AND DRESS AND SOCKS ARE 100% PRESERVED!
+    av_after = await avatar.get_player_avatar(user_id)
+    assert 2161 in av_after["equipped_var_ids"]
+    assert 103734 in av_after["equipped_var_ids"], "Cropped sweater was wrongly removed!"
+    assert 103733 in av_after["equipped_var_ids"], "Dress was wrongly removed!"
+    assert 103736 in av_after["equipped_var_ids"], "Socks were wrongly removed!"
+
+    # 4. Player changes eye style in salon
+    res_eye = await salon.change_eyes_paid(user_id, "eyes1_1")
+    assert res_eye["success"]
+    av_after_eyes = await avatar.get_player_avatar(user_id)
+    assert 1702 in av_after_eyes["equipped_var_ids"]
+    assert 103734 in av_after_eyes["equipped_var_ids"]
+    assert 103736 in av_after_eyes["equipped_var_ids"]
+
+
+async def test_switching_sets_does_not_merge_or_stack_clothes():
+    """Verify equipping a different set cleanly replaces previous clothing with zero stacking."""
+    user_id = 90008
+    await game.ensure_player(
+        user_id=user_id, username="switch_boy", display_name="Switch Boy"
+    )
+    async with db.write() as conn:
+        await conn.execute("UPDATE players SET gender = 'پسر' WHERE user_id = ?", (user_id,))
+
+    # 1. Player owns Set 201 and Set 203 in wardrobe
+    set201_vars = avatar.STARTER_SETS[201]["var_ids"]  # has sweater 33817, pants 116590, hair 6494
+    set203_vars = avatar.STARTER_SETS[203]["var_ids"]  # has turtleneck 321598, wool pants 321613
+
+    await avatar.add_set_to_wardrobe(
+        user_id=user_id,
+        set_id=201,
+        set_name="Starter Pack (Boys) #1",
+        gender="male",
+        var_ids=set201_vars,
+    )
+    await avatar.add_set_to_wardrobe(
+        user_id=user_id,
+        set_id=203,
+        set_name="Starter Pack (Boys) #2",
+        gender="male",
+        var_ids=set203_vars,
+    )
+
+    # 2. Equip Set 201
+    await avatar.equip_set(user_id, 201)
+    av1 = await avatar.get_player_avatar(user_id)
+    assert av1["active_set_id"] == 201
+    assert 33817 in av1["equipped_var_ids"]
+    assert 116590 in av1["equipped_var_ids"]
+    assert 321598 not in av1["equipped_var_ids"]  # no set 203 sweater
+
+    # 3. Equip Set 203
+    await avatar.equip_set(user_id, 203)
+    av2 = await avatar.get_player_avatar(user_id)
+    assert av2["active_set_id"] == 203
+    assert 321598 in av2["equipped_var_ids"]  # Set 203 turtleneck equipped
+    assert 321613 in av2["equipped_var_ids"]  # Set 203 pants equipped
+
+    # CRITICAL ASSERTION: ZERO ITEMS OF SET 201 REMAIN! NO MERGING!
+    assert 33817 not in av2["equipped_var_ids"], "Old sweater from Set 201 merged into Set 203!"
+    assert 116590 not in av2["equipped_var_ids"], "Old pants from Set 201 merged into Set 203!"
+    assert 28144 not in av2["equipped_var_ids"], "Old boots from Set 201 merged into Set 203!"
+
+    # 4. Check list_wardrobe: only the 2 owned sets exist, NO ghost duplicate set 9999!
+    wdr = await avatar.list_wardrobe(user_id)
+    set_ids = [s["set_id"] for s in wdr]
+    assert 9999 not in set_ids, "Phantom duplicate set 9999 should not exist!"
+    assert 203 in set_ids
+    assert 201 in set_ids
+    # Set 203 is at index 0 because it is currently active
+    assert wdr[0]["set_id"] == 203
