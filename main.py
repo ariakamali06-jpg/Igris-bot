@@ -160,9 +160,11 @@ async def run() -> None:
         )
         sys.exit(2)
 
-    session = None
+    import socket
+
+    from aiogram.client.session.aiohttp import AiohttpSession
+
     if settings.telegram_api_server:
-        from aiogram.client.session.aiohttp import AiohttpSession
         from aiogram.client.telegram import TelegramAPIServer
 
         logger.info("Connecting via custom Telegram API server: %s", settings.telegram_api_server)
@@ -170,12 +172,14 @@ async def run() -> None:
             api=TelegramAPIServer.from_base(settings.telegram_api_server.rstrip("/"))
         )
     elif settings.proxy_url:
-        from aiogram.client.session.aiohttp import AiohttpSession
-
         logger.info("Connecting via proxy: %s", settings.proxy_url)
         session = AiohttpSession(proxy=settings.proxy_url)
     else:
         logger.info("Connecting directly to official Telegram Bot API (api.telegram.org)")
+        session = AiohttpSession()
+
+    # Force IPv4 socket family to eliminate broken IPv6 timeouts & address errors
+    session._connector_init["family"] = socket.AF_INET
 
     if settings.dry_run:
         # Boot everything except the network loop: useful for smoke tests.
