@@ -417,11 +417,26 @@ async def change_hair_paid(
     # 2. Update player_avatar equipped_var_ids with real Everskies variation IDs!
     av = await avatar.get_player_avatar(user_id)
     cur_vars = list(av.get("equipped_var_ids", []))
+
+    # Locate where old hair was to preserve exact z-index / layering slot
+    hair_pos = None
+    for idx, v in enumerate(cur_vars):
+        if v in ALL_SALON_HAIR_VAR_IDS:
+            hair_pos = idx
+            break
+
     cleaned_vars = [v for v in cur_vars if v not in ALL_SALON_HAIR_VAR_IDS]
 
     hair_entry = HAIR_CATALOG.get(style_key)
     new_vids = list(hair_entry["var_ids"]) if hair_entry else []
-    updated_vars = new_vids + cleaned_vars
+
+    if hair_pos is not None:
+        insert_idx = min(hair_pos, len(cleaned_vars))
+        updated_vars = cleaned_vars[:insert_idx] + new_vids + cleaned_vars[insert_idx:]
+    else:
+        # Default slot if no hair existed: keep behind outermost accessories (e.g. index 2)
+        insert_idx = min(2, len(cleaned_vars))
+        updated_vars = cleaned_vars[:insert_idx] + new_vids + cleaned_vars[insert_idx:]
 
     now_ts = int(time.time())
     makeup = av.get("makeup_data") or {}
@@ -612,11 +627,25 @@ async def change_lips_paid(user_id: int, lip_style: str) -> dict[str, Any]:
 
     av = await avatar.get_player_avatar(user_id)
     cur_vars = list(av.get("equipped_var_ids", []))
+
+    # Locate where old lips were to preserve exact z-index / layering slot
+    lip_pos = None
+    for idx, v in enumerate(cur_vars):
+        if v in ALL_SALON_LIPS_VAR_IDS:
+            lip_pos = idx
+            break
+
     cleaned_vars = [v for v in cur_vars if v not in ALL_SALON_LIPS_VAR_IDS]
 
     lip_entry = LIPS_CATALOG.get(lip_style)
     new_vids = list(lip_entry["var_ids"]) if lip_entry else []
-    updated_vars = new_vids + cleaned_vars
+
+    if lip_pos is not None:
+        insert_idx = min(lip_pos, len(cleaned_vars))
+        updated_vars = cleaned_vars[:insert_idx] + new_vids + cleaned_vars[insert_idx:]
+    else:
+        insert_idx = max(0, len(cleaned_vars) - 1)
+        updated_vars = cleaned_vars[:insert_idx] + new_vids + cleaned_vars[insert_idx:]
 
     now_ts = int(time.time())
     makeup = av.get("makeup_data") or {}

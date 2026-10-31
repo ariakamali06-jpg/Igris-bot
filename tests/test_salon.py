@@ -167,7 +167,9 @@ async def test_salon_text_commands(monkeypatch):
     upd1 = Update(update_id=1, message=msg1)
     await dp.feed_update(bot, upd1)
     assert len(photos_sent) == 1
-    assert "سولاریوم" in photos_sent[-1]["caption"]
+    assert "سالن پیرایش و زیبایی" in photos_sent[-1]["caption"]
+    assert "مدل مو" in photos_sent[-1]["caption"]
+    assert "رژ لب" in photos_sent[-1]["caption"]
 
     # 2. Quick command: "آرایشگاه 3 بلوند"
     msg2 = Message(
@@ -227,62 +229,53 @@ async def test_salon_callbacks_navigation(monkeypatch):
     now = datetime.now(UTC)
     base_msg = Message(message_id=10, date=now, chat=chat, from_user=tg_user, text="dummy")
 
-    # 1. Open Solarium menu
-    call_skin = CallbackQuery(
+    # 1. Open Hair menu
+    call_hair = CallbackQuery(
         id="q1",
         from_user=tg_user,
         chat_instance="1",
-        data="sal:skin",
+        data="sal:mu:hair",
         message=base_msg,
     )
-    await dp.feed_update(bot, Update(update_id=10, callback_query=call_skin))
+    await dp.feed_update(bot, Update(update_id=10, callback_query=call_hair))
     assert len(media_edits) == 1
-    assert "سولاریوم" in media_edits[-1]["media"].caption
+    assert "پیرایش و سالن تخصصی مو" in media_edits[-1]["media"].caption
 
-    # 2. Click paid skin tone -2
-    call_set_skin = CallbackQuery(
+    # 2. Click paid hairstyle
+    call_set_hair = CallbackQuery(
         id="q2",
         from_user=tg_user,
         chat_instance="1",
-        data="sal:set_skin:-2",
+        data="sal:set_hair:hair_eboy",
         message=base_msg,
     )
-    await dp.feed_update(bot, Update(update_id=11, callback_query=call_set_skin))
+    await dp.feed_update(bot, Update(update_id=11, callback_query=call_set_hair))
     st = await salon.get_player_salon_state(user_id)
-    assert st["skin_tone_id"] == -2
+    assert st["hair_style"] == "hair_eboy"
 
-    # 3. Open Makeup hub
-    call_mu = CallbackQuery(
+    # 3. Open Lips menu
+    call_lips = CallbackQuery(
         id="q3",
         from_user=tg_user,
         chat_instance="1",
-        data="sal:makeup",
+        data="sal:mu:lips",
         message=base_msg,
     )
-    await dp.feed_update(bot, Update(update_id=12, callback_query=call_mu))
-    assert "میکاپ" in media_edits[-1]["media"].caption
+    await dp.feed_update(bot, Update(update_id=12, callback_query=call_lips))
+    assert len(media_edits) >= 2
+    assert "رژ لب" in media_edits[-1]["media"].caption
 
-    # 4. Open nose sub-menu & choose petite
-    call_mu_nose = CallbackQuery(
+    # 4. Choose lipstick
+    call_set_lip = CallbackQuery(
         id="q4",
         from_user=tg_user,
         chat_instance="1",
-        data="sal:mu:nose",
+        data="sal:set_lip:lip_velvet_cherry",
         message=base_msg,
     )
-    await dp.feed_update(bot, Update(update_id=13, callback_query=call_mu_nose))
-    assert "بینی" in media_edits[-1]["media"].caption
-
-    call_set_nose = CallbackQuery(
-        id="q5",
-        from_user=tg_user,
-        chat_instance="1",
-        data="sal:set_nose:nose_petite",
-        message=base_msg,
-    )
-    await dp.feed_update(bot, Update(update_id=14, callback_query=call_set_nose))
-    st_nose = await salon.get_player_salon_state(user_id)
-    assert st_nose["nose_style"] == "nose_petite"
+    await dp.feed_update(bot, Update(update_id=13, callback_query=call_set_lip))
+    st_lip = await salon.get_player_salon_state(user_id)
+    assert st_lip["lip_style"] == "lip_velvet_cherry"
 
 
 async def test_salon_real_hair_equipped_and_preserved_in_wardrobe():
@@ -412,3 +405,30 @@ async def test_switching_sets_does_not_merge_or_stack_clothes():
     assert 201 in set_ids
     # Set 203 is at index 0 because it is currently active
     assert wdr[0]["set_id"] == 203
+
+
+async def test_salon_changing_hair_preserves_exact_z_index_slot():
+    """Verify changing hair replaces the old hair at its EXACT array index without jumping to 0."""
+    user_id = 90009
+    await game.ensure_player(
+        user_id=user_id, username="zindex_tester", display_name="ZIndex Tester"
+    )
+    async with db.write() as conn:
+        await conn.execute("UPDATE players SET gender = 'پسر' WHERE user_id = ?", (user_id,))
+    await economy.grant(user_id, credits=5000, kind=ActivityKind.ADMIN)
+
+    # 1. Equip starter set 201: [28144, 5546, 6494, 33817, 58359, 116590]
+    # Hair 6494 is at index 2!
+    await avatar.assign_starter_set(user_id, set_id=201, gender="male")
+    av_before = await avatar.get_player_avatar(user_id)
+    assert av_before["equipped_var_ids"][2] == 6494, "Hair was not at index 2!"
+
+    # 2. Change hair in salon to hair_spiky_dark (1409)
+    res = await salon.change_hair_paid(user_id, "hair_spiky_dark")
+    assert res["success"]
+
+    # 3. VERIFY NEW HAIR IS AT EXACT INDEX 2! NOT JUMPING TO TOP (INDEX 0)!
+    av_after = await avatar.get_player_avatar(user_id)
+    assert av_after["equipped_var_ids"][0] == 28144, "Outer item at index 0 was displaced!"
+    assert av_after["equipped_var_ids"][1] == 5546, "Outer item at index 1 was displaced!"
+    assert av_after["equipped_var_ids"][2] == 1409, "New hair did not preserve exact index 2 slot!"

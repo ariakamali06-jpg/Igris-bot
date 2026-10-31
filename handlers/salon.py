@@ -49,28 +49,24 @@ async def _build_salon_menu(user_id: int) -> tuple[str, str, InlineKeyboardMarku
     """Generate main salon overview with current style and navigation buttons."""
     st = await salon.get_player_salon_state(user_id)
     caption = (
-        f"✂️ <b>سالن پیرایش، زیبایی و سولاریوم تیرامیکس</b> 💄\n"
+        f"✂️ <b>سالن پیرایش و زیبایی تیرامیکس</b> 💄\n"
         f"💰 موجودی شما: <b>{st['credits']:,}</b> سکه\n\n"
-        f"👤 <b>وضعیت فعلی چهره و استایل شما:</b>\n"
-        f"• ☀️ رنگ پوست: <b>{st['skin_label']}</b>\n"
-        f"• ✂️ مدل و رنگ مو: <b>{st['hair_label']}</b> ({st['hair_color_label']})\n"
-        f"• 👁 فرم چشم و لنز: <b>{st['eye_label']}</b> ({st['eye_color_label']})\n"
-        f"• 👃 بینی: <b>{st['nose_label']}</b>\n"
-        f"• 👂 گوش: <b>{st['ear_label']}</b>\n"
-        f"• 👄 لب و رژ: <b>{st['lip_label']}</b>\n\n"
+        f"👤 <b>وضعیت چهره و استایل شما:</b>\n"
+        f"• ✂️ مدل مو: <b>{st['hair_label']}</b>\n"
+        f"• 👄 رژ لب: <b>{st['lip_label']}</b>\n\n"
         f"👇 بخش مورد نظرت رو برای تغییر انتخاب کن:"
     )
 
     buttons = [
         [
-            _nav_btn("☀️ سولاریوم و رنگ پوست (۵۰۰ سکه)", "sal:skin"),
+            _nav_btn(f"✂️ سالن پیرایش و مدل مو ({salon.HAIR_CHANGE_FEE:,} سکه)", "sal:mu:hair"),
         ],
         [
-            _nav_btn("💄 سالن میکاپ و چهره", "sal:makeup"),
+            _nav_btn(f"👄 سالن رژ و میکاپ لب ({salon.LIPS_CHANGE_FEE:,} سکه)", "sal:mu:lips"),
         ],
         [
-            _nav_btn("👗 بوتیک لباس", "btq:cat:female"),
             _nav_btn("👕 کمد لباس من", "wdr:view:0"),
+            _nav_btn("🛍 بوتیک لباس", "btq:open"),
         ],
         [
             _nav_btn("❌ خروج از آرایشگاه", "sal:close"),
@@ -134,7 +130,7 @@ async def _build_makeup_menu(user_id: int) -> tuple[str, str, InlineKeyboardMark
 
 
 async def _build_hair_menu(user_id: int) -> tuple[str, str, InlineKeyboardMarkup]:
-    """Generate hairstyle and hair color picker tailored to player gender."""
+    """Generate hairstyle picker tailored to player gender without color clutter."""
     st = await salon.get_player_salon_state(user_id)
     p_gen = (st.get("gender") or "").lower()
     is_male = any(k in p_gen for k in ("مرد", "پسر", "boy", "male"))
@@ -143,7 +139,7 @@ async def _build_hair_menu(user_id: int) -> tuple[str, str, InlineKeyboardMarkup
         f"✂️ <b>پیرایش و سالن تخصصی مو تیرامیکس</b>\n"
         f"💵 هزینه هر مدل مو: <b>{salon.HAIR_CHANGE_FEE:,}</b> سکه\n"
         f"💰 موجودی شما: <b>{st['credits']:,}</b> سکه\n"
-        f"👤 استایل فعلی: <b>{st['hair_label']}</b> ({st['hair_color_label']})\n\n"
+        f"👤 مدل فعلی: <b>{st['hair_label']}</b>\n\n"
         f"مدل موی مورد نظرت رو لمس کن تا در لحظه بر سر کاراکتر بنشیند:"
     )
 
@@ -160,20 +156,7 @@ async def _build_hair_menu(user_id: int) -> tuple[str, str, InlineKeyboardMarkup
         mark = " ✅" if k == st["hair_style"] else ""
         buttons.append([_nav_btn(f"{name}{mark}", f"sal:set_hair:{k}")])
 
-    # Hair colors
-    color_row1 = [
-        _nav_btn("🖤 مشکی", "sal:set_hair_col:black"),
-        _nav_btn("🌰 قهوه‌ای", "sal:set_hair_col:brown"),
-        _nav_btn("🌾 بلوند", "sal:set_hair_col:blonde"),
-    ]
-    color_row2 = [
-        _nav_btn("❄️ نقره‌ای", "sal:set_hair_col:silver"),
-        _nav_btn("🍷 شرابی", "sal:set_hair_col:crimson"),
-        _nav_btn("🔮 بنفش", "sal:set_hair_col:purple"),
-    ]
-    buttons.append(color_row1)
-    buttons.append(color_row2)
-    buttons.append([_nav_btn("🔙 بازگشت به سالن چهره", "sal:makeup")])
+    buttons.append([_nav_btn("🔙 بازگشت به منوی آرایشگاه", "sal:menu")])
 
     return st["render_url"], caption, InlineKeyboardMarkup(inline_keyboard=buttons)
 
@@ -267,7 +250,7 @@ async def _build_lips_menu(user_id: int) -> tuple[str, str, InlineKeyboardMarkup
         mark = " ✅" if k == st["lip_style"] else ""
         buttons.append([_nav_btn(f"{v}{mark}", f"sal:set_lip:{k}")])
 
-    buttons.append([_nav_btn("🔙 بازگشت به سالن میکاپ", "sal:makeup")])
+    buttons.append([_nav_btn("🔙 بازگشت به منوی آرایشگاه", "sal:menu")])
     return st["render_url"], caption, InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
@@ -377,52 +360,24 @@ async def cb_salon_actions(call: CallbackQuery) -> None:
             await call.answer("با تشکر از مراجعه شما به سالن زیبایی تیرامیکس! ✨")
             return
 
-        if action in ("menu", "main"):
+        legacy_actions = (
+            "menu", "main", "skin", "set_skin", "makeup",
+            "set_eye", "set_eye_col", "set_nose", "set_ear",
+        )
+        if action in legacy_actions:
             render_url, caption, markup = await _build_salon_menu(user.id)
             await _update_view(call, render_url, caption, markup)
             await call.answer()
             return
 
-        if action == "skin":
-            render_url, caption, markup = await _build_solarium_menu(user.id)
-            await _update_view(call, render_url, caption, markup)
-            await call.answer()
-            return
-
-        if action == "set_skin":
-            tone_id = int(parts[2])
-            res = await salon.change_skin_tone_paid(user.id, tone_id)
-            if not res["success"]:
-                await call.answer(res["message"], show_alert=True)
-                return
-            await call.answer(
-                f"✅ رنگ پوست تغییر یافت! ({salon.SKIN_CHANGE_FEE:,} سکه کسر شد)",
-                show_alert=True,
-            )
-            render_url, caption, markup = await _build_solarium_menu(user.id)
-            await _update_view(call, render_url, caption, markup)
-            return
-
-        if action == "makeup":
-            render_url, caption, markup = await _build_makeup_menu(user.id)
-            await _update_view(call, render_url, caption, markup)
-            await call.answer()
-            return
-
         if action == "mu":
-            sub = parts[2]
+            sub = parts[2] if len(parts) > 2 else "hair"
             if sub == "hair":
                 render_url, caption, markup = await _build_hair_menu(user.id)
-            elif sub == "eyes":
-                render_url, caption, markup = await _build_eyes_menu(user.id)
-            elif sub == "nose":
-                render_url, caption, markup = await _build_nose_menu(user.id)
-            elif sub == "ears":
-                render_url, caption, markup = await _build_ears_menu(user.id)
             elif sub == "lips":
                 render_url, caption, markup = await _build_lips_menu(user.id)
             else:
-                render_url, caption, markup = await _build_makeup_menu(user.id)
+                render_url, caption, markup = await _build_salon_menu(user.id)
             await _update_view(call, render_url, caption, markup)
             await call.answer()
             return
@@ -440,68 +395,6 @@ async def cb_salon_actions(call: CallbackQuery) -> None:
             await _update_view(call, render_url, caption, markup)
             return
 
-        if action == "set_hair_col":
-            col_key = parts[2]
-            st = await salon.get_player_salon_state(user.id)
-            res = await salon.change_hair_paid(user.id, st["hair_style"], col_key)
-            if not res["success"]:
-                await call.answer(res["message"], show_alert=True)
-                return
-            fee_txt = f"{salon.HAIR_CHANGE_FEE:,} سکه"
-            await call.answer(f"✅ رنگ مو اعمال شد! ({fee_txt})", show_alert=True)
-            render_url, caption, markup = await _build_hair_menu(user.id)
-            await _update_view(call, render_url, caption, markup)
-            return
-
-        if action == "set_eye":
-            eye_key = parts[2]
-            res = await salon.change_eyes_paid(user.id, eye_key)
-            if not res["success"]:
-                await call.answer(res["message"], show_alert=True)
-                return
-            fee_txt = f"{salon.EYES_CHANGE_FEE:,} سکه"
-            await call.answer(f"✅ فرم چشم تغییر کرد! ({fee_txt})", show_alert=True)
-            render_url, caption, markup = await _build_eyes_menu(user.id)
-            await _update_view(call, render_url, caption, markup)
-            return
-
-        if action == "set_eye_col":
-            col_key = parts[2]
-            st = await salon.get_player_salon_state(user.id)
-            res = await salon.change_eyes_paid(user.id, st["eye_style"], col_key)
-            if not res["success"]:
-                await call.answer(res["message"], show_alert=True)
-                return
-            fee_txt = f"{salon.EYES_CHANGE_FEE:,} سکه"
-            await call.answer(f"✅ رنگ لنز اعمال شد! ({fee_txt})", show_alert=True)
-            render_url, caption, markup = await _build_eyes_menu(user.id)
-            await _update_view(call, render_url, caption, markup)
-            return
-
-        if action == "set_nose":
-            nose_key = parts[2]
-            res = await salon.change_nose_paid(user.id, nose_key)
-            if not res["success"]:
-                await call.answer(res["message"], show_alert=True)
-                return
-            fee_txt = f"{salon.NOSE_CHANGE_FEE:,} سکه"
-            await call.answer(f"✅ مدل بینی تغییر کرد! ({fee_txt})", show_alert=True)
-            render_url, caption, markup = await _build_nose_menu(user.id)
-            await _update_view(call, render_url, caption, markup)
-            return
-
-        if action == "set_ear":
-            ear_key = parts[2]
-            res = await salon.change_ears_paid(user.id, ear_key)
-            if not res["success"]:
-                await call.answer(res["message"], show_alert=True)
-                return
-            fee_txt = f"{salon.EARS_CHANGE_FEE:,} سکه"
-            await call.answer(f"✅ پیرسینگ گوش ثبت شد! ({fee_txt})", show_alert=True)
-            render_url, caption, markup = await _build_ears_menu(user.id)
-            await _update_view(call, render_url, caption, markup)
-            return
-
         if action == "set_lip":
             lip_key = parts[2]
             res = await salon.change_lips_paid(user.id, lip_key)
@@ -513,6 +406,11 @@ async def cb_salon_actions(call: CallbackQuery) -> None:
             render_url, caption, markup = await _build_lips_menu(user.id)
             await _update_view(call, render_url, caption, markup)
             return
+
+        # Default fallback: redirect to salon menu
+        render_url, caption, markup = await _build_salon_menu(user.id)
+        await _update_view(call, render_url, caption, markup)
+        await call.answer()
 
     except Exception as exc:  # noqa: BLE001
         await answer_error(exc, callback=call)

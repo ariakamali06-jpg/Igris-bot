@@ -972,6 +972,134 @@ async def buy_boutique_set(
     return final_price, set_info
 
 
+def calculate_item_price(item_gender: str, player_gender: str) -> tuple[int, str]:
+    """Calculate dynamic item price based on player gender vs item gender."""
+    p_lower = (player_gender or "").lower()
+    is_fem = any(k in p_lower for k in ("دختر", "female", "girl"))
+    p_gen = "female" if is_fem else "male"
+    it_gen = (item_gender or "unisex").lower()
+
+    if it_gen == "unisex":
+        return 500, "⚧ استاندارد (۵۰۰ سکه)"
+    elif it_gen == p_gen:
+        label = (
+            "✨ ۴۰٪ تخفیف دخترانه (۳۰۰ سکه)"
+            if p_gen == "female"
+            else "✨ ۴۰٪ تخفیف پسرانه (۳۰۰ سکه)"
+        )
+        return 300, label
+    else:
+        label = "🔥 لوکس پسرانه (۱,۲۰۰ سکه)" if it_gen == "male" else "🔥 لوکس دخترانه (۱,۲۰۰ سکه)"
+        return 1200, label
+
+
+async def owns_item(user_id: int, var_id: int) -> bool:
+    """Check if player already owns this specific item variation in their wardrobe."""
+    async with db.read() as conn:
+        cursor = await conn.execute(
+            """
+            SELECT var_ids FROM player_wardrobe
+            WHERE user_id = ?
+            """,
+            (user_id,),
+        )
+        rows = await cursor.fetchall()
+        await cursor.close()
+
+    for r in rows:
+        vids = json.loads(r["var_ids"] or "[]")
+        if var_id in vids:
+            return True
+    return False
+
+
+async def buy_boutique_item(
+    user_id: int,
+    var_id: int,
+    player_gender: str = "male",
+    player_drip: int = 0,
+) -> tuple[int, dict[str, Any]]:
+    """Atomically purchase a single clothing item and add to player_wardrobe."""
+    from services import catalog
+
+    if await owns_item(user_id, var_id):
+        raise AlreadyOwned("شما قبلاً این لباس را خریداری کرده‌اید!")
+
+    it_info = catalog.get_catalog_item_by_var_id(var_id)
+    if it_info is None:
+        raise AvatarError("آیتم مورد نظر در کاتالوگ لباس یافت نشد!")
+
+    raw_price, _ = calculate_item_price(it_info.get("gender", "unisex"), player_gender)
+    discount = economy.drip_discount(player_drip)
+    final_price = max(100, int(raw_price * (1.0 - discount)))
+
+    credits_bal, _ = await economy.balances(user_id)
+    if credits_bal < final_price:
+        raise AvatarError(
+            f"موجودی شما کافی نیست! (قیمت: {final_price:,} سکه - موجودی: {credits_bal:,} سکه)"
+        )
+
+    now_ts = int(time.time())
+    await economy.spend(user_id, credits=final_price, kind=ActivityKind.SHOP_BUY)
+
+    # Insert individual item as a 1-item entry in player_wardrobe
+    virtual_set_id = 1000000 + var_id
+    item_title = f"✨ {it_info['name']}"
+    async with db.write() as conn:
+        await conn.execute(
+            """
+            INSERT INTO player_wardrobe
+                (user_id, set_id, set_name, gender, item_count,
+                 var_ids, is_plus_size, price_paid, acquired_at)
+            VALUES (?, ?, ?, ?, 1, ?, 0, ?, ?)
+            ON CONFLICT(user_id, set_id) DO UPDATE SET
+                var_ids = excluded.var_ids,
+                acquired_at = excluded.acquired_at
+            """,
+            (
+                user_id,
+                virtual_set_id,
+                item_title,
+                it_info.get("gender", "unisex"),
+                json.dumps([var_id]),
+                final_price,
+                now_ts,
+            ),
+        )
+
+    invalidate_avatar_cache(user_id)
+    return final_price, it_info
+
+
+async def equip_single_item(user_id: int, var_id: int) -> dict[str, Any]:
+    """Equip an owned single clothing item onto character's active avatar."""
+    av = await get_player_avatar(user_id)
+    cur_vars = list(av.get("equipped_var_ids", []))
+    if var_id in cur_vars:
+        return {"equipped": False, "message": "این لباس هم‌اکنون بر تن کاراکتر شماست!"}
+
+    # Add item to active outfit (placed as top layer)
+    new_vars = [var_id] + [v for v in cur_vars if v != var_id]
+
+    now_ts = int(time.time())
+    async with db.write() as conn:
+        await conn.execute(
+            """
+            UPDATE player_avatar
+            SET equipped_var_ids = ?, updated_at = ?
+            WHERE user_id = ?
+            """,
+            (json.dumps(new_vars), now_ts, user_id),
+        )
+
+    invalidate_avatar_cache(user_id)
+    return {
+        "equipped": True,
+        "message": "👕 لباس با موفقیت بر تن کاراکتر شما نشست!",
+        "var_ids": new_vars,
+    }
+
+
 
 _USER_WARDROBE_MSG: dict[int, tuple[int, int]] = {}
 

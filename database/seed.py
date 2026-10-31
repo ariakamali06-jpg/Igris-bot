@@ -69,6 +69,13 @@ async def seed_catalog() -> int:
             await conn.execute("DELETE FROM items WHERE id = ?", (stale,))
             logger.info("removed stale catalog item %s", stale)
 
+    try:
+        from services import catalog
+
+        catalog.ensure_catalog_items_seeded()
+    except Exception as exc:
+        logger.warning("Could not auto-seed granular catalog items: %s", exc)
+
     logger.info("catalog seeded: %d items", kept)
     return kept
 
