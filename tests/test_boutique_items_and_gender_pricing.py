@@ -62,9 +62,12 @@ async def test_single_item_purchase_and_equip_lifecycle():
     await game.ensure_player(
         user_id=user_id, username="item_buyer", display_name="Item Buyer"
     )
-    # Set player as girl
+    # Set player as girl and onboarded
     async with db.write() as conn:
-        await conn.execute("UPDATE players SET gender = 'دختر' WHERE user_id = ?", (user_id,))
+        await conn.execute(
+            "UPDATE players SET gender = 'دختر', onboarding_completed = 1 WHERE user_id = ?",
+            (user_id,),
+        )
     await economy.grant(user_id, credits=10000, kind=ActivityKind.ADMIN)
 
     # Pick an item from catalog (e.g. Moon crop 1326 or Tulle skirt 1322)
@@ -100,6 +103,34 @@ async def test_single_item_purchase_and_equip_lifecycle():
     eq_again = await avatar.equip_single_item(user_id, 1326)
     assert eq_again["equipped"] is False
     assert "هم‌اکنون بر تن" in eq_again["message"]
+
+    # 6. Verify item is in list_owned_items, but NOT in list_wardrobe_sets
+    owned_items = await avatar.list_owned_items(user_id)
+    assert any(it["var_id"] == 1326 for it in owned_items)
+
+    wardrobe_sets = await avatar.list_wardrobe_sets(user_id)
+    assert not any(1326 in s["var_ids"] for s in wardrobe_sets)
+
+    # 7. Verify miniapp payload has item in `owned` but NOT in `owned_sets`
+    import base64
+    import json
+    app_url = await avatar.get_customizer_url(user_id)
+    b64_str = app_url.split("?d=")[1]
+    payload = json.loads(base64.urlsafe_b64decode(b64_str + "==").decode())
+    assert 1326 in payload["owned"]
+    assert not any(1326 in s.get("vars", []) for s in payload["owned_sets"])
+
+    # 8. Test unequip_single_item
+    uneq_res = await avatar.unequip_single_item(user_id, 1326)
+    assert uneq_res["unequipped"] is True
+    av = await avatar.get_player_avatar(user_id)
+    assert 1326 not in av["equipped_var_ids"]
+
+    # 9. Verify _build_wardrobe_items_menu displays item
+    from handlers.boutique import _build_wardrobe_items_menu
+    _, items_caption, items_markup = await _build_wardrobe_items_menu(user_id, page=0)
+    assert "کمد تک‌آیتم‌های شخصی" in items_caption
+    assert any("تن زدن" in btn.text for row in items_markup.inline_keyboard for btn in row)
 
     # Cleanup
     async with db.write() as conn:

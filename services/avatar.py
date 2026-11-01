@@ -1100,6 +1100,90 @@ async def equip_single_item(user_id: int, var_id: int) -> dict[str, Any]:
     }
 
 
+async def unequip_single_item(user_id: int, var_id: int) -> dict[str, Any]:
+    """Remove a single clothing item from character's active avatar without affecting others."""
+    av = await get_player_avatar(user_id)
+    cur_vars = list(av.get("equipped_var_ids", []))
+    if var_id not in cur_vars:
+        return {"unequipped": False, "message": "این لباس بر تن کاراکتر شما نیست!"}
+
+    new_vars = [v for v in cur_vars if v != var_id]
+
+    now_ts = int(time.time())
+    async with db.write() as conn:
+        await conn.execute(
+            """
+            UPDATE player_avatar
+            SET equipped_var_ids = ?, updated_at = ?
+            WHERE user_id = ?
+            """,
+            (json.dumps(new_vars), now_ts, user_id),
+        )
+
+    invalidate_avatar_cache(user_id)
+    return {
+        "unequipped": True,
+        "message": "لباس با موفقیت از تن کاراکتر درآورده شد.",
+        "var_ids": new_vars,
+    }
+
+
+async def list_wardrobe_sets(user_id: int) -> list[dict[str, Any]]:
+    """Return only multi-piece sets or starter sets (NOT single items)."""
+    wdr = await list_wardrobe(user_id)
+    return [
+        s for s in wdr
+        if s.get("set_id", 0) < 1000000 and s.get("item_count", 0) > 1
+    ]
+
+
+async def list_owned_items(user_id: int) -> list[dict[str, Any]]:
+    """Return all individual clothing items owned by the player with wear status."""
+    from services import catalog
+
+    av = await get_player_avatar(user_id)
+    cur_eq = set(av.get("equipped_var_ids", []))
+
+    async with db.read() as conn:
+        cursor = await conn.execute(
+            """
+            SELECT set_id, var_ids
+            FROM player_wardrobe
+            WHERE user_id = ?
+            ORDER BY id DESC
+            """,
+            (user_id,),
+        )
+        rows = await cursor.fetchall()
+        await cursor.close()
+
+    owned_vids: list[int] = []
+    for r in rows:
+        vids = json.loads(r["var_ids"] or "[]")
+        if r["set_id"] >= 1000000 or len(vids) == 1:
+            owned_vids.extend([int(v) for v in vids if int(v) > 0])
+        else:
+            for v in vids:
+                if int(v) > 0 and int(v) not in ALL_COSMETIC_VAR_IDS:
+                    owned_vids.append(int(v))
+
+    owned_vids = list(dict.fromkeys(owned_vids))
+
+    items = []
+    for vid in owned_vids:
+        it = catalog.get_catalog_item_by_var_id(vid)
+        name = it["name"] if it else f"لباس #{vid}"
+        cat = it.get("category", "پوشاک") if it else "پوشاک"
+        items.append({
+            "var_id": vid,
+            "name": name,
+            "category": cat,
+            "is_equipped": vid in cur_eq,
+        })
+
+    return items
+
+
 
 _USER_WARDROBE_MSG: dict[int, tuple[int, int]] = {}
 
@@ -1269,11 +1353,18 @@ async def get_customizer_url(
             for s in wdr:
                 s_vars = [int(v) for v in s.get("var_ids", [])]
                 owned_ids.extend(s_vars)
-                owned_sets.append({
-                    "id": s.get("set_id", 0),
-                    "name": s.get("name", "ست کمد"),
-                    "vars": s_vars,
-                })
+                # CRITICAL: Only real multi-piece sets belong in owned_sets!
+                # Single items (set_id >= 1000000) are items, NOT ready-made sets!
+                if (
+                    s.get("set_id", 0) < 1000000
+                    and len(s_vars) > 1
+                    and s.get("set_id", 0) != 9999
+                ):
+                    owned_sets.append({
+                        "id": s.get("set_id", 0),
+                        "name": s.get("name", "ست کمد"),
+                        "vars": s_vars,
+                    })
         except Exception:
             pass
 
