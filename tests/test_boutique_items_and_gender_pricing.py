@@ -154,6 +154,60 @@ async def test_single_item_purchase_and_equip_lifecycle():
         await conn.execute("DELETE FROM players WHERE user_id = ?", (user_id,))
 
 
+async def test_starter_sets_exact_counts_and_no_manual_option():
+    """Verify girls get 4 sets, boys get 2 sets, and no manual option in Telegram."""
+    from aiogram.fsm.context import FSMContext
+    from aiogram.fsm.storage.base import StorageKey
+    from aiogram.fsm.storage.memory import MemoryStorage
+
+    from handlers import onboarding
+    from services import avatar
+
+    # 1. Verify exact counts and no duplicate names
+    female_starters = avatar.get_starter_sets("female")
+    male_starters = avatar.get_starter_sets("male")
+
+    assert len(female_starters) == 4, f"Expected 4 female starter sets, got {len(female_starters)}"
+    assert len(male_starters) == 2, f"Expected 2 male starter sets, got {len(male_starters)}"
+
+    f_names = [s["name"] for s in female_starters]
+    assert len(f_names) == len(set(f_names)), f"Duplicate female set names found: {f_names}"
+
+    m_names = [s["name"] for s in male_starters]
+    assert len(m_names) == len(set(m_names)), f"Duplicate male set names found: {m_names}"
+
+    # 2. Verify selecting gender goes directly to ready-made starter sets without manual option
+    user_id = 999888775
+    storage = MemoryStorage()
+    key = StorageKey(bot_id=1, chat_id=user_id, user_id=user_id)
+    state = FSMContext(storage=storage, key=key)
+    await state.set_state(onboarding.OnboardingState.waiting_for_gender)
+    await state.update_data(name="SetTester", age=21)
+
+    from aiogram.types import User
+
+    from tests.test_onboarding import FakeCall, MutableMessage
+
+    test_user = User(id=user_id, is_bot=False, first_name="Tester")
+    msg = MutableMessage(text="/start", user=test_user)
+    call = FakeCall(data="ob:gen:female", message=msg, user=test_user)
+    await onboarding.cb_gender(call, state)
+
+    # State must be waiting_for_starter_set directly
+    cur_state = await state.get_state()
+    assert cur_state == onboarding.OnboardingState.waiting_for_starter_set.state
+
+    # Buttons must contain starter sets and MiniApp, but NO manual option
+    last_reply = msg.replies[-1]
+    last_text = last_reply.get("text", "")
+    last_markup = last_reply.get("reply_markup")
+    btn_texts = [btn.text for row in last_markup.inline_keyboard for btn in row]
+    assert not any("تنظیم دستی رنگ پوست" in t for t in btn_texts)
+    assert not any("انتخاب سنتی" in last_text for _ in [1])
+    assert any("مینی‌اپ" in t for t in btn_texts)
+    assert sum("Starter Pack" in t for t in btn_texts) == 4
+
+
 async def test_cmd_start_delegation_without_payload():
     """Verify /start without payload properly triggers player onboarding wizard or profile."""
     from aiogram.fsm.context import FSMContext

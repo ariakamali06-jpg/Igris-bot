@@ -876,74 +876,13 @@ async def cb_gender(call: CallbackQuery, state: FSMContext) -> None:
     gender = call.data.split(":")[2]
     gender_fa = "دختر" if gender == "female" else "پسر"
     await state.update_data(gender=gender, gender_fa=gender_fa)
-    await state.set_state(OnboardingState.waiting_for_skin)
-
-    data = await state.get_data()
-    name = data.get("name", (call.from_user.first_name if call.from_user else "مسافر")[:24])
-    age = data.get("age", 20)
-
-    # Starter var IDs matching selected gender (default bottom item so mannequin is clothed)
-    starter_bottom = [avatar.DEFAULT_STARTER_BOTTOM.get(gender, 116590)]
-    custom_url = await avatar.get_customizer_url(
-        user_id=call.from_user.id if call.from_user else 0,
-        display_name=name,
-        gender=gender,
-        level=1,
-        credits=250,
-        skin_tone=-1,
-        is_plus_size=0,
-        var_ids=starter_bottom,
-    )
-
-    buttons = [
-        [
-            InlineKeyboardButton(
-                text="🎨 طراحی زنده در مینی‌اپ تصویری (پیشنهادی)",
-                web_app=WebAppInfo(url=custom_url),
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                text="⚡️ انتخاب سریع تیپ اولیه (شروع فوری)",
-                callback_data=f"ob:quick_sets:{gender}",
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                text="🎛 تنظیم دستی رنگ پوست و چهره",
-                callback_data=f"ob:manual:{gender}",
-            )
-        ],
-    ]
-    text = (
-        f"✅ <b>هویت ثبت شد:</b>\n"
-        f"👤 نام: <b>{esc(name)}</b> | 🎂 سن: <b>{age} سال</b> | ⚧ جنسیت: <b>{gender_fa}</b>\n\n"
-        "✨ <b>حالا چطور می‌خوای چهره و تیپ کاراکترت رو بسازی؟</b>\n\n"
-        "🔹 <b>طراحی در مینی‌اپ (پیشنهادی):</b> باز شدن صفحه تمام‌لمسی؛ "
-        "مشاهده زنده مو، چهره و لباس‌ها روی مانکن و ذخیره سریع.\n"
-        "🔹 <b>انتخاب سریع تیپ:</b> ورق زدن ست‌های شیک و آماده (کژوال، استریت، کالج) و صدور فوری.\n"
-        "🔹 <b>تنظیم دستی:</b> انتخاب سنتی گزینه‌ها به صورت دکمه‌ای در تلگرام."
-    )
-    msg = editable_message(call)
-    if msg:
-        await target_send(msg, text, buttons)
+    await _show_starter_set_step(call, state)
 
 
 @router.callback_query(F.data.startswith("ob:manual:"))
 async def cb_manual_steps(call: CallbackQuery, state: FSMContext) -> None:
     await call.answer()
-    await state.set_state(OnboardingState.waiting_for_skin)
-    buttons = [
-        [InlineKeyboardButton(text="🌕 درجه ۱: بسیار روشن", callback_data="ob:skin:1")],
-        [InlineKeyboardButton(text="🌾 درجه ۲: روشن و لطیف", callback_data="ob:skin:2")],
-        [InlineKeyboardButton(text="🍑 درجه ۳: طبیعی و شاداب", callback_data="ob:skin:3")],
-        [InlineKeyboardButton(text="🌰 درجه ۴: گندمی و گرم", callback_data="ob:skin:4")],
-        [InlineKeyboardButton(text="🍫 درجه ۵: تیره شکلاتی", callback_data="ob:skin:5")],
-    ]
-    text = "🎨 <b>مرحله چهارم: رنگ پوست کاراکترت رو انتخاب کن:</b>"
-    msg = editable_message(call)
-    if msg:
-        await target_send(msg, text, buttons)
+    await _show_starter_set_step(call, state)
 
 
 @router.callback_query(F.data.startswith("ob:quick_sets:"))
@@ -1114,6 +1053,8 @@ async def _show_starter_set_step(call: CallbackQuery, state: FSMContext) -> None
         starters = avatar.get_starter_sets("male")
 
     name = data.get("name", (call.from_user.first_name if call.from_user else "مسافر")[:24])
+    age = data.get("age", 20)
+    gender_fa = data.get("gender_fa", "پسر" if gender == "male" else "دختر")
     starter_bottom = [avatar.DEFAULT_STARTER_BOTTOM.get(gender, 116590)]
     custom_url = await avatar.get_customizer_url(
         user_id=call.from_user.id if call.from_user else 0,
@@ -1129,7 +1070,7 @@ async def _show_starter_set_step(call: CallbackQuery, state: FSMContext) -> None
     buttons = [
         [
             InlineKeyboardButton(
-                text="🎨 باز کردن این بخش در مینی‌اپ تصویری",
+                text="🎨 تنظیم دستی و شخصی‌سازی در مینی‌اپ",
                 web_app=WebAppInfo(url=custom_url),
             )
         ]
@@ -1140,11 +1081,13 @@ async def _show_starter_set_step(call: CallbackQuery, state: FSMContext) -> None
         )
 
     text = (
-        "👗 <b>مرحله پایانی: انتخاب استایل و تیپ اولیه:</b>\n"
+        f"✅ <b>هویت ثبت شد:</b>\n"
+        f"👤 نام: <b>{esc(name)}</b> | 🎂 سن: <b>{age} سال</b> | ⚧ جنسیت: <b>{gender_fa}</b>\n\n"
+        "👗 <b>انتخاب استایل و تیپ اولیه کاراکتر:</b>\n"
         "━━━━━━━━━━━━━━━━━━━━\n"
-        "یکی از ست‌های هماهنگ‌شده زیر رو به عنوان تیپ اولیه انتخاب کن:\n"
-        "<i>(این ست به صورت ۱۰۰٪ رایگان به کمد لباس و تن کاراکتر شما اضافه می‌شود)</i>\n\n"
-        "همچنین می‌تونی دکمه <b>«طراحی در مینی‌اپ»</b> رو بزنی و تمام اجزا رو زنده دستکاری کنی!"
+        "یکی از ست‌های آماده زیر رو انتخاب کن تا شناسنامه کاراکترت صادر بشه:\n"
+        "<i>(این ست به صورت ۱۰۰٪ رایگان به کمد لباس و تن کاراکترت اضافه می‌شه)</i>\n\n"
+        "💡 <i>برای تنظیم دستی چهره و لباس‌ها، دکمه بالا (مینی‌اپ) را لمس کنید!</i>"
     )
     msg = editable_message(call)
     if msg:

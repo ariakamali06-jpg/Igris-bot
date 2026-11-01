@@ -721,11 +721,15 @@ def get_set_from_catalog(set_id: int) -> dict[str, Any] | None:
 
 
 def get_starter_sets(gender: str = "male") -> list[dict[str, Any]]:
-    """Return curated, high-detail starter sets for onboarding."""
+    """Return curated, high-detail starter sets for onboarding without duplicates."""
     target_gender = "female" if gender in ("female", "دختر") else "male"
     res = []
+    seen_names = set()
     for s in STARTER_SETS.values():
         if s["gender"] == target_gender:
+            if s["name"] in seen_names:
+                continue
+            seen_names.add(s["name"])
             item = dict(s)
             item["render_url"] = get_render_url(item["var_ids"])
             res.append(item)
