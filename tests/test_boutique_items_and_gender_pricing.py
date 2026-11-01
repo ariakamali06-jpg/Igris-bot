@@ -134,7 +134,7 @@ async def test_zero_bandwidth_boutique_text_catalog():
     assert "مشخصات و خرید آیتم" in detail_caption
     assert "#1326" in detail_caption
     assert any("خرید این لباس" in btn.text for row in detail_markup.inline_keyboard for btn in row)
-    assert any("پرو زنده" in btn.text for row in detail_markup.inline_keyboard for btn in row)
+    assert any("عکس استودیویی" in btn.text for row in detail_markup.inline_keyboard for btn in row)
 
     # 3. Build detail view with preview (is_preview=True)
     r_url_prev, prev_caption, prev_markup = await _build_boutique_item_detail(
@@ -145,8 +145,8 @@ async def test_zero_bandwidth_boutique_text_catalog():
     slug = r_url_prev.split("/render/")[1].split(".png")[0]
     decoded = base64.b64decode(slug + "==").decode()
     assert "1326" in decoded
-    assert "پیش‌نمایش زنده" in prev_caption
-    assert any("بستن پیش‌نمایش" in btn.text for row in prev_markup.inline_keyboard for btn in row)
+    assert "تصویر استودیویی" in prev_caption
+    assert any("بستن عکس محصول" in btn.text for row in prev_markup.inline_keyboard for btn in row)
 
     # Cleanup
     async with db.write() as conn:

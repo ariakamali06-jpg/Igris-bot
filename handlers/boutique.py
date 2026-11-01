@@ -389,7 +389,7 @@ async def _build_boutique_item_detail(
         status_str = f"💰 <b>قیمت نهایی برای شما:</b> {price:,} سکه"
 
     if is_preview:
-        preview_note = "\n<i>👤 در حال پیش‌نمایش زنده روی تن و پوست کاراکتر شما</i>\n"
+        preview_note = "\n<i>👁 تصویر استودیویی محصول</i>\n"
     else:
         preview_note = ""
 
@@ -408,8 +408,8 @@ async def _build_boutique_item_detail(
 
     render_url = ""
     if is_preview:
-        preview_vars = [var_id] + [v for v in cur_eq if v != var_id]
-        render_url = avatar.get_render_url(preview_vars + [av.get("skin_tone", -1)])
+        # فقط عکس standalone خودِ آیتم (بدون کاراکتر)
+        render_url = avatar.get_render_url([var_id])
     else:
         render_url = avatar.get_render_url(cur_eq + [av.get("skin_tone", -1)])
 
@@ -440,14 +440,14 @@ async def _build_boutique_item_detail(
     if is_preview:
         keyboard.append([
             InlineKeyboardButton(
-                text="🔙 بستن پیش‌نمایش عکس",
+                text="🔙 بستن عکس محصول",
                 callback_data=f"btq:view:{var_id}:{category}:{page}",
             )
         ])
     else:
         keyboard.append([
             InlineKeyboardButton(
-                text="👁 پرو زنده روی تن کاراکتر من",
+                text="👁 عکس استودیویی محصول",
                 callback_data=f"btq:prev_it:{var_id}:{category}:{page}",
             )
         ])
@@ -1118,7 +1118,7 @@ async def handle_boutique_callback(call: CallbackQuery) -> None:
             user_id=user_id, var_id=var_id, category=cat_key, page=page, is_preview=True
         )
         await _update_boutique_view(call, caption=caption, markup=markup, media_url=render_url)
-        await call.answer("👁 پیش‌نمایش پرو روی کاراکتر شما بارگذاری شد!")
+        await call.answer("👁 عکس استودیویی محصول بارگذاری شد!")
         return
 
     if action == "buy_it":
