@@ -46,7 +46,7 @@ def find_stock(query: str) -> ItemDef | None:
 
 
 def _price_line(item: ItemDef) -> str:
-    return f"• <b>{item.name}</b> — {item.price_credits:,} سکه · <i>{item.description}</i>"
+    return f"• <b>{item.name}</b> — {item.price_credits:,} رکسار · <i>{item.description}</i>"
 
 
 async def shelf() -> dict[str, Any]:

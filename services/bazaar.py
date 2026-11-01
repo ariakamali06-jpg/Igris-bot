@@ -70,7 +70,7 @@ async def browse(limit: int = 20) -> dict[str, Any]:
         }
     lines = [
         f"#{row['id']} · <b>{_item_name(row['item_id'])}</b> — "
-        f"{row['price']:,} سکه · فروشنده: {row['seller']}"
+        f"{row['price']:,} رکسار · فروشنده: {row['seller']}"
         for row in rows
     ]
     body = "\n".join(lines)
@@ -92,7 +92,7 @@ async def list_item(user_id: int, query: str, price: int) -> dict[str, Any]:
     if not settings.bazaar_price_min <= price <= settings.bazaar_price_max:
         raise GameError(
             f"قیمت باید بین {settings.bazaar_price_min:,} و "
-            f"{settings.bazaar_price_max:,} سکه باشه."
+            f"{settings.bazaar_price_max:,} رکسار باشه."
         )
     item = find_item(query)
     if item is None:
@@ -190,7 +190,7 @@ async def buy_listing(buyer_id: int, listing_id: int) -> dict[str, Any]:
         "price": price,
         "message": (
             f"🤝 معامله #{listing_id} شد — <b>{_item_name(item_id)}</b> "
-            f"رفت خریدار، <b>{price:,}</b> سکه رفت فروشنده."
+            f"رفت خریدار، <b>{price:,}</b> رکسار رفت فروشنده."
         ),
     }
 

@@ -81,7 +81,7 @@ async def start(user_id: int, stake: int, *, chat_id: int = 0,
     return {
         "success": True,
         "message": (
-            f"⚡ ریسک روی میز — {stake:,} سکه روی سیمِ برقِ کوچه.\n"
+            f"⚡ ریسک روی میز — {stake:,} رکسار روی سیمِ برقِ کوچه.\n"
             f"ضریب از <b>1.00</b> شروع شد و هر ثیقه بالا می‌ره؛ هر وقت بخوای "
             f"<code>ریسک برداشت</code> بزنی، همون‌جا قیمت رو می‌بندی.\n"
             f"سیم تا <b>{settings.risk_round_seconds}</b> ثیقه دووم میاره؛ دیر‌تر بِکِشی، "
@@ -113,7 +113,7 @@ async def status(user_id: int) -> dict[str, Any]:
             "success": False,
             "message": (
                 f"💥 سیم تا <b>{crash:.2f}</b> بالا رفت و ترکید!\n"
-                f"{int(rnd['stake']):,} سکه روی میز سوخت. دفعه بعد زود‌تر بکش بیرون."
+                f"{int(rnd['stake']):,} رکسار روی میز سوخت. دفعه بعد زود‌تر بکش بیرون."
             ),
             "multiplier": crash,
         }
@@ -123,7 +123,7 @@ async def status(user_id: int) -> dict[str, Any]:
             "success": False,
             "message": (
                 f"⏳ ریسک {settings.risk_round_seconds} ثیقه طول کشید و بی‌صدا خاموش شد؛ "
-                f"{int(rnd['stake']):,} سکه سوخت."
+                f"{int(rnd['stake']):,} رکسار سوخت."
             ),
             "multiplier": multiplier,
         }
@@ -132,7 +132,7 @@ async def status(user_id: int) -> dict[str, Any]:
         "success": True,
         "message": (
             f"⚡ ریسک باز — ضریب فعلی: <b>{multiplier:.2f}x</b>\n"
-            f"شرط: {int(rnd['stake']):,} سکه · تا انفجار فاصله داری، تا خاموشی "
+            f"شرط: {int(rnd['stake']):,} رکسار · تا انفجار فاصله داری، تا خاموشی "
             f"{left} ثیقه مونده.\n"
             "برداشت: <code>ریسک برداشت</code>"
         ),
@@ -155,7 +155,7 @@ async def cashout(user_id: int) -> dict[str, Any]:
             "success": False,
             "message": (
                 f"💥 دیر زدی! سیم روی <b>{crash:.2f}</b> ترکید و {int(rnd['stake']):,} "
-                "سکه خاکستر شد."
+                "رکسار خاکستر شد."
             ),
             "multiplier": crash,
             "payout": 0,
@@ -165,7 +165,7 @@ async def cashout(user_id: int) -> dict[str, Any]:
         return {
             "success": False,
             "message": (
-                f"⏳ وقت ریسک تموم شد؛ {int(rnd['stake']):,} سکه روی میز موند و سوخت."
+                f"⏳ وقت ریسک تموم شد؛ {int(rnd['stake']):,} رکسار روی میز موند و سوخت."
             ),
             "multiplier": multiplier,
             "payout": 0,
@@ -184,7 +184,7 @@ async def cashout(user_id: int) -> dict[str, Any]:
     return {
         "success": True,
         "message": (
-            f"🙌 دست کشیدی روی <b>{multiplier:.2f}x</b> — {int(rnd['stake']):,} سکه "
+            f"🙌 دست کشیدی روی <b>{multiplier:.2f}x</b> — {int(rnd['stake']):,} رکسار "
             f"تبدیل شد به <b>{payout:,}</b> سکه! (سود: +{payout - int(rnd['stake']):,})"
         ),
         "multiplier": multiplier,

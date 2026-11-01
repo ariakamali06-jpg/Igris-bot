@@ -146,11 +146,13 @@ class GroupActivityMiddleware(BaseMiddleware):
             and user is not None
             and not user.is_bot
         ):
-            try:
-                spawn = await raids.bump_message(chat.id)
-            except Exception:  # noqa: BLE001 - counting must never break handlers
-                logger.exception("raid counter failed for chat %s", chat.id)
-                spawn = None
+            spawn = None
+            if settings.street_boss_enabled:
+                try:
+                    spawn = await raids.bump_message(chat.id)
+                except Exception:  # noqa: BLE001 - counting must never break handlers
+                    logger.exception("raid counter failed for chat %s", chat.id)
+                    spawn = None
 
             try:
                 # Phase 4: every group message feeds the روزانه chat bonus.
@@ -197,8 +199,8 @@ def _fight_caption(raid: dict, strike: raids.StrikeResult, hitter: str) -> str:
         )
         for user_id, share in ranked[:8]:
             lines.append(
-                f"• <code>{user_id}</code>: +{share.credits:,} سکه "
-                f"+{share.shards} شارد +{share.exp} EXP"
+                f"• <code>{user_id}</code>: +{share.credits:,} رکسار "
+                f"+{share.exp} EXP"
             )
         body += "\n".join(lines)
     return body
@@ -206,6 +208,9 @@ def _fight_caption(raid: dict, strike: raids.StrikeResult, hitter: str) -> str:
 
 @router.callback_query(F.data.startswith("raid:hit:"))
 async def cb_strike(call: CallbackQuery) -> None:
+    if not settings.street_boss_enabled:
+        await call.answer("⏸ باس خیابانی در حال حاضر غیرفعال است.", show_alert=True)
+        return
     user = call.from_user
     if user is None or call.data is None:
         return
@@ -317,6 +322,9 @@ BOSS_WORDS = {"باس", "حمله", "غول", "راید", "boss", "raid"}
 
 @router.message(CommandOrText(["boss", "raid"], BOSS_WORDS))
 async def cmd_boss(message: Message) -> None:
+    if not settings.street_boss_enabled:
+        await message.reply("⏸ <b>باس خیابانی در حال حاضر غیرفعال است.</b>")
+        return
     if message.chat.type not in ("group", "supergroup"):
         await message.reply("باس‌ها و رایدها فقط داخل گروه‌ها فعال هستند.")
         return

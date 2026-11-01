@@ -126,7 +126,8 @@ class Settings(BaseSettings):
     daily_exp: int = 25
     cooldown_daily: int = 10
 
-    # --- Raid / boss --------------------------------------------------------
+    # --- Raids --------------------------------------------------------------
+    street_boss_enabled: bool = Field(default=False, alias="STREET_BOSS_ENABLED")
     raid_spawn_min_messages: int = 60
     raid_spawn_max_messages: int = 100
     raid_dps_energy_cost: int = 5

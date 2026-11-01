@@ -984,16 +984,16 @@ def calculate_item_price(item_gender: str, player_gender: str) -> tuple[int, str
     it_gen = (item_gender or "unisex").lower()
 
     if it_gen == "unisex":
-        return 500, "⚧ استاندارد (۵۰۰ سکه)"
+        return 500, "⚧ استاندارد (۵۰۰ رکسار)"
     elif it_gen == p_gen:
         label = (
-            "✨ ۴۰٪ تخفیف دخترانه (۳۰۰ سکه)"
+            "✨ ۴۰٪ تخفیف دخترانه (۳۰۰ رکسار)"
             if p_gen == "female"
-            else "✨ ۴۰٪ تخفیف پسرانه (۳۰۰ سکه)"
+            else "✨ ۴۰٪ تخفیف پسرانه (۳۰۰ رکسار)"
         )
         return 300, label
     else:
-        label = "🔥 لوکس پسرانه (۱,۲۰۰ سکه)" if it_gen == "male" else "🔥 لوکس دخترانه (۱,۲۰۰ سکه)"
+        label = "🔥 لوکس پسرانه (۱,۲۰۰ رکسار)" if it_gen == "male" else "🔥 لوکس دخترانه (۱,۲۰۰ رکسار)"
         return 1200, label
 
 
@@ -1040,7 +1040,7 @@ async def buy_boutique_item(
     credits_bal, _ = await economy.balances(user_id)
     if credits_bal < final_price:
         raise AvatarError(
-            f"موجودی شما کافی نیست! (قیمت: {final_price:,} سکه - موجودی: {credits_bal:,} سکه)"
+            f"موجودی شما کافی نیست! (قیمت: {final_price:,} رکسار - موجودی: {credits_bal:,} رکسار)"
         )
 
     now_ts = int(time.time())

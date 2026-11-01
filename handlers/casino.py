@@ -28,15 +28,15 @@ SAFE_WORDS = {"قفل"}
 
 _SLOT_USAGE = (
     "🎰 <b>کازینوی کوچه‌های تیرامیکس</b>\n"
-    "سه چرخه می‌چرخن، سکه‌ها می‌شکنن:\n"
+    "سه چرخه می‌چرخن، رکسارها جابجا می‌شن:\n"
     "<code>کازینو [مبلغ]</code>\n"
-    f"مبلغ شرط: {settings.casino_min_bet:,} تا {settings.casino_max_bet:,} سکه.\n"
+    f"مبلغ شرط: {settings.casino_min_bet:,} تا {settings.casino_max_bet:,} رکسار.\n"
     "<i>سه تا از یک جنس = جایزه سنگین؛ دوتا از یک جنس = شرط برمی‌گرده.</i>"
 )
 _RPS_USAGE = (
     "✊ قل‌سنگ با خانه:\n"
     "<code>قل‌سنگ [مبلغ] سنگ|کاغذ|قیچی</code>\n"
-    f"مبلغ شرط: {settings.casino_min_bet:,} تا {settings.casino_max_bet:,} سکه · "
+    f"مبلغ شرط: {settings.casino_min_bet:,} تا {settings.casino_max_bet:,} رکسار · "
     "مساوی = برگشت شرط."
 )
 _GUESS_USAGE = (
@@ -44,7 +44,7 @@ _GUESS_USAGE = (
     "<code>شانس [مبلغ] [عدد]</code>\n"
     f"عدد بین ۱ تا {settings.guess_number_max} · درست زدنی "
     f"{settings.guess_win_multiplier:g} برابر می‌شی.\n"
-    f"مبلغ شرط: {settings.casino_min_bet:,} تا {settings.casino_max_bet:,} سکه."
+    f"مبلغ شرط: {settings.casino_min_bet:,} تا {settings.casino_max_bet:,} رکسار."
 )
 _SAFE_USAGE = (
     "🔐 شکستن قفل سه‌رقمی:\n"
@@ -53,7 +53,7 @@ _SAFE_USAGE = (
     "• <code>قفل [سه رقم]</code> — امتحان کد (وقتی قفلی بازه)\n"
     f"تلاش‌ها: {settings.safe_max_attempts} · باز شدن: "
     f"{settings.safe_payout_multiplier:g} برابر شرط · مبلغ: "
-    f"{settings.casino_min_bet:,} تا {settings.casino_max_bet:,} سکه."
+    f"{settings.casino_min_bet:,} تا {settings.casino_max_bet:,} رکسار."
 )
 
 

@@ -515,7 +515,7 @@ async def cb_balance(call: CallbackQuery) -> None:
     try:
         credits, shards = await economy.balances(user.id)
         await call.answer(
-            f"💰 {credits:,} سکه · 💎 {shards} شارد روح", show_alert=True
+            f"💰 {credits:,} رکسار", show_alert=True
         )
     except Exception as exc:  # noqa: BLE001
         await answer_error(exc, callback=call)

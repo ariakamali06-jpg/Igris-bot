@@ -286,11 +286,11 @@ async def claim_daily(user_id: int, drip: int) -> ActivityResult:
             ref="daily",
         )
 
-    detail = f"+{credits:,} سکه و +{shards} شارد روح به حسابت اضافه شد."
+    detail = f"+{credits:,} رکسار به کیف پولت اضافه شد."
     if chat_bonus > 0:
         detail += (
             f"\n💬 پاداش فعالیت چت: {chat_messages} پیام "
-            f"→ +{chat_bonus:,} سکه"
+            f"→ +{chat_bonus:,} رکسار"
         )
 
     return ActivityResult(
@@ -326,7 +326,7 @@ async def do_work(user_id: int, level: int, drip: int) -> ActivityResult:
     return ActivityResult(
         True,
         "شیفت کاری انجام شد! 💼",
-        f"بابت کار در شهر {payout:,} سکه بدست آوردی (-{settings.work_energy_cost}⚡ انرژی).",
+        f"بابت کار در شهر {payout:,} رکسار بدست آوردی (-{settings.work_energy_cost}⚡ انرژی).",
         credits_delta=payout,
         exp_gained=settings.work_exp,
     )
@@ -351,7 +351,7 @@ async def do_heist(user_id: int, stake: int, drip: int) -> ActivityResult:
     if not settings.heist_stake_min <= stake <= settings.heist_stake_max:
         raise GameError(
             f"مبلغ سرقت باید بین {settings.heist_stake_min:,} تا "
-            f"{settings.heist_stake_max:,} سکه باشد."
+            f"{settings.heist_stake_max:,} رکسار باشد."
         )
 
     chance = heist_success_chance(drip, stake)
@@ -380,7 +380,7 @@ async def do_heist(user_id: int, stake: int, drip: int) -> ActivityResult:
             return ActivityResult(
                 True,
                 "سرقت موفقیت‌آمیز! 🥷",
-                f"مبلغ {payout:,} سکه زدی به جیب! (سود خالص: +{payout - stake:,})",
+                f"مبلغ {payout:,} رکسار زدی به جیب! (سود خالص: +{payout - stake:,})",
                 credits_delta=payout - stake,
                 exp_gained=settings.work_exp + 5,
             )
@@ -401,11 +401,11 @@ async def do_heist(user_id: int, stake: int, drip: int) -> ActivityResult:
                 ref="heist:arrest",
             )
             detail = (
-                f"موقع خروج گیر افتادی! مبلغ {stake:,} سکه پرید و "
+                f"موقع خروج گیر افتادی! مبلغ {stake:,} رکسار پرید و "
                 f"{settings.heist_arrest_energy_cost}⚡ انرژی بابت بازداشتگاه کم شد."
             )
         else:
-            detail = f"طرف متوجه شد! مبلغ {stake:,} سکه از دست رفت اما جان سالم به در بردی."
+            detail = f"طرف متوجه شد! مبلغ {stake:,} رکسار از دست رفت اما جان سالم به در بردی."
 
     return ActivityResult(
         False, "دستگیر شدی! 🚨" if arrested else "سرقت ناموفق! 🏃‍♂️", detail, credits_delta=-stake
@@ -449,13 +449,13 @@ async def casino_dice(user_id: int, bet: int, pick: str) -> ActivityResult:
             return ActivityResult(
                 True,
                 f"🎲 {die1} + {die2} = {total} — برنده شدی!",
-                f"مبلغ {payout:,} سکه دریافت کردی (شرط: {bet:,}).",
+                f"مبلغ {payout:,} رکسار دریافت کردی (شرط: {bet:,}).",
                 credits_delta=payout - bet,
             )
         return ActivityResult(
             False,
             f"🎲 {die1} + {die2} = {total} — باختی!",
-            f"مبلغ {bet:,} سکه به کازینو واگذار شد.",
+            f"مبلغ {bet:,} رکسار به کازینو واگذار شد.",
             credits_delta=-bet,
         )
 
@@ -487,13 +487,13 @@ async def casino_coinflip(user_id: int, bet: int, pick: str) -> ActivityResult:
             return ActivityResult(
                 True,
                 f"🪙 سکه {landed_fa} آمد — برنده شدی!",
-                f"مبلغ {payout:,} سکه بردی (شرط: {bet:,}).",
+                f"مبلغ {payout:,} رکسار بردی (شرط: {bet:,}).",
                 credits_delta=payout - bet,
             )
         return ActivityResult(
             False,
             f"🪙 سکه {landed_fa} آمد — باختی!",
-            f"مبلغ {bet:,} سکه از دست رفت.",
+            f"مبلغ {bet:,} رکسار از دست رفت.",
             credits_delta=-bet,
         )
 

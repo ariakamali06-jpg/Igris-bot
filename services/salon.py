@@ -355,7 +355,7 @@ async def change_skin_tone_paid(user_id: int, skin_tone_id: int) -> dict[str, An
         return {
             "success": False,
             "message": (
-                f"❌ سکه کافی نداری!\n"
+                f"❌ رکسار کافی نداری!\n"
                 f"هزینه سولاریوم و تغییر پوست: <b>{SKIN_CHANGE_FEE:,}</b> سکه\n"
                 f"موجودی شما: <b>{credits_bal:,}</b> سکه"
             ),
@@ -395,7 +395,7 @@ async def change_hair_paid(
         return {
             "success": False,
             "message": (
-                f"❌ هزینه پیرایش و رنگ مو <b>{HAIR_CHANGE_FEE:,}</b> سکه است. "
+                f"❌ هزینه پیرایش و رنگ مو <b>{HAIR_CHANGE_FEE:,}</b> رکسار است. "
                 f"(موجودی: {credits_bal:,})"
             ),
         }
@@ -480,7 +480,7 @@ async def change_eyes_paid(
         return {
             "success": False,
             "message": (
-                f"❌ هزینه میکاپ چشم و لنز <b>{EYES_CHANGE_FEE:,}</b> سکه است. "
+                f"❌ هزینه میکاپ چشم و لنز <b>{EYES_CHANGE_FEE:,}</b> رکسار است. "
                 f"(موجودی: {credits_bal:,})"
             ),
         }
@@ -550,7 +550,7 @@ async def change_nose_paid(user_id: int, nose_style: str) -> dict[str, Any]:
         return {
             "success": False,
             "message": (
-                f"❌ هزینه پیرسینگ و فرم بینی <b>{NOSE_CHANGE_FEE:,}</b> سکه است. "
+                f"❌ هزینه پیرسینگ و فرم بینی <b>{NOSE_CHANGE_FEE:,}</b> رکسار است. "
                 f"(موجودی: {credits_bal:,})"
             ),
         }
@@ -584,7 +584,7 @@ async def change_ears_paid(user_id: int, ear_style: str) -> dict[str, Any]:
         return {
             "success": False,
             "message": (
-                f"❌ هزینه گوشواره و پیرسینگ گوش <b>{EARS_CHANGE_FEE:,}</b> سکه است. "
+                f"❌ هزینه گوشواره و پیرسینگ گوش <b>{EARS_CHANGE_FEE:,}</b> رکسار است. "
                 f"(موجودی: {credits_bal:,})"
             ),
         }
@@ -618,7 +618,7 @@ async def change_lips_paid(user_id: int, lip_style: str) -> dict[str, Any]:
         return {
             "success": False,
             "message": (
-                f"❌ هزینه رژ لب و میکاپ لب <b>{LIPS_CHANGE_FEE:,}</b> سکه است. "
+                f"❌ هزینه رژ لب و میکاپ لب <b>{LIPS_CHANGE_FEE:,}</b> رکسار است. "
                 f"(موجودی: {credits_bal:,})"
             ),
         }

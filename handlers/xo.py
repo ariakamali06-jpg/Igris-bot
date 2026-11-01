@@ -64,7 +64,7 @@ _USAGE = (
     "❌⭕ <b>دوزِ زیرزمینی تیرامیکس</b>\n"
     "روی پیام حریف ریپلای بزن و بنویس:\n"
     "<code>دوز [مبلغ شرط]</code>\n"
-    f"مبلغ: {settings.xo_min_bet:,} تا {settings.xo_max_bet:,} سکه · "
+    f"مبلغ: {settings.xo_min_bet:,} تا {settings.xo_max_bet:,} رکسار · "
     f"کارمزد خانه روی پات: {settings.xo_house_rake:.0%} · مساوی = برگشت شرط."
 )
 
@@ -91,7 +91,7 @@ async def cmd_xo(message: Message, command: CommandObject | None = None) -> None
         stake = int(args[0])
         if not settings.xo_min_bet <= stake <= settings.xo_max_bet:
             raise GameError(
-                f"شرط باید بین {settings.xo_min_bet:,} تا {settings.xo_max_bet:,} سکه باشد."
+                f"شرط باید بین {settings.xo_min_bet:,} تا {settings.xo_max_bet:,} رکسار باشد."
             )
 
         challenger = await hydrate(user.id, user.full_name, user.username)
@@ -107,12 +107,12 @@ async def cmd_xo(message: Message, command: CommandObject | None = None) -> None
 
         cash, _ = await economy.balances(challenger.user_id)
         if cash < stake:
-            raise GameError(f"جیبت خالیه! (موجودی: {cash:,} سکه برای شرط {stake:,})")
+            raise GameError(f"جیبت خالیه! (موجودی: {cash:,} رکسار برای شرط {stake:,})")
         rival_cash, _ = await economy.balances(opponent.user_id)
         if rival_cash < stake:
             raise GameError(
                 f"موجودی {esc(opponent.display_tag)} برای این شرط کافی نیست "
-                f"(نیاز: {stake:,} سکه)."
+                f"(نیاز: {stake:,} رکسار)."
             )
 
         economy.require_ready(user.id, ACTION_XO, settings.cooldown_xo)
@@ -140,7 +140,7 @@ async def cmd_xo(message: Message, command: CommandObject | None = None) -> None
             inline_keyboard=[
                 [
                     InlineKeyboardButton(
-                        text=f"❌⭕ قبول دوز ({stake:,} سکه)",
+                        text=f"❌⭕ قبول دوز ({stake:,} رکسار)",
                         callback_data=f"xo:accept:{game_id}",
                     ),
                     InlineKeyboardButton(
@@ -488,7 +488,7 @@ async def cb_move(call: CallbackQuery) -> None:
                 winner = challenger if winner_id == int(game["challenger_id"]) else opponent
                 body = (
                     f"🏆 <b>{esc(winner.display_tag)}</b> دوز رو برد!\n"
-                    f"پات {pot:,} سکه — کارمزد خانه {settings.xo_house_rake:.0%} "
+                    f"پات {pot:,} رکسار — کارمزد خانه {settings.xo_house_rake:.0%} "
                     f"({rake:,}) — جایزه خالص <b>{pot - rake:,}</b> سکه."
                 )
             else:

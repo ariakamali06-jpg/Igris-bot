@@ -49,7 +49,7 @@ def _blocked_message(victim: Player, reason: str, fee: int) -> str:
     if reason == "guard":
         return (
             f"🛡 <b>نگهبان شخصی {victim.display_name} جلوت رو گرفت!</b>\n"
-            f"سایه بی‌دست‌مزد برگشت و <b>{fee:,}</b> سکه سوخت."
+            f"سایه بی‌دست‌مزد برگشت و <b>{fee:,}</b> رکسار سوخت."
         )
     return (
         f"🛡 <b>سپر ضدسرقت {victim.display_name} کار کرد!</b>\n"
@@ -135,7 +135,7 @@ async def shadow_hack(
                 "message": (
                     f"💻 <b>سایه‌ها خوابیدن روی حساب {victim.display_name}!</b>\n"
                     f"<b>{steal:,}</b> سکه نقل‌مکان کرد جیب تو. "
-                    f"کارمزد سایه از قبل سوخته ({fee:,} سکه)."
+                    f"کارمزد سایه از قبل سوخته ({fee:,} رکسار)."
                 ),
             }
 
@@ -158,8 +158,8 @@ async def shadow_hack(
             "fine": fine,
             "message": (
                 f"❌ <b>هک لو رفت!</b> {victim.display_name} زودتر از سایه‌ها بیدار شد.\n"
-                f"کارمزد {fee:,} سکه سوخت"
-                + (f" و {fine:,} سکه جریمه هم دادی." if fine else ".")
+                f"کارمزد {fee:,} رکسار سوخت"
+                + (f" و {fine:,} رکسار جریمه هم دادی." if fine else ".")
             ),
         }
 
@@ -206,7 +206,7 @@ async def shadow_kill(
                 "message": (
                     f"🔪 <b>سایه قاتل {victim.display_name} رو گرفت!</b>\n"
                     f"دادگاه فوری حکم داد: <b>{minutes} دقیقه</b> بازداشت. "
-                    f"کارمزد قاتل ({fee:,} سکه) سوخت."
+                    f"کارمزد قاتل ({fee:,} رکسار) سوخت."
                 ),
             }
 
@@ -214,7 +214,7 @@ async def shadow_kill(
             "success": False,
             "message": (
                 f"❌ <b>عملیات قاتل شکست خورد!</b> "
-                f"{victim.display_name} از تور در رفت و کارمزد {fee:,} سکه سوخت."
+                f"{victim.display_name} از تور در رفت و کارمزد {fee:,} رکسار سوخت."
             ),
         }
 

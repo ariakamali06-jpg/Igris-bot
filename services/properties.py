@@ -144,8 +144,8 @@ async def list_estate(player: Player, kind: str) -> dict[str, Any]:
     ]
     for entry in catalog(kind):
         lines.append(
-            f"• <b>{entry['name']}</b> — {entry['price']:,} سکه · "
-            f"درآمد {entry['income']:,} سکه هر "
+            f"• <b>{entry['name']}</b> — {entry['price']:,} رکسار · "
+            f"درآمد {entry['income']:,} رکسار هر "
             f"{settings.property_income_interval // 60} دقیقه"
         )
         lines.append(f"  <i>{entry['desc']}</i>")

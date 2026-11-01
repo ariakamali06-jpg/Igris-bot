@@ -54,7 +54,7 @@ async def status(player: Player) -> dict[str, Any]:
             f"وضعیت: {owned}\n"
             f"نبرد: <code>حیوان نبرد [مبلغ]</code> (ریپلای حریف)\n"
             f"محدوده مبلغ: {settings.pet_battle_min:,} تا "
-            f"{settings.pet_battle_max:,} سکه · سهم خانه "
+            f"{settings.pet_battle_max:,} رکسار · سهم خانه "
             f"{settings.pet_battle_rake * 100:g}٪\n"
             "قبول: ریپلای روی چالش، بعد <code>حیوان نبرد</code> · "
             "رد: <code>حیوان نبرد رد</code> · "
@@ -157,7 +157,7 @@ async def challenge(
     if not settings.pet_battle_min <= amount <= settings.pet_battle_max:
         raise GameError(
             f"مبلغ باید بین {settings.pet_battle_min:,} و "
-            f"{settings.pet_battle_max:,} سکه باشه."
+            f"{settings.pet_battle_max:,} رکسار باشه."
         )
 
     async with db.write() as conn:
@@ -256,7 +256,7 @@ async def accept(
                 "expired": True,
                 "message": (
                     "⌛ چالش نبرد منقضی شده بود؛ پول چالشگر برگشت "
-                    f"({int(row['amount']):,} سکه)."
+                    f"({int(row['amount']):,} رکسار)."
                 ),
             }
 

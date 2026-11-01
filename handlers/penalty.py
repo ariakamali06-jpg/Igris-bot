@@ -59,7 +59,7 @@ _USAGE = (
     "🥅 <b>دروازه — پنالتی دو نفره در کوچه‌های تیرامیکس</b>\n"
     "روی پیام حریف ریپلای بزن و بنویس:\n"
     "<code>دروازه [مبلغ شرط]</code>\n"
-    f"مبلغ: {settings.penalty_min_bet:,} تا {settings.penalty_max_bet:,} سکه · "
+    f"مبلغ: {settings.penalty_min_bet:,} تا {settings.penalty_max_bet:,} رکسار · "
     "گلر اول ضربه رو ثبت می‌کنه (پنهان)، مهاجم بعداً شلیک می‌کنه.\n"
     "گل نشدن ضربه = برنده مهاجم · گرفتنش = برنده گلر."
 )
@@ -88,7 +88,7 @@ async def cmd_penalty(message: Message, command: CommandObject | None = None) ->
         if not settings.penalty_min_bet <= stake <= settings.penalty_max_bet:
             raise GameError(
                 f"شرط باید بین {settings.penalty_min_bet:,} تا "
-                f"{settings.penalty_max_bet:,} سکه باشد."
+                f"{settings.penalty_max_bet:,} رکسار باشد."
             )
 
         shooter = await hydrate(user.id, user.full_name, user.username)
@@ -104,12 +104,12 @@ async def cmd_penalty(message: Message, command: CommandObject | None = None) ->
 
         cash, _ = await economy.balances(shooter.user_id)
         if cash < stake:
-            raise GameError(f"جیبت خالیه! (موجودی: {cash:,} سکه برای شرط {stake:,})")
+            raise GameError(f"جیبت خالیه! (موجودی: {cash:,} رکسار برای شرط {stake:,})")
         keeper_cash, _ = await economy.balances(keeper.user_id)
         if keeper_cash < stake:
             raise GameError(
                 f"موجودی {esc(keeper.display_tag)} برای این شرط کافی نیست "
-                f"(نیاز: {stake:,} سکه)."
+                f"(نیاز: {stake:,} رکسار)."
             )
 
         economy.require_ready(user.id, ACTION_PENALTY, settings.cooldown_penalty)
@@ -137,7 +137,7 @@ async def cmd_penalty(message: Message, command: CommandObject | None = None) ->
             inline_keyboard=[
                 [
                     InlineKeyboardButton(
-                        text=f"🥅 قبول دروازه ({stake:,} سکه)",
+                        text=f"🥅 قبول دروازه ({stake:,} رکسار)",
                         callback_data=f"pen:accept:{round_id}",
                     ),
                     InlineKeyboardButton(
@@ -498,7 +498,7 @@ async def cb_shoot(call: CallbackQuery) -> None:
                     f"🧤 گلر: <b>{_SIDE_EMOJI[save]} {save}</b>\n"
                     f"🎯 مهاجم: <b>{_SIDE_EMOJI[shot]} {shot}</b>\n\n"
                     f"{verdict}\n"
-                    f"🏆 <b>{esc(winner.display_tag)}</b> کل پات <b>{pot:,}</b> سکه رو برد!"
+                    f"🏆 <b>{esc(winner.display_tag)}</b> کل پات <b>{pot:,}</b> رکسار رو برد!"
                 ),
             )
     except _RaceLost:

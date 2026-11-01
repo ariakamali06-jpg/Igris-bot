@@ -180,7 +180,7 @@ async def buy(player: Player, name: str, amount: int) -> dict[str, Any]:
     if not settings.market_trade_min <= amount <= settings.market_trade_max:
         raise GameError(
             f"مبلغ خرید باید بین {settings.market_trade_min:,} تا "
-            f"{settings.market_trade_max:,} سکه باشد."
+            f"{settings.market_trade_max:,} رکسار باشد."
         )
     hour = hour_now()
     price = await _cached_price(asset, hour)
@@ -279,7 +279,7 @@ async def place_bet(player: Player, amount: int) -> dict[str, Any]:
     if not settings.market_bet_min <= amount <= settings.market_bet_max:
         raise GameError(
             f"مبلغ شرط باید بین {settings.market_bet_min:,} تا "
-            f"{settings.market_bet_max:,} سکه باشد."
+            f"{settings.market_bet_max:,} رکسار باشد."
         )
     hour = hour_now()
     async with db.write() as conn:
@@ -349,10 +349,10 @@ async def overview(player: Player, current_hour: int | None = None) -> dict[str,
                 )
             elif result["status"] == "push":
                 lines.append(
-                    f"• مساوی ➖ {result['amount']:,} سکه برگشت خورد"
+                    f"• مساوی ➖ {result['amount']:,} رکسار برگشت خورد"
                 )
             else:
-                lines.append(f"• باخت ❌ {result['amount']:,} سکه سوخت")
+                lines.append(f"• باخت ❌ {result['amount']:,} رکسار سوخت")
 
     lines.append("")
     if positions:

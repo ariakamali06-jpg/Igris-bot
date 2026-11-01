@@ -146,7 +146,7 @@ async def status(chat_id: int, viewer: Player | None = None) -> dict[str, Any]:
                 "message": (
                     "🏟 <b>جامی برپا نیست.</b>\n"
                     f"با <code>جام ثبت</code> دور جدید رو با ورودیه "
-                    f"{settings.cup_entry_fee:,} سکه شروع کن "
+                    f"{settings.cup_entry_fee:,} رکسار شروع کن "
                     f"(حداقل {settings.cup_min_players} نفر برای برگزاری)."
                 ),
             }

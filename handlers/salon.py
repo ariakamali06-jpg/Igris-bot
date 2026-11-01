@@ -59,10 +59,10 @@ async def _build_salon_menu(user_id: int) -> tuple[str, str, InlineKeyboardMarku
 
     buttons = [
         [
-            _nav_btn(f"✂️ سالن پیرایش و مدل مو ({salon.HAIR_CHANGE_FEE:,} سکه)", "sal:mu:hair"),
+            _nav_btn(f"✂️ سالن پیرایش و مدل مو ({salon.HAIR_CHANGE_FEE:,} رکسار)", "sal:mu:hair"),
         ],
         [
-            _nav_btn(f"👄 سالن رژ و میکاپ لب ({salon.LIPS_CHANGE_FEE:,} سکه)", "sal:mu:lips"),
+            _nav_btn(f"👄 سالن رژ و میکاپ لب ({salon.LIPS_CHANGE_FEE:,} رکسار)", "sal:mu:lips"),
         ],
         [
             _nav_btn("👕 کمد لباس من", "wdr:view:0"),
@@ -108,19 +108,19 @@ async def _build_makeup_menu(user_id: int) -> tuple[str, str, InlineKeyboardMark
 
     buttons = [
         [
-            _nav_btn(f"✂️ مدل و رنگ مو ({salon.HAIR_CHANGE_FEE:,} سکه)", "sal:mu:hair"),
+            _nav_btn(f"✂️ مدل و رنگ مو ({salon.HAIR_CHANGE_FEE:,} رکسار)", "sal:mu:hair"),
         ],
         [
-            _nav_btn(f"👁 چشم، لنز و خط چشم ({salon.EYES_CHANGE_FEE:,} سکه)", "sal:mu:eyes"),
+            _nav_btn(f"👁 چشم، لنز و خط چشم ({salon.EYES_CHANGE_FEE:,} رکسار)", "sal:mu:eyes"),
         ],
         [
-            _nav_btn(f"👃 فرم و پیرسینگ بینی ({salon.NOSE_CHANGE_FEE:,} سکه)", "sal:mu:nose"),
+            _nav_btn(f"👃 فرم و پیرسینگ بینی ({salon.NOSE_CHANGE_FEE:,} رکسار)", "sal:mu:nose"),
         ],
         [
-            _nav_btn(f"👂 گوش، گوشواره و پیرسینگ ({salon.EARS_CHANGE_FEE:,} سکه)", "sal:mu:ears"),
+            _nav_btn(f"👂 گوش، گوشواره و پیرسینگ ({salon.EARS_CHANGE_FEE:,} رکسار)", "sal:mu:ears"),
         ],
         [
-            _nav_btn(f"👄 لب، رژ لب و لبخند ({salon.LIPS_CHANGE_FEE:,} سکه)", "sal:mu:lips"),
+            _nav_btn(f"👄 لب، رژ لب و لبخند ({salon.LIPS_CHANGE_FEE:,} رکسار)", "sal:mu:lips"),
         ],
         [
             _nav_btn("🔙 بازگشت به آرایشگاه", "sal:menu"),
@@ -389,7 +389,7 @@ async def cb_salon_actions(call: CallbackQuery) -> None:
             if not res["success"]:
                 await call.answer(res["message"], show_alert=True)
                 return
-            fee_txt = f"{salon.HAIR_CHANGE_FEE:,} سکه"
+            fee_txt = f"{salon.HAIR_CHANGE_FEE:,} رکسار"
             await call.answer(f"✅ مدل مو تغییر کرد! ({fee_txt})", show_alert=True)
             render_url, caption, markup = await _build_hair_menu(user.id)
             await _update_view(call, render_url, caption, markup)
@@ -401,7 +401,7 @@ async def cb_salon_actions(call: CallbackQuery) -> None:
             if not res["success"]:
                 await call.answer(res["message"], show_alert=True)
                 return
-            fee_txt = f"{salon.LIPS_CHANGE_FEE:,} سکه"
+            fee_txt = f"{salon.LIPS_CHANGE_FEE:,} رکسار"
             await call.answer(f"✅ رژ لب اعمال شد! ({fee_txt})", show_alert=True)
             render_url, caption, markup = await _build_lips_menu(user.id)
             await _update_view(call, render_url, caption, markup)

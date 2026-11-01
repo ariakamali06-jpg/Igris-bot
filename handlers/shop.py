@@ -65,7 +65,7 @@ async def _shop_page(
 
     lines = [
         f"🏪 <b>بوتیک خیابانی و مرکز مد تیرامیکس</b> — {cat_title}",
-        f"💰 موجودی: <b>{credits:,}</b> سکه · 💎 <b>{shards}</b> شارد روح"
+        f"💰 موجودی: <b>{credits:,}</b> سکه"
         + (f" · ✂️ تخفیف استایل: <b>{discount}%</b>" if discount else ""),
         "",
     ]
@@ -99,9 +99,7 @@ async def _shop_page(
             price, shard_price = await shop.price_for(item.id, player.drip)
             label = "رایگان"
             if price:
-                label = f"{price:,} سکه"
-            if shard_price:
-                label += f" + {shard_price} شارد"
+                label = f"{price:,} رکسار"
             buttons.append(
                 [
                     InlineKeyboardButton(
@@ -199,8 +197,8 @@ async def cb_shop(call: CallbackQuery) -> None:
                 player.user_id, item_id, player.drip
             )
             await call.answer(
-                f"خریداری شد! ✅ −{credits_paid:,} سکه"
-                + (f" −{shards_paid} شارد" if shards_paid else ""),
+                f"خریداری شد! ✅ −{credits_paid:,} رکسار"
+                ,
                 show_alert=True,
             )
             # Re-render the page so the bought row flips to "owned".

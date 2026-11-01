@@ -14,7 +14,7 @@ from config import settings
 from database.connection import db
 from models.enums import ActivityKind
 from models.player import Player
-from services import economy
+from services import economy, game
 
 # ---------------------------------------------------------------------------
 # Constants & Rules
@@ -112,7 +112,7 @@ async def execute_work(player: Player) -> dict[str, Any]:
                    f"📌 شغل: <b>{player.job}</b>\n"
                    f"💵 دستمزد پایه: <b>{base_wage:,}</b> سکه\n"
                    f"✨ پاداش تخصص و لول: <b>{bonus:,}</b> سکه\n"
-                   f"💰 مجموع واریزی به کیف پول: <b>+{total_earned:,}</b> سکه تیرامیکس",
+                   f"💰 مجموع واریزی به کیف پول: <b>+{total_earned:,}</b> رکسار تیرامیکس",
     }
 
 
@@ -141,7 +141,10 @@ async def execute_study(player: Player) -> dict[str, Any]:
         return {
             "success": False,
             "error": "funds",
-            "message": f"❌ موجودی کیف پول شما کافی نیست!\nشهریه ترم جدید: <b>{tuition:,}</b> سکه (موجودی شما: <b>{wallet_creds:,}</b> سکه)",
+            "message": (
+                f"❌ موجودی کیف پول شما کافی نیست!\n"
+                f"شهریه ترم جدید: <b>{tuition:,}</b> رکسار (موجودی شما: <b>{wallet_creds:,}</b> رکسار)"
+            ),
         }
 
     elapsed = now - player.last_study_time
@@ -178,7 +181,7 @@ async def execute_study(player: Player) -> dict[str, Any]:
         "new_title": new_title,
         "tuition": tuition,
         "message": f"🎉 <b>فارغ‌التحصیلی و ارتقای سطح سواد!</b>\n\n"
-                   f"شهریه پرداختی: <b>{tuition:,}</b> سکه\n"
+                   f"شهریه پرداختی: <b>{tuition:,}</b> رکسار\n"
                    f"مدرک جدید شما: <b>{new_title}</b>\n\n"
                    f"اکنون می‌توانید با دستور <code>شغل</code> به فرصت‌های شغلی با درآمد بالاتر دسترسی پیدا کنید!",
     }
@@ -220,7 +223,7 @@ async def set_player_job(player: Player, job_title: str) -> dict[str, Any]:
         "success": True,
         "job": job_title,
         "wage": JOBS_CATALOG[job_title]["wage"],
-        "message": f"✅ تبریک! قرارداد کاری شما به عنوان <b>{job_title}</b> امضا شد.\nدستمزد پایه ساعتی: <b>{JOBS_CATALOG[job_title]['wage']:,}</b> سکه.",
+        "message": f"✅ تبریک! قرارداد کاری شما به عنوان <b>{job_title}</b> امضا شد.\nدستمزد پایه ساعتی: <b>{JOBS_CATALOG[job_title]['wage']:,}</b> رکسار.",
     }
 
 
@@ -235,7 +238,7 @@ async def deposit_bank(player: Player, amount: int) -> dict[str, Any]:
 
     creds, _ = await economy.balances(player.user_id)
     if creds < amount:
-        return {"success": False, "message": f"❌ موجودی نقد شما کافی نیست! (موجودی: {creds:,} سکه)"}
+        return {"success": False, "message": f"❌ موجودی نقد شما کافی نیست! (موجودی: {creds:,} رکسار)"}
 
     await economy.spend(player.user_id, credits=amount, kind=ActivityKind.BANK_DEPOSIT)
     async with db.write() as conn:
@@ -261,7 +264,7 @@ async def withdraw_bank(player: Player, amount: int) -> dict[str, Any]:
         return {"success": False, "message": "❌ مبلغ برداشت باید بیشتر از صفر باشد."}
 
     if player.bank_balance < amount:
-        return {"success": False, "message": f"❌ موجودی حساب بانکی شما کافی نیست! (موجودی: {player.bank_balance:,} سکه)"}
+        return {"success": False, "message": f"❌ موجودی حساب بانکی شما کافی نیست! (موجودی: {player.bank_balance:,} رکسار)"}
 
     async with db.write() as conn:
         await conn.execute(
@@ -286,7 +289,7 @@ async def apply_bank_loan(player: Player, requested_amount: int) -> dict[str, An
     if player.loan_amount > 0:
         return {
             "success": False,
-            "message": f"❌ شما هم‌اکنون دارای یک فقره وام تسویه‌نشده به مبلغ <b>{player.loan_amount:,}</b> سکه هستید!\nابتدا بدهی خود را پرداخت کنید.",
+            "message": f"❌ شما هم‌اکنون دارای یک فقره وام تسویه‌نشده به مبلغ <b>{player.loan_amount:,}</b> رکسار هستید!\nابتدا بدهی خود را پرداخت کنید.",
         }
 
     # Credit limit = base + balance * 2 + level * 500
@@ -294,7 +297,7 @@ async def apply_bank_loan(player: Player, requested_amount: int) -> dict[str, An
     if requested_amount <= 0 or requested_amount > credit_limit:
         return {
             "success": False,
-            "message": f"❌ سقف مجاز تسهیلات برای شما حداکثر <b>{credit_limit:,}</b> سکه است.\n(محاسبه بر اساس موجودی بانکی و اعتبار شهروندی)",
+            "message": f"❌ سقف مجاز تسهیلات برای شما حداکثر <b>{credit_limit:,}</b> رکسار است.\n(محاسبه بر اساس موجودی بانکی و اعتبار شهروندی)",
         }
 
     interest_rate = 0.15  # 15% interest
@@ -331,7 +334,7 @@ async def repay_bank_loan(player: Player, amount: int) -> dict[str, Any]:
     to_pay = min(amount, player.loan_amount)
     creds, _ = await economy.balances(player.user_id)
     if creds < to_pay:
-        return {"success": False, "message": f"❌ موجودی کیف پول برای پرداخت اقساط کافی نیست! (نیاز: {to_pay:,} سکه)"}
+        return {"success": False, "message": f"❌ موجودی کیف پول برای پرداخت اقساط کافی نیست! (نیاز: {to_pay:,} رکسار)"}
 
     await economy.spend(player.user_id, credits=to_pay, kind=ActivityKind.LOAN)
     new_due = player.loan_amount - to_pay
@@ -347,8 +350,70 @@ async def repay_bank_loan(player: Player, amount: int) -> dict[str, Any]:
         "paid": to_pay,
         "remaining_due": new_due,
         "message": f"💳 <b>تسویه اقساط بانکی</b>\n\n"
-                   f"مبلغ پرداختی: <b>{to_pay:,}</b> سکه\n"
-                   f"بدهی باقی‌مانده: <b>{new_due:,}</b> سکه",
+                   f"مبلغ پرداختی: <b>{to_pay:,}</b> رکسار\n"
+                   f"بدهی باقی‌مانده: <b>{new_due:,}</b> رکسار",
+    }
+
+
+async def transfer_credits(
+    sender_id: int, target_id: int, amount: int
+) -> dict[str, Any]:
+    """انتقال مستقیم رکسار بین دو شهروند (کارت به کارت)."""
+    if amount <= 0:
+        return {"success": False, "message": "❌ مبلغ انتقال باید بیشتر از صفر باشد."}
+    if sender_id == target_id:
+        return {"success": False, "message": "❌ نمی‌توانید به خودتان رکسار انتقال دهید!"}
+
+    sender = await game.load_player(sender_id)
+    if not sender:
+        return {"success": False, "message": "❌ حساب کاربری شما یافت نشد."}
+
+    target = await game.load_player(target_id)
+    if not target or target.onboarding_completed != 1:
+        return {
+            "success": False,
+            "message": "❌ شهروند مقصد هنوز در تیرامیکس شناسنامه نساخته است.",
+        }
+
+    creds, _ = await economy.balances(sender_id)
+    if creds < amount:
+        return {
+            "success": False,
+            "message": (
+                f"❌ موجودی کیف پول شما کافی نیست!\n"
+                f"موجودی شما: <b>{creds:,}</b> رکسار | مبلغ درخواستی: <b>{amount:,}</b> رکسار"
+            ),
+        }
+
+    async with db.write() as conn:
+        await economy.mutate(
+            conn,
+            sender_id,
+            credits=-amount,
+            kind=ActivityKind.BANK_TRANSFER,
+            ref=f"transfer_to:{target_id}",
+        )
+        await economy.mutate(
+            conn,
+            target_id,
+            credits=amount,
+            kind=ActivityKind.BANK_TRANSFER,
+            ref=f"transfer_from:{sender_id}",
+        )
+
+    return {
+        "success": True,
+        "amount": amount,
+        "sender": sender,
+        "target": target,
+        "message": (
+            f"💸 <b>انتقال موفق وجه (کارت به کارت)</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"📤 فرستنده: <b>{sender.display_name}</b>\n"
+            f"📥 گیرنده: <b>{target.display_name}</b>\n"
+            f"💰 مبلغ: <b>{amount:,}</b> رکسار\n"
+            f"🏛 باجه: بانک مرکزی شهر تیرامیکس ✅"
+        ),
     }
 
 
@@ -394,7 +459,7 @@ async def attempt_theft(thief: Player, victim: Player) -> dict[str, Any]:
     if victim_cash < 50:
         return {
             "success": False,
-            "message": f"❌ جیب {victim.display_name} خالی‌تر از آن است که ارزش ریسک داشته باشد! (زیر ۵۰ سکه)",
+            "message": f"❌ جیب {victim.display_name} خالی‌تر از آن است که ارزش ریسک داشته باشد! (زیر ۵۰ رکسار)",
         }
 
     # Theft percentage: 35% to 85% of victim's cash
@@ -423,7 +488,7 @@ async def attempt_theft(thief: Player, victim: Player) -> dict[str, Any]:
             "stolen": target_loot,
             "percentage": int(steal_pct * 100),
             "message": f"🥷 <b>سرقت موفقیت‌آمیز در کوچه پس‌کوچه‌های تیرامیکس!</b>\n\n"
-                       f"دزد حرفه‌ای ({thief.display_name}) موفق شد <b>{target_loot:,}</b> سکه "
+                       f"دزد حرفه‌ای ({thief.display_name}) موفق شد <b>{target_loot:,}</b> رکسار "
                        f"({int(steal_pct * 100)}٪ از دارایی نقد) از جیب {victim.display_name} به جیب بزند!",
         }
     else:
@@ -446,8 +511,8 @@ async def attempt_theft(thief: Player, victim: Player) -> dict[str, Any]:
                 "compensation": compensation,
                 "message": f"🚨 <b>دستگیری دزد ناشی توسط پلیس تیرامیکس!</b>\n\n"
                            f"سارق ({thief.display_name}) حین اقدام به سرقت از {victim.display_name} به دام افتاد!\n"
-                           f"⚖️ حکم دادگاه: پرداخت <b>۵ برابر مبلغ سرقت</b> معادل <b>{fine_amount:,}</b> سکه جریمه نقدی.\n"
-                           f"💵 مبلغ <b>{compensation:,}</b> سکه به عنوان غرامت به جیب مال‌باخته واریز شد!",
+                           f"⚖️ حکم دادگاه: پرداخت <b>۵ برابر مبلغ سرقت</b> معادل <b>{fine_amount:,}</b> رکسار جریمه نقدی.\n"
+                           f"💵 مبلغ <b>{compensation:,}</b> رکسار به عنوان غرامت به جیب مال‌باخته واریز شد!",
             }
         else:
             # Cannot pay full fine -> Jailed for 30 minutes!
@@ -587,7 +652,7 @@ async def clinic_service(player: Player) -> dict[str, Any]:
         if creds < DELIVERY_FEE:
             return {
                 "success": False,
-                "message": f"❌ هزینه زایمان و بستری در کلینیک <b>{DELIVERY_FEE:,}</b> سکه است! (موجودی شما: {creds:,} سکه)",
+                "message": f"❌ هزینه زایمان و بستری در کلینیک <b>{DELIVERY_FEE:,}</b> رکسار است! (موجودی شما: {creds:,} رکسار)",
             }
         await economy.spend(player.user_id, credits=DELIVERY_FEE, kind=ActivityKind.CLINIC)
         async with db.write() as conn:
@@ -612,7 +677,7 @@ async def clinic_service(player: Player) -> dict[str, Any]:
         if creds < CLINIC_HEAL_FEE:
             return {
                 "success": False,
-                "message": f"❌ هزینه ویزیت پزشک <b>{CLINIC_HEAL_FEE:,}</b> سکه است.",
+                "message": f"❌ هزینه ویزیت پزشک <b>{CLINIC_HEAL_FEE:,}</b> رکسار است.",
             }
         await economy.spend(player.user_id, credits=CLINIC_HEAL_FEE, kind=ActivityKind.CLINIC)
         return {
@@ -708,7 +773,7 @@ async def update_hairstyle(player: Player, style_key: str, color_key: str) -> di
     """Change hairstyle and hair color at the local salon."""
     creds, _ = await economy.balances(player.user_id)
     if creds < HAIRSTYLE_FEES:
-        return {"success": False, "message": f"❌ هزینه پیرایش و رنگ مو <b>{HAIRSTYLE_FEES:,}</b> سکه است."}
+        return {"success": False, "message": f"❌ هزینه پیرایش و رنگ مو <b>{HAIRSTYLE_FEES:,}</b> رکسار است."}
 
     await economy.spend(player.user_id, credits=HAIRSTYLE_FEES, kind=ActivityKind.SALON)
     async with db.write() as conn:
@@ -722,7 +787,7 @@ async def update_hairstyle(player: Player, style_key: str, color_key: str) -> di
         "style": style_key,
         "color": color_key,
         "fee": HAIRSTYLE_FEES,
-        "message": f"✂️ <b>مدل موی جدید در آرایشگاه تیرامیکس اعمال شد!</b>\nهزینه: <b>{HAIRSTYLE_FEES:,}</b> سکه.",
+        "message": f"✂️ <b>مدل موی جدید در آرایشگاه تیرامیکس اعمال شد!</b>\nهزینه: <b>{HAIRSTYLE_FEES:,}</b> رکسار.",
     }
 
 
@@ -730,7 +795,7 @@ async def update_facial_surgery(player: Player, eye_style: str, eye_color: str, 
     """Plastic surgery for eyes and facial expression."""
     creds, _ = await economy.balances(player.user_id)
     if creds < SURGERY_FEES:
-        return {"success": False, "message": f"❌ هزینه جراحی زیبایی چهره <b>{SURGERY_FEES:,}</b> سکه است."}
+        return {"success": False, "message": f"❌ هزینه جراحی زیبایی چهره <b>{SURGERY_FEES:,}</b> رکسار است."}
 
     await economy.spend(player.user_id, credits=SURGERY_FEES, kind=ActivityKind.SALON)
     async with db.write() as conn:
@@ -762,7 +827,7 @@ async def create_new_clan(leader: Player, group_id: int, clan_name: str) -> dict
     creation_cost = 5000
     creds, _ = await economy.balances(leader.user_id)
     if creds < creation_cost:
-        return {"success": False, "message": f"❌ هزینه تأسیس کلن <b>{creation_cost:,}</b> سکه است. (موجودی: {creds:,} سکه)"}
+        return {"success": False, "message": f"❌ هزینه تأسیس کلن <b>{creation_cost:,}</b> رکسار است. (موجودی: {creds:,} رکسار)"}
 
     await economy.spend(leader.user_id, credits=creation_cost, kind=ActivityKind.CLAN)
 

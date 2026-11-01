@@ -117,6 +117,7 @@ class ActivityKind(StrEnum):
     CLINIC = "clinic"
     SALON = "salon"
     CLAN = "clan"
+    BANK_TRANSFER = "bank_transfer"
     # --- Ocean port phase 1 -------------------------------------------------
     PROPERTY_BUY = "property_buy"
     PROPERTY_UPGRADE = "property_upgrade"

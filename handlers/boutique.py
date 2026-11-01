@@ -127,7 +127,7 @@ async def _build_boutique_card(
         else:
             status_text = "✅ <b>این ست در کمد لباس شما موجود است.</b>"
     else:
-        status_text = f"💰 <b>قیمت ست:</b> {current_set['price']:,} سکه"
+        status_text = f"💰 <b>قیمت ست:</b> {current_set['price']:,} رکسار"
 
     caption = (
         f"🛍 <b>بوتیک خیابانی مد و لباس روزانه</b>\n"
@@ -169,7 +169,7 @@ async def _build_boutique_card(
             )
     else:
         action_btn = InlineKeyboardButton(
-            text=f"🛒 خرید این ست ({current_set['price']:,} سکه)",
+            text=f"🛒 خرید این ست ({current_set['price']:,} رکسار)",
             callback_data=f"btq:buy:{gender}:{idx}:{set_id}",
         )
 
@@ -246,12 +246,12 @@ async def _build_boutique_catalog(
     cat_title = cat_data["title"]
 
     gender_notice = (
-        "✨ <b>امتیاز جنسیت شما:</b> ۴۰٪ تخفیف ویژه روی پوشاک دخترانه (۳۰۰ سکه)!\n"
-        "🔥 پوشاک پسرانه: ۱,۲۰۰ سکه (نرخ غیرهم‌جنسیت) | ⚧ اسپرت: ۵۰۰ سکه"
+        "✨ <b>امتیاز جنسیت شما:</b> ۴۰٪ تخفیف ویژه روی پوشاک دخترانه (۳۰۰ رکسار)!\n"
+        "🔥 پوشاک پسرانه: ۱,۲۰۰ رکسار (نرخ غیرهم‌جنسیت) | ⚧ اسپرت: ۵۰۰ رکسار"
         if is_female
         else
-        "✨ <b>امتیاز جنسیت شما:</b> ۴۰٪ تخفیف ویژه روی پوشاک پسرانه (۳۰۰ سکه)!\n"
-        "🔥 پوشاک دخترانه: ۱,۲۰۰ سکه (نرخ غیرهم‌جنسیت) | ⚧ اسپرت: ۵۰۰ سکه"
+        "✨ <b>امتیاز جنسیت شما:</b> ۴۰٪ تخفیف ویژه روی پوشاک پسرانه (۳۰۰ رکسار)!\n"
+        "🔥 پوشاک دخترانه: ۱,۲۰۰ رکسار (نرخ غیرهم‌جنسیت) | ⚧ اسپرت: ۵۰۰ رکسار"
     )
 
     lines = [
@@ -386,7 +386,7 @@ async def _build_boutique_item_detail(
     elif is_owned:
         status_str = "✅ <b>این لباس در کمد شما موجود است.</b>"
     else:
-        status_str = f"💰 <b>قیمت نهایی برای شما:</b> {price:,} سکه"
+        status_str = f"💰 <b>قیمت نهایی برای شما:</b> {price:,} رکسار"
 
     if is_preview:
         preview_note = "\n<i>👁 تصویر استودیویی محصول</i>\n"
@@ -434,7 +434,7 @@ async def _build_boutique_item_detail(
     else:
         keyboard.append([
             InlineKeyboardButton(
-                text=f"🛒 خرید این لباس ({price:,} سکه)",
+                text=f"🛒 خرید این لباس ({price:,} رکسار)",
                 callback_data=f"btq:buy_it:{var_id}:{category}:{page}",
             )
         ])
@@ -1016,7 +1016,7 @@ async def handle_customizer_webapp_data(message: Message) -> None:
                 f"🎂 <b>سن:</b> {player.age} سال | ⚧ <b>جنسیت:</b> {player.gender}\n"
                 f"🧍 <b>فرم بدنه:</b> {'پلاس' if is_plus else 'اسلیم'}\n"
                 f"👕 <b>پوشش اولیه:</b> {len(var_ids)} قلم لباس انتخابی خودت\n"
-                f"💰 <b>سرمایه اولیه:</b> ۲۵۰ سکه هدیه ورود به شهر\n\n"
+                f"💰 <b>سرمایه اولیه:</b> ۲۵۰ رکسار هدیه ورود به شهر\n\n"
                 "✨ <b>کاراکتر شما با موفقیت ساخته شد و آماده زندگی در تیرامیکس است!</b>\n\n"
                 "🚀 <b>گام‌های بعدی برای شروع بازی:</b>\n"
                 "• برای کسب اولین درآمد شهری، روی <b>«💼 رفتن سر کار»</b> بزنید.\n"
@@ -1223,7 +1223,7 @@ async def handle_boutique_callback(call: CallbackQuery) -> None:
                 player_drip=player.drip,
             )
             await call.answer(
-                f"🎉 لباس «{it_info['name']}» با {price:,} سکه خریداری شد و به کمد رفت!",
+                f"🎉 لباس «{it_info['name']}» با {price:,} رکسار خریداری شد و به کمد رفت!",
                 show_alert=True,
             )
         except avatar.AlreadyOwned:
@@ -1322,7 +1322,7 @@ async def handle_boutique_callback(call: CallbackQuery) -> None:
                 player_drip=player.drip,
             )
             await call.answer(
-                f"🎉 ست «{s_info['name']}» با {price:,} سکه خریداری شد و به کمد شما رفت!",
+                f"🎉 ست «{s_info['name']}» با {price:,} رکسار خریداری شد و به کمد شما رفت!",
                 show_alert=True,
             )
         except avatar.AlreadyOwned:

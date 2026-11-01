@@ -24,7 +24,7 @@ _BUY_ACTIONS = {"خرید", "buy", "فعال"}
 _USAGE = (
     "🪓 <b>دستبرد از بانک مرکزی</b>\n"
     "نحوه استفاده: <code>دستبرد [مبلغ]</code>\n"
-    "مبلغ مجاز: {min_amount:,} تا {max_amount:,} سکه\n"
+    "مبلغ مجاز: {min_amount:,} تا {max_amount:,} رکسار\n"
     "نیاز: لول {min_level}+ و {energy}⚡ انرژی\n"
     "برد: {win_mult:g}× مبلغ · باخت: جریمه {fine_mult:g}× یا زندان"
 )

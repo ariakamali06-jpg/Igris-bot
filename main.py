@@ -14,6 +14,7 @@ connections, so a restart never leaves a half-written composite or WAL file.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import os
 import sys
@@ -211,8 +212,12 @@ async def run() -> None:
     dp.message.outer_middleware(GroupActivityMiddleware())
 
     health_server = await _start_health_server()
+    backup_task = None
     try:
         await on_startup(bot)
+        from services.backup import start_backup_scheduler
+
+        backup_task = start_backup_scheduler(bot)
         for attempt in range(1, 11):
             try:
                 await dp.start_polling(
@@ -229,6 +234,10 @@ async def run() -> None:
                 )
                 await asyncio.sleep(3)
     finally:
+        if backup_task is not None:
+            backup_task.cancel()
+            with contextlib.suppress(Exception):
+                await backup_task
         if health_server is not None:
             health_server.close()
             await health_server.wait_closed()

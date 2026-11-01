@@ -29,7 +29,7 @@ _USAGE = (
     "• <code>ریسک [مبلغ]</code> — شروع دور (شرط گرو می‌ره، ضریب از ۱ صفر شروع می‌شه)\n"
     "• <code>ریسک برداشت</code> — بستن ضریب فعلی و گرفتن سود\n"
     "• <code>ریسک</code> — وضعیت دورِ باز\n"
-    f"مبلغ: {settings.casino_min_bet:,} تا {settings.casino_max_bet:,} سکه · "
+    f"مبلغ: {settings.casino_min_bet:,} تا {settings.casino_max_bet:,} رکسار · "
     f"هر ثیقه +{settings.risk_growth_rate:g} ضریب · دور "
     f"{settings.risk_round_seconds} ثیقه‌ای، دیر بکشی می‌سوزه."
 )
@@ -45,7 +45,7 @@ async def _status_with_history(user_id: int) -> dict:
                 "message": (
                     f"{res['message']}\n"
                     f"— آخرین دور: {last['status']} · شرط {last['stake']:,} · "
-                    f"برداشت {last['payout']:,} سکه"
+                    f"برداشت {last['payout']:,} رکسار"
                 ),
             }
     return res

@@ -108,7 +108,7 @@ async def cmd_duel(message: Message, command: CommandObject | None = None) -> No
         if not settings.duel_min_bet <= stake <= settings.duel_max_bet:
             raise GameError(
                 f"مبلغ شرط باید بین {settings.duel_min_bet:,} تا "
-                f"{settings.duel_max_bet:,} سکه باشد."
+                f"{settings.duel_max_bet:,} رکسار باشد."
             )
 
         challenger = await hydrate(user.id, user.full_name, user.username)
@@ -129,7 +129,7 @@ async def cmd_duel(message: Message, command: CommandObject | None = None) -> No
         c1, _ = await economy.balances(challenger.user_id)
         if c1 < stake:
             raise GameError(
-                f"موجودی شما برای این شرط‌بندی کافی نیست! (موجودی شما: {c1:,} سکه)"
+                f"موجودی شما برای این شرط‌بندی کافی نیست! (موجودی شما: {c1:,} رکسار)"
             )
 
         # Check opponent balance
@@ -137,7 +137,7 @@ async def cmd_duel(message: Message, command: CommandObject | None = None) -> No
         if c2 < stake:
             raise GameError(
                 f"موجودی {esc(opponent.display_tag)} برای این شرط‌بندی کافی نیست! "
-                f"(موجودی حریف: {c2:,} سکه)"
+                f"(موجودی حریف: {c2:,} رکسار)"
             )
 
         economy.require_ready(user.id, "duel", settings.cooldown_duel)
@@ -170,7 +170,7 @@ async def cmd_duel(message: Message, command: CommandObject | None = None) -> No
             inline_keyboard=[
                 [
                     InlineKeyboardButton(
-                        text=f"⚔️ قبول مبارزه ({stake:,} سکه)",
+                        text=f"⚔️ قبول مبارزه ({stake:,} رکسار)",
                         callback_data=f"duel:accept:{duel_id}",
                     ),
                     InlineKeyboardButton(

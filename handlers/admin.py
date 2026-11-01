@@ -1,7 +1,7 @@
 """هندلرهای مدیریت و کدهای تقلب سازنده ربات تیرامیکس (Developer & Admin Cheats).
 
 این ماژول به مالک پروژه و ادمین‌های مجاز اجازه می‌دهد مشخصات بازیکنان
-(لول، تحصیلات، سکه نقد، موجودی بانک، انرژی، قدرت حمله، دفاع، استایل، شغل و زندان)
+(لول، تحصیلات، رکسار نقد، موجودی بانک، انرژی، قدرت حمله، دفاع، استایل، شغل و زندان)
 را برای خود یا سایر بازیکنان (از طریق ریپلای، یوزرنیم یا آیدی عددی) تنظیم کنند.
 """
 
@@ -29,7 +29,7 @@ _HELP_TEXT = (
     "⚡ <b>لیست کدهای تقلب:</b>\n"
     "🔹 <code>چیت لول [عدد]</code> — تغییر سطح (Level)\n"
     "🔹 <code>چیت سواد [۰ تا ۵]</code> — تغییر مدرک تحصیلی (۰: بی‌سواد تا ۵: دکتری)\n"
-    "🔹 <code>چیت پول [عدد]</code> — تنظیم سکه کیف پول\n"
+    "🔹 <code>چیت پول [عدد]</code> — تنظیم رکسار کیف پول\n"
     "🔹 <code>چیت بانک [عدد]</code> — تنظیم موجودی حساب بانکی\n"
     "🔹 <code>چیت انرژی [عدد]</code> — تنظیم انرژی کاراکتر\n"
     "🔹 <code>چیت اتک [عدد]</code> — قدرت حمله پایه (ATK)\n"
@@ -178,7 +178,7 @@ async def cmd_cheat(message: Message, command: CommandObject | None = None) -> N
         if action in ("پول", "سکه", "نقد", "money", "cash", "credits", "coin", "coins"):
             if not val_str.isdigit():
                 await message.reply(
-                    "⚠️ لطفاً مبلغ سکه را مشخص کنید. مثال: <code>چیت پول 100000</code>"
+                    "⚠️ لطفاً مبلغ رکسار را مشخص کنید. مثال: <code>چیت پول 100000</code>"
                 )
                 return
             new_val = int(val_str)
@@ -446,3 +446,32 @@ async def cmd_direct_reset(message: Message) -> None:
         "تمامی سوابق، کمد لباس و دارایی‌های کاراکتر صفر شد. "
         "با ارسال <code>/start</code> فرآیند ساخت مجدد کاراکتر آغاز می‌شود."
     )
+
+
+@router.message(Command("backup", "db_backup"))
+@router.message(F.text.lower().in_({"بکاپ", "بک‌آپ", "پشتیبان", "backup"}))
+async def cmd_manual_backup(message: Message) -> None:
+    """دستور ارسال فوری و دستی فایل بکاپ دیتابیس برای مالک و ادمین."""
+    user = message.from_user
+    if user is None or not is_admin_or_owner(user.id):
+        return
+
+    from services.backup import send_backup_to_admins
+
+    bot = message.bot
+    if not bot:
+        await message.reply("❌ دسترسی به ربات برای ارسال داکیومنت امکان‌پذیر نیست.")
+        return
+
+    status_msg = await message.reply("⏳ در حال تهیه نسخه پشتیبان از دیتابیس شهر...")
+    try:
+        count = await send_backup_to_admins(bot)
+        if count > 0:
+            await status_msg.edit_text(
+                "✅ <b>نسخه پشتیبان دیتابیس با موفقیت تهیه و به پیوی ارسال شد!</b>"
+            )
+        else:
+            await status_msg.edit_text("❌ خطا در تهیه یا ارسال فایل پشتیبان.")
+    except Exception as exc:
+        logger.exception("Manual DB backup failed: %s", exc)
+        await status_msg.edit_text(f"❌ خطا: <code>{esc(str(exc))}</code>")

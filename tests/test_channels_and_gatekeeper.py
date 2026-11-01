@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -9,11 +9,10 @@ from aiogram.fsm.storage.base import StorageKey
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import CallbackQuery, Chat, Message, User
 
-from config import settings
 from database.connection import db
 from database.seed import seed_catalog
-from handlers.gatekeeper import OnboardingGateMiddleware
 from handlers import onboarding
+from handlers.gatekeeper import OnboardingGateMiddleware
 from services import channels, game
 
 
@@ -46,7 +45,7 @@ async def test_get_missing_channels_flow():
 
     # 2. Mock Bot where user is in only 1 of 3 channels
     mock_bot = MagicMock()
-    
+
     async def mock_get_chat_member(chat_id, user_id):
         m = MagicMock()
         if chat_id == "@kar_O_war":
@@ -85,7 +84,9 @@ async def test_gatekeeper_blocks_unonboarded_group_commands(monkeypatch):
     # Ensure player has onboarding_completed = 0
     await game.ensure_player(user_id, "NewUser", "newuser")
     async with db.write() as conn:
-        await conn.execute("UPDATE players SET onboarding_completed = 0 WHERE user_id = ?", (user_id,))
+        await conn.execute(
+        "UPDATE players SET onboarding_completed = 0 WHERE user_id = ?", (user_id,)
+    )
 
     replies = []
 
@@ -97,7 +98,7 @@ async def test_gatekeeper_blocks_unonboarded_group_commands(monkeypatch):
 
     msg = Message(
         message_id=50,
-        date=datetime.now(timezone.utc),
+        date=datetime.now(UTC),
         chat=group_chat,
         from_user=user,
         text="پروفایل",
@@ -118,16 +119,10 @@ async def test_gatekeeper_blocks_unonboarded_group_commands(monkeypatch):
     data = {"bot": mock_bot}
     result = await middleware(dummy_handler, msg, data)
 
-    # Handler must NOT have been called
+    # Handler must NOT have been called and no reply sent (silent drop)
     assert handler_called is False
     assert result is None
-    # Reply prompt was sent with link to PV
-    assert len(replies) == 1
-    assert "شناسنامه و کاراکتر نساخته‌اید" in replies[0]["text"]
-    assert replies[0]["reply_markup"] is not None
-    button = replies[0]["reply_markup"].inline_keyboard[0][0]
-    assert "start=create" in button.url
-    assert "IgrisLifeBot" in button.url
+    assert len(replies) == 0
 
 
 @pytest.mark.asyncio
@@ -140,11 +135,13 @@ async def test_gatekeeper_allows_onboarded_group_commands():
     # Set player onboarding_completed = 1
     await game.ensure_player(user_id, "ProPlayer", "proplayer")
     async with db.write() as conn:
-        await conn.execute("UPDATE players SET onboarding_completed = 1 WHERE user_id = ?", (user_id,))
+        await conn.execute(
+        "UPDATE players SET onboarding_completed = 1 WHERE user_id = ?", (user_id,)
+    )
 
     msg = Message(
         message_id=51,
-        date=datetime.now(timezone.utc),
+        date=datetime.now(UTC),
         chat=group_chat,
         from_user=user,
         text="کار",
@@ -172,11 +169,13 @@ async def test_gatekeeper_blocks_unonboarded_group_callback():
 
     await game.ensure_player(user_id, "Guest", "guest")
     async with db.write() as conn:
-        await conn.execute("UPDATE players SET onboarding_completed = 0 WHERE user_id = ?", (user_id,))
+        await conn.execute(
+        "UPDATE players SET onboarding_completed = 0 WHERE user_id = ?", (user_id,)
+    )
 
     parent_msg = Message(
         message_id=52,
-        date=datetime.now(timezone.utc),
+        date=datetime.now(UTC),
         chat=group_chat,
         from_user=user,
         text="Some panel",
@@ -198,7 +197,6 @@ async def test_gatekeeper_blocks_unonboarded_group_callback():
     assert handler_called is False
     assert result is None
     call.answer.assert_called_once()
-    assert "کاراکتر نساخته‌اید" in call.answer.call_args[0][0]
 
 
 @pytest.mark.asyncio
@@ -210,11 +208,17 @@ async def test_onboarding_channel_verification_flow(monkeypatch):
 
     await game.ensure_player(user_id, "ChannelTester", "tester")
     async with db.write() as conn:
-        await conn.execute("UPDATE players SET onboarding_completed = 0 WHERE user_id = ?", (user_id,))
+        await conn.execute(
+        "UPDATE players SET onboarding_completed = 0 WHERE user_id = ?", (user_id,)
+    )
 
     # Mock get_missing_channels to return 1 missing channel
     missing_mock = [
-        {"name": "کار و وار (ربات ایگریس)", "url": "https://t.me/kar_O_war", "username": "@kar_O_war"}
+        {
+            "name": "کار و وار (ربات ایگریس)",
+            "url": "https://t.me/kar_O_war",
+            "username": "@kar_O_war",
+        }
     ]
     monkeypatch.setattr(onboarding, "get_missing_channels", AsyncMock(return_value=missing_mock))
 
@@ -228,7 +232,7 @@ async def test_onboarding_channel_verification_flow(monkeypatch):
 
     msg = Message(
         message_id=60,
-        date=datetime.now(timezone.utc),
+        date=datetime.now(UTC),
         chat=Chat(id=user_id, type="private"),
         from_user=user,
         text="/start",

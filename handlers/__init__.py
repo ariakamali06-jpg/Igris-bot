@@ -71,9 +71,9 @@ def register_routers(dp: Dispatcher) -> None:
     dp.include_router(pets.router)
     dp.include_router(cup.router)
 
-    # Gatekeeper: intercept group commands when user has not yet created a character
-    dp.message.middleware(OnboardingGateMiddleware())
-    dp.callback_query.middleware(OnboardingGateMiddleware())
+    # Gatekeeper: intercept all commands/callbacks when user has not yet created a character
+    dp.message.outer_middleware(OnboardingGateMiddleware())
+    dp.callback_query.outer_middleware(OnboardingGateMiddleware())
 
     # Innermost on callback_query: sees the payload and any handler failure,
     # so a dead button is traceable in the logs instead of vanishing.

@@ -164,7 +164,7 @@ async def bank_heist(
     if not settings.bank_heist_stake_min <= amount <= settings.bank_heist_stake_max:
         raise GameError(
             f"مبلغ دستبرد باید بین {settings.bank_heist_stake_min:,} تا "
-            f"{settings.bank_heist_stake_max:,} سکه باشد.\n"
+            f"{settings.bank_heist_stake_max:,} رکسار باشد.\n"
             f"نحوه استفاده: <code>دستبرد [مبلغ]</code>"
         )
 
@@ -239,7 +239,7 @@ async def bank_heist(
                     f"⚖️ حکم دادگاه: جریمه "
                     f"{settings.bank_heist_fine_multiplier:g} برابر مبلغ "
                     f"= <b>{fine:,}</b> سکه.\n"
-                    f"مبلغ سرقتی {amount:,} سکه هم سوخت."
+                    f"مبلغ سرقتی {amount:,} رکسار هم سوخت."
                 ),
             }
 
@@ -255,8 +255,8 @@ async def bank_heist(
             "jail_seconds": settings.bank_heist_jail_seconds,
             "message": (
                 f"🔒 <b>دستگیر شدی و رفتی بازداشتگاه!</b>\n\n"
-                f"جریمه {fine:,} سکه‌ای را نداشتی، پس حکم زندان صادر شد: "
+                f"جریمه {fine:,} رکساری را نداشتی، پس حکم زندان صادر شد: "
                 f"{jail_minutes} دقیقه قفل تمام دستورات.\n"
-                f"مبلغ سرقتی {amount:,} سکه هم از کف رفت."
+                f"مبلغ سرقتی {amount:,} رکسار هم از کف رفت."
             ),
         }

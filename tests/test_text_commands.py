@@ -8,6 +8,7 @@ from aiogram.types import Chat, Message, Update, User
 
 from database.connection import db
 from handlers import register_routers
+from services import game
 
 pytestmark = pytest.mark.asyncio
 
@@ -43,6 +44,11 @@ async def test_persian_plain_text_triggers(monkeypatch):
     chat = Chat(id=123, type="private")
     user = User(id=123, is_bot=False, first_name="Aria", username="aria")
     now = datetime.now(UTC)
+
+    # Set user as onboarded so commands are allowed by gatekeeper
+    await game.ensure_player(123, "Aria", "aria")
+    async with db.write() as conn:
+        await conn.execute("UPDATE players SET onboarding_completed = 1 WHERE user_id = 123")
 
     # 1. Test "پروفایل" (Profile)
     msg1 = Message(message_id=1, date=now, chat=chat, from_user=user, text="پروفایل")

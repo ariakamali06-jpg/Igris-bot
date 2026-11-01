@@ -156,10 +156,10 @@ async def status(player: Player) -> dict[str, Any]:
                 if draw["winner_id"] == player.user_id
                 else "یکی دیگه!"
             )
-            lines.append(f"🔔 دوره قبل بسته شد: {draw['pot']:,} سکه → {marker}")
+            lines.append(f"🔔 دوره قبل بسته شد: {draw['pot']:,} رکسار → {marker}")
         else:
             lines.append(
-                f"🔔 دوره قبل بدون بلیت بسته شد؛ {draw['pot']:,} سکه به دوره بعد رفت."
+                f"🔔 دوره قبل بدون بلیت بسته شد؛ {draw['pot']:,} رکسار به دوره بعد رفت."
             )
     lines.append("")
     lines.append("برای خرید بلیت: <code>قرعه خرید</code>")
@@ -240,7 +240,7 @@ async def create_code(
     key = validate_code(code)
     if credits <= 0 or credits > settings.gift_max_credits:
         raise GameError(
-            f"مبلغ هدیه باید بین ۱ تا {settings.gift_max_credits:,} سکه باشد."
+            f"مبلغ هدیه باید بین ۱ تا {settings.gift_max_credits:,} رکسار باشد."
         )
     if max_uses < 1 or max_uses > settings.gift_max_uses:
         raise GameError(

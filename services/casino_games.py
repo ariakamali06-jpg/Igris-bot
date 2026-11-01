@@ -50,7 +50,7 @@ def check_bet(bet: int) -> int:
     if bet < settings.casino_min_bet or bet > settings.casino_max_bet:
         raise GameError(
             f"شرط باید بین {settings.casino_min_bet:,} تا "
-            f"{settings.casino_max_bet:,} سکه باشد، همسایه."
+            f"{settings.casino_max_bet:,} رکسار باشد، همسایه."
         )
     return bet
 
@@ -115,13 +115,13 @@ async def slots(user_id: int, bet: int, *, spin: tuple[str, ...] | None = None) 
     shown = " | ".join(reels)
     if three is not None:
         headline = f"🎰 {shown} — سه‌تا {three}! چرخ‌ها بردنت! 🎉"
-        detail = f"شرط {bet:,} سکه، جایزه {payout:,} سکه (سود خالص: +{payout - bet:,})."
+        detail = f"شرط {bet:,} رکسار، جایزه {payout:,} رکسار (سود خالص: +{payout - bet:,})."
     elif pair:
         headline = f"🎰 {shown} — جفت اومد! 💸"
-        detail = f"شرط {bet:,} سکه، جایزه {payout:,} سکه (سود: +{payout - bet:,})."
+        detail = f"شرط {bet:,} رکسار، جایزه {payout:,} رکسار (سود: +{payout - bet:,})."
     else:
         headline = f"🎰 {shown} — بست."
-        detail = f"کازینو {bet:,} سکه رو برداشت؛ شب بعد شانس با توئه."
+        detail = f"کازینو {bet:,} رکسار رو برداشت؛ شب بعد شانس با توئه."
     return {
         "success": payout > 0,
         "message": f"{headline}\n{detail}",
@@ -166,7 +166,7 @@ async def rps(
             "success": True,
             "message": (
                 f"🪨 قل‌سنگ: تو {_RPS_EMOJI[player_move]}، خانه {_RPS_EMOJI[house]} — مساوی!\n"
-                f"شرط {bet:,} سکه سر جاش موند؛ کف زدنِ کوچه بدون خون‌ریزی تموم شد."
+                f"شرط {bet:,} رکسار سر جاش موند؛ کف زدنِ کوچه بدون خون‌ریزی تموم شد."
             ),
             "payout": bet,
             "delta": 0,
@@ -185,7 +185,7 @@ async def rps(
             "success": True,
             "message": (
                 f"✊ {_RPS_EMOJI[player_move]} بر {_RPS_EMOJI[house]} — خانه رو شکستی! 🏆\n"
-                f"شرط {bet:,} سکه، جایزه {payout:,} سکه (سود: +{payout - bet:,})."
+                f"شرط {bet:,} رکسار، جایزه {payout:,} رکسار (سود: +{payout - bet:,})."
             ),
             "payout": payout,
             "delta": payout - bet,
@@ -197,7 +197,7 @@ async def rps(
         "success": False,
         "message": (
             f"🪨 {_RPS_EMOJI[player_move]} خورد به {_RPS_EMOJI[house]} — باختی!\n"
-            f"خانه {bet:,} سکه رو لای لبش گذاشت."
+            f"خانه {bet:,} رکسار رو لای لبش گذاشت."
         ),
         "payout": 0,
         "delta": -bet,
@@ -235,7 +235,7 @@ async def guess(
             "success": True,
             "message": (
                 f"🎲 عدد پنهان {hidden} بود — درست زدی! 💎\n"
-                f"شرط {bet:,} سکه، جایزه {payout:,} سکه (سود: +{payout - bet:,})."
+                f"شرط {bet:,} رکسار، جایزه {payout:,} رکسار (سود: +{payout - bet:,})."
             ),
             "payout": payout,
             "delta": payout - bet,
@@ -244,7 +244,7 @@ async def guess(
         "success": False,
         "message": (
             f"🎲 عدد پنهان {hidden} بود و تو {number} زدی — نخورد! 😶\n"
-            f"{bet:,} سکه رو کوچه جمع کرد."
+            f"{bet:,} رکسار رو کوچه جمع کرد."
         ),
         "payout": 0,
         "delta": -bet,
@@ -321,7 +321,7 @@ async def safe_start(user_id: int, bet: int, *, code: str | None = None) -> dict
     return {
         "success": True,
         "message": (
-            f"🔐 گاوصندوقِ کوچه قفل شد — {bet:,} سکه زیر زبونِ آهنی پنهونه.\n"
+            f"🔐 گاوصندوقِ کوچه قفل شد — {bet:,} رکسار زیر زبونِ آهنی پنهونه.\n"
             f"کد سه‌رقمی رو باید بشکنی؛ {settings.safe_max_attempts} تا تلاش داری.\n"
             "تلاش: <code>قفل [کد]</code> · وضعیت: <code>قفل</code>\n"
             "<i>هر چی رقم درست‌تر باشه، صداش قشنگ‌تره…</i>"
@@ -356,7 +356,7 @@ async def safe_attempt(user_id: int, token: str) -> dict[str, Any]:
             "success": True,
             "message": (
                 f"💥 {guess_token} — {hits} رقم درست! قفل باز شد! 🎉\n"
-                f"{payout:,} سکه از دلِ آهن دراومد (سود: +{payout - int(lock['stake']):,})."
+                f"{payout:,} رکسار از دلِ آهن دراومد (سود: +{payout - int(lock['stake']):,})."
             ),
             "payout": payout,
             "hits": hits,
@@ -374,7 +374,7 @@ async def safe_attempt(user_id: int, token: str) -> dict[str, Any]:
             "success": False,
             "message": (
                 f"🔒 {guess_token} — {hits} رقم درست.\n"
-                f"تلاش‌ها تموم شد؛ قفل بسته شد و {stake:,} سکه سوخت."
+                f"تلاش‌ها تموم شد؛ قفل بسته شد و {stake:,} رکسار سوخت."
             ),
             "payout": 0,
             "hits": hits,

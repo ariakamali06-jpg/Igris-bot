@@ -59,7 +59,7 @@ async def test_paid_skin_tone_solarium():
     # 1. Fail when insufficient credits (initial credits: 250 < 500)
     res_fail = await salon.change_skin_tone_paid(user_id, -3)
     assert not res_fail["success"]
-    assert "سکه کافی نداری" in res_fail["message"]
+    assert "رکسار کافی نداری" in res_fail["message"]
 
     # 2. Add credits and succeed
     await economy.grant(user_id, credits=1000, kind=ActivityKind.ADMIN)

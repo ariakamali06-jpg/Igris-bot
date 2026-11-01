@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 
 from aiogram import F, Router
@@ -24,11 +25,13 @@ from config import settings
 from handlers.common import (
     CommandOrText,
     answer_error,
+    editable_message,
     energy_bar,
     esc,
     extract_args,
     hydrate,
 )
+from models.player import Player
 from services import economy
 from services.game import GameError, exp_to_next
 
@@ -45,10 +48,7 @@ def _activity_card(result: economy.ActivityResult) -> str:
     bits = []
     if result.credits_delta:
         sign = "+" if result.credits_delta > 0 else ""
-        bits.append(f"{sign}{result.credits_delta:,} سکه")
-    if result.shards_delta:
-        sign = "+" if result.shards_delta > 0 else ""
-        bits.append(f"{sign}{result.shards_delta} شارد")
+        bits.append(f"{sign}{result.credits_delta:,} رکسار")
     if result.exp_gained:
         bits.append(f"+{result.exp_gained} EXP")
     if bits:
@@ -177,6 +177,52 @@ async def cmd_job(message: Message, command: CommandObject | None = None) -> Non
 # ---------------------------------------------------------------------------
 
 
+def _bank_markup() -> InlineKeyboardMarkup:
+    """چیدمان دکمه‌های شیشه‌ای بانک مرکزی تیرامیکس."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="📥 واریز به بانک", callback_data="bank:ui:deposit"),
+                InlineKeyboardButton(text="📤 برداشت از بانک", callback_data="bank:ui:withdraw"),
+            ],
+            [
+                InlineKeyboardButton(text="💳 دریافت وام", callback_data="bank:ui:loan"),
+                InlineKeyboardButton(text="🧾 تسویه بدهی وام", callback_data="bank:ui:repay"),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="💸 کارت به کارت (انتقال رکسار)", callback_data="bank:ui:transfer"
+                ),
+            ],
+            [
+                InlineKeyboardButton(text="🔄 به‌روزرسانی موجودی", callback_data="bank:ui:refresh"),
+                InlineKeyboardButton(text="🚪 بستن", callback_data="btq:close"),
+            ],
+        ]
+    )
+
+
+async def _render_bank_view(player: Player) -> tuple[str, InlineKeyboardMarkup]:
+    from services import game
+    creds, _ = await economy.balances(player.user_id)
+    fresh = await game.load_player(player.user_id) or player
+    loan_info = (
+        f"بدهی فعال: <b>{fresh.loan_amount:,}</b> رکسار"
+        if fresh.loan_amount > 0
+        else "بدون بدهی معوق ✅"
+    )
+    text = (
+        "🏦 <b>بانک مرکزی شهر تیرامیکس (سیستم امن ضدسرقت)</b>\n\n"
+        f"💵 موجودی نقد در جیب: <b>{creds:,}</b> رکسار\n"
+        f"🔒 موجودی در گاوصندوق بانک: <b>{fresh.bank_balance:,}</b> رکسار\n"
+        f"📊 وضعیت تسهیلات: {loan_info}\n\n"
+        "📌 <b>عملیات سریع بانکی:</b>\n"
+        "برای واریز، برداشت، وام یا انتقال وجه از دکمه‌های زیر استفاده کنید،\n"
+        "یا دستورات متنی را بنویسید (مثال: <code>بانک واریز 500</code>)."
+    )
+    return text, _bank_markup()
+
+
 @router.message(CommandOrText(["bank"], {"بانک", "وام", "سپرده", "صندوق"}))
 async def cmd_bank(message: Message, command: CommandObject | None = None) -> None:
     """خدمات مالی بانک مرکزی شامل واریز به گاوصندوق ضدسرقت، برداشت و دریافت وام."""
@@ -188,26 +234,10 @@ async def cmd_bank(message: Message, command: CommandObject | None = None) -> No
         from services import tiramix
 
         args = extract_args(message, command)
-        creds, _ = await economy.balances(player.user_id)
 
         if not args:
-            loan_info = (
-                f"بدهی فعال: <b>{player.loan_amount:,}</b> سکه"
-                if player.loan_amount > 0
-                else "بدون بدهی معوق ✅"
-            )
-            text = (
-                "🏦 <b>بانک مرکزی شهر تیرامیکس (سیستم امن ضدسرقت)</b>\n\n"
-                f"💵 موجودی نقد در جیب: <b>{creds:,}</b> سکه\n"
-                f"🔒 موجودی در گاوصندوق بانک: <b>{player.bank_balance:,}</b> سکه\n"
-                f"📊 وضعیت تسهیلات: {loan_info}\n\n"
-                "📌 <b>دستورات بانکی:</b>\n"
-                "• <code>بانک واریز [مبلغ]</code> — انتقال پول نقد به گاوصندوق امن\n"
-                "• <code>بانک برداشت [مبلغ]</code> — برداشت وجه نقد به کیف پول\n"
-                "• <code>بانک وام [مبلغ]</code> — دریافت تسهیلات با بهره ۱۵٪\n"
-                "• <code>بانک تسویه [مبلغ]</code> — پرداخت اقساط و بدهی وام"
-            )
-            await message.reply(text)
+            text, markup = await _render_bank_view(player)
+            await message.reply(text, reply_markup=markup)
             return
 
         action = args[0].lower()
@@ -232,6 +262,293 @@ async def cmd_bank(message: Message, command: CommandObject | None = None) -> No
             await message.reply(res["message"])
         else:
             await message.reply("⚠️ عملیات نامعتبر. گزینه‌ها: واریز، برداشت، وام، تسویه.")
+    except Exception as exc:  # noqa: BLE001
+        await answer_error(exc, message=message)
+
+
+@router.callback_query(F.data.in_({"bank:ui:home", "bank:ui:refresh"}))
+async def cb_bank_home(call: CallbackQuery) -> None:
+    user = call.from_user
+    if user is None:
+        return
+    player = await hydrate(user.id, user.full_name, user.username)
+    text, markup = await _render_bank_view(player)
+    msg = editable_message(call)
+    if msg:
+        with contextlib.suppress(Exception):
+            await msg.edit_text(text, reply_markup=markup)
+    await call.answer("🔄 اطلاعات بانک به‌روز شد.")
+
+
+@router.callback_query(F.data == "bank:ui:deposit")
+async def cb_bank_deposit_menu(call: CallbackQuery) -> None:
+    user = call.from_user
+    if user is None:
+        return
+    player = await hydrate(user.id, user.full_name, user.username)
+    creds, _ = await economy.balances(player.user_id)
+    text = (
+        "📥 <b>واریز به گاوصندوق امن بانک مرکزی:</b>\n\n"
+        f"💵 موجودی نقد شما: <b>{creds:,}</b> رکسار\n\n"
+        "مبلغ مورد نظر برای واریز را انتخاب کنید یا بنویسید:\n"
+        "<code>بانک واریز [مبلغ]</code>"
+    )
+    markup = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="📥 500", callback_data="bank:act:dep:500"),
+                InlineKeyboardButton(text="📥 1,000", callback_data="bank:act:dep:1000"),
+                InlineKeyboardButton(text="📥 5,000", callback_data="bank:act:dep:5000"),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="📥 واریز کل موجودی نقد", callback_data=f"bank:act:dep:{creds}"
+                ),
+            ],
+            [
+                InlineKeyboardButton(text="🔙 بازگشت به بانک", callback_data="bank:ui:home"),
+            ],
+        ]
+    )
+    msg = editable_message(call)
+    if msg:
+        await msg.edit_text(text, reply_markup=markup)
+
+
+@router.callback_query(F.data == "bank:ui:withdraw")
+async def cb_bank_withdraw_menu(call: CallbackQuery) -> None:
+    user = call.from_user
+    if user is None:
+        return
+    from services import game
+    player = await hydrate(user.id, user.full_name, user.username)
+    fresh = await game.load_player(player.user_id) or player
+    bank_bal = fresh.bank_balance
+    text = (
+        "📤 <b>برداشت وجه از گاوصندوق بانک:</b>\n\n"
+        f"🔒 موجودی حساب بانکی: <b>{bank_bal:,}</b> رکسار\n\n"
+        "مبلغ مورد نظر برای برداشت را انتخاب کنید یا بنویسید:\n"
+        "<code>بانک برداشت [مبلغ]</code>"
+    )
+    markup = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="📤 500", callback_data="bank:act:wdr:500"),
+                InlineKeyboardButton(text="📤 1,000", callback_data="bank:act:wdr:1000"),
+                InlineKeyboardButton(text="📤 5,000", callback_data="bank:act:wdr:5000"),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="📤 برداشت کل موجودی بانک", callback_data=f"bank:act:wdr:{bank_bal}"
+                ),
+            ],
+            [
+                InlineKeyboardButton(text="🔙 بازگشت به بانک", callback_data="bank:ui:home"),
+            ],
+        ]
+    )
+    msg = editable_message(call)
+    if msg:
+        await msg.edit_text(text, reply_markup=markup)
+
+
+@router.callback_query(F.data == "bank:ui:loan")
+async def cb_bank_loan_menu(call: CallbackQuery) -> None:
+    user = call.from_user
+    if user is None:
+        return
+    from services import game
+    player = await hydrate(user.id, user.full_name, user.username)
+    fresh = await game.load_player(player.user_id) or player
+    credit_limit = 1000 + (fresh.bank_balance * 2) + (fresh.level * 500)
+    text = (
+        "💳 <b>میز تسهیلات و وام بانک مرکزی تیرامیکس:</b>\n\n"
+        f"📊 سقف مجاز وام برای شما: <b>{credit_limit:,}</b> رکسار\n"
+        f"📈 نرخ بهره بانکی: <b>۱۵٪</b> (مهلت بازپرداخت: ۳ روز کاری)\n\n"
+        "یک بسته وام را انتخاب کنید یا دستور زیر را بنویسید:\n"
+        "<code>بانک وام [مبلغ]</code>"
+    )
+    markup = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="💳 وام 1,000", callback_data="bank:act:loan:1000"),
+                InlineKeyboardButton(text="💳 وام 5,000", callback_data="bank:act:loan:5000"),
+            ],
+            [
+                InlineKeyboardButton(
+                    text=f"💳 سقف مجاز ({credit_limit:,} رکسار)",
+                    callback_data=f"bank:act:loan:{credit_limit}",
+                ),
+            ],
+            [
+                InlineKeyboardButton(text="🔙 بازگشت به بانک", callback_data="bank:ui:home"),
+            ],
+        ]
+    )
+    msg = editable_message(call)
+    if msg:
+        await msg.edit_text(text, reply_markup=markup)
+
+
+@router.callback_query(F.data == "bank:ui:repay")
+async def cb_bank_repay_menu(call: CallbackQuery) -> None:
+    user = call.from_user
+    if user is None:
+        return
+    from services import game
+    player = await hydrate(user.id, user.full_name, user.username)
+    fresh = await game.load_player(player.user_id) or player
+    due = fresh.loan_amount
+    text = (
+        "🧾 <b>تسویه بدهی و اقساط وام بانکی:</b>\n\n"
+        f"⚠️ بدهی معوق شما: <b>{due:,}</b> رکسار\n\n"
+        "مبلغ بازپرداخت را انتخاب کنید یا بنویسید:\n"
+        "<code>بانک تسویه [مبلغ]</code>"
+    )
+    markup = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="🧾 پرداخت 1,000", callback_data="bank:act:repay:1000"),
+                InlineKeyboardButton(
+                    text=f"🧾 تسویه کامل بدهی ({due:,})", callback_data=f"bank:act:repay:{due}"
+                ),
+            ],
+            [
+                InlineKeyboardButton(text="🔙 بازگشت به بانک", callback_data="bank:ui:home"),
+            ],
+        ]
+    )
+    msg = editable_message(call)
+    if msg:
+        await msg.edit_text(text, reply_markup=markup)
+
+
+@router.callback_query(F.data == "bank:ui:transfer")
+async def cb_bank_transfer_menu(call: CallbackQuery) -> None:
+    text = (
+        "💸 <b>انتقال رکسار (کارت به کارت بین شهروندان)</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "برای جا به جایی و انتقال رکسار به یک کاربر دیگر، می‌توانید:\n\n"
+        "۱. <b>روش سریع گروهی:</b> روی پیام کاربر در گروه ریپلای بزنید و بنویسید:\n"
+        "<code>انتقال 500</code>\n"
+        "یا: <code>کارت به کارت 1000</code>\n\n"
+        "۲. <b>روش نام کاربری یا شناسه عددی:</b>\n"
+        "<code>انتقال 500 @username</code>\n"
+        "<code>انتقال 500 123456789</code>\n\n"
+        "✨ بدون کارمزد و با تسویه آنی در بانک مرکزی تیرامیکس!"
+    )
+    markup = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="🔙 بازگشت به بانک", callback_data="bank:ui:home"),
+            ],
+        ]
+    )
+    msg = editable_message(call)
+    if msg:
+        await msg.edit_text(text, reply_markup=markup)
+
+
+@router.callback_query(F.data.startswith("bank:act:"))
+async def cb_bank_action(call: CallbackQuery) -> None:
+    user = call.from_user
+    if user is None or call.data is None:
+        return
+    parts = call.data.split(":")
+    if len(parts) < 4:
+        return
+    act_kind, amt_str = parts[2], parts[3]
+    if not amt_str.isdigit():
+        return
+    amount = int(amt_str)
+    if amount <= 0:
+        await call.answer("مبلغ نامعتبر یا صفر است.", show_alert=True)
+        return
+
+    from services import tiramix
+    player = await hydrate(user.id, user.full_name, user.username)
+
+    if act_kind == "dep":
+        res = await tiramix.deposit_bank(player, amount)
+    elif act_kind == "wdr":
+        res = await tiramix.withdraw_bank(player, amount)
+    elif act_kind == "loan":
+        res = await tiramix.apply_bank_loan(player, amount)
+    elif act_kind == "repay":
+        res = await tiramix.repay_bank_loan(player, amount)
+    else:
+        return
+
+    # پاک‌سازی تگ‌های HTML برای نمایش آلرت
+    alert_txt = (
+        res["message"]
+        .replace("<b>", "")
+        .replace("</b>", "")
+        .replace("<code>", "")
+        .replace("</code>", "")
+    )
+    await call.answer(alert_txt[:200], show_alert=not res.get("success", False))
+
+    text, markup = await _render_bank_view(player)
+    msg = editable_message(call)
+    if msg:
+        with contextlib.suppress(Exception):
+            await msg.edit_text(text, reply_markup=markup)
+
+
+@router.message(
+    CommandOrText(
+        ["transfer", "pay", "sendmoney"],
+        {"انتقال", "کارت به کارت", "واریز به", "انتقال وجه"},
+    )
+)
+async def cmd_transfer(message: Message, command: CommandObject | None = None) -> None:
+    """انتقال مستقیم رکسار بین دو شهروند (کارت به کارت)."""
+    user = message.from_user
+    if user is None:
+        return
+    try:
+        from handlers.common import resolve_target_player
+        from services import tiramix
+
+        player = await hydrate(user.id, user.full_name, user.username)
+        args = extract_args(message, command)
+        target_player = None
+        amount = None
+
+        if message.reply_to_message and message.reply_to_message.from_user:
+            target_user = message.reply_to_message.from_user
+            target_player = await hydrate(
+                target_user.id, target_user.full_name, target_user.username
+            )
+            if args and args[0].isdigit():
+                amount = int(args[0])
+        else:
+            if len(args) >= 2:
+                if args[0].isdigit():
+                    amount = int(args[0])
+                    token = args[1]
+                elif args[1].isdigit():
+                    amount = int(args[1])
+                    token = args[0]
+                else:
+                    token = ""
+                if token:
+                    target_player = await resolve_target_player(message, token)
+
+        if amount is None or target_player is None:
+            await message.reply(
+                "📌 <b>نحوه انتقال رکسار (کارت به کارت):</b>\n\n"
+                "۱. ریپلای روی پیام شخص و ارسال مبلغ:\n"
+                "<code>انتقال 500</code>\n\n"
+                "۲. یا با نوشتن یوزرنیم یا شناسه عددی:\n"
+                "<code>انتقال 500 @username</code>\n"
+                "<code>انتقال 500 123456789</code>"
+            )
+            return
+
+        res = await tiramix.transfer_credits(player.user_id, target_player.user_id, amount)
+        await message.reply(res["message"])
     except Exception as exc:  # noqa: BLE001
         await answer_error(exc, message=message)
 
@@ -342,23 +659,22 @@ async def _casino_command(message: Message, command: CommandObject | None, game:
 
 @router.message(CommandOrText(["balance", "bal", "wallet", "money"], BAL_WORDS))
 async def cmd_balance(message: Message) -> None:
-    """مشاهده موجودی نقد، حساب بانکی، شارد و وضعیت شغلی شهروند."""
+    """مشاهده موجودی نقد، حساب بانکی و وضعیت شغلی شهروند."""
     user = message.from_user
     if user is None:
         return
     try:
         player = await hydrate(user.id, user.full_name, user.username)
-        credits, shards = await economy.balances(player.user_id)
+        credits, _ = await economy.balances(player.user_id)
         loan_line = (
-            f"\n⚠️ بدهی وام بانکی: <b>{player.loan_amount:,}</b> سکه"
+            f"\n⚠️ بدهی وام بانکی: <b>{player.loan_amount:,}</b> رکسار"
             if player.loan_amount > 0
             else ""
         )
         await message.reply(
             f"💰 <b>وضعیت مالی شهروندی {esc(player.display_tag)}</b>\n\n"
-            f"💵 موجودی نقد (کیف پول): <b>{credits:,}</b> سکه\n"
-            f"🏦 سپرده امن بانکی: <b>{player.bank_balance:,}</b> سکه\n"
-            f"💎 شارد روح: <b>{shards}</b> عدد{loan_line}\n\n"
+            f"💵 موجودی نقد (کیف پول): <b>{credits:,}</b> رکسار\n"
+            f"🏦 سپرده امن بانکی: <b>{player.bank_balance:,}</b> رکسار{loan_line}\n\n"
             f"💼 شغل فعلی: <b>{player.job}</b>\n"
             f"🎓 مدرک تحصیلی: <b>{player.education_title}</b>"
         )
@@ -480,8 +796,9 @@ _HELP_CMDS_TEXT = (
     "• <code>کار</code> / <code>/work</code> — شیفت کاری و دریافت درآمد\n"
     "• <code>تحصیل</code> / <code>/study</code> — ارتقای مدرک تحصیلی دانشگاهی\n"
     "• <code>شغل</code> / <code>/job</code> — مشاهده و استخدام در مشاغل\n"
-    "• <code>کیف پول</code> / <code>موجودی</code> — موجودی نقد، بانک و شارد روح\n"
-    "• <code>بانک</code> / <code>/bank</code> — واریز، برداشت و دریافت وام\n"
+    "• <code>کیف پول</code> / <code>موجودی</code> — موجودی نقد و حساب بانکی\n"
+    "• <code>بانک</code> / <code>/bank</code> — واریز، برداشت، تسهیلات و کارت به کارت\n"
+    "• <code>انتقال [مبلغ]</code> (ریپلای/آیدی) — کارت به کارت بین شهروندان\n"
     "• <code>روزانه</code> / <code>/daily</code> — پاداش وفاداری ۲۴ ساعته\n"
     "• <code>املاک</code> / <code>/property</code> — خرید و درآمد منفعل املاک\n"
     "• <code>بورس</code> / <code>/exchange</code> — بازار ارز دیجیتال و سهام\n"
