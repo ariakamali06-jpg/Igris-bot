@@ -1347,7 +1347,7 @@ async def get_customizer_url(
 
     owned_ids: list[int] = []
     owned_sets: list[dict[str, Any]] = []
-    if is_onboarded and user_id:
+    if user_id:
         try:
             wdr = await list_wardrobe(user_id)
             for s in wdr:
@@ -1368,7 +1368,7 @@ async def get_customizer_url(
         except Exception:
             pass
 
-    if is_onboarded and var_ids:
+    if var_ids:
         owned_ids.extend(var_ids)
 
     owned_ids = list(dict.fromkeys(owned_ids))
@@ -1385,6 +1385,8 @@ async def get_customizer_url(
 
     active_bot = RUNTIME_BOT_USERNAME or settings.bot_username
 
+    has_wardrobe = bool(owned_ids or is_onboarded)
+
     payload = {
         "u": user_id,
         "name": display_name or "مسافر",
@@ -1395,9 +1397,9 @@ async def get_customizer_url(
         "body": "plus" if is_plus else "slim",
         "items": var_ids or [],
         "bot": active_bot,
-        "mode": "wardrobe" if is_onboarded else "starter",
-        "owned": owned_ids if is_onboarded else [],
-        "owned_sets": owned_sets if is_onboarded else [],
+        "mode": "wardrobe" if has_wardrobe else "starter",
+        "owned": owned_ids,
+        "owned_sets": owned_sets,
     }
 
     raw_json = json.dumps(payload, separators=(",", ":"))

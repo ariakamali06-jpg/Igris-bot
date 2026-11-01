@@ -114,11 +114,25 @@ async def test_single_item_purchase_and_equip_lifecycle():
     # 7. Verify miniapp payload has item in `owned` but NOT in `owned_sets`
     import base64
     import json
+    import re
     app_url = await avatar.get_customizer_url(user_id)
     b64_str = app_url.split("?d=")[1]
     payload = json.loads(base64.urlsafe_b64decode(b64_str + "==").decode())
+    assert payload["mode"] == "wardrobe"
     assert 1326 in payload["owned"]
     assert not any(1326 in s.get("vars", []) for s in payload["owned_sets"])
+
+    # Verify index.html contains item 1326 mapped to top zone
+    import asyncio
+    from pathlib import Path
+    html = await asyncio.to_thread(Path("index.html").read_text, encoding="utf-8")
+    m_raw = re.search(r"const RAW_ITEMS = (\[.*?\]);\n    const STARTER_SETS_INFO", html)
+    assert m_raw is not None
+    raw_list = json.loads(m_raw.group(1))
+    item_entry = next((it for it in raw_list if it["v"] == 1326), None)
+    assert item_entry is not None
+    assert item_entry["z"] == "top"
+    assert item_entry["n"] == "Moon crop"
 
     # 8. Test unequip_single_item
     uneq_res = await avatar.unequip_single_item(user_id, 1326)
