@@ -123,7 +123,7 @@ async def _shop_page(
         buttons.append(nav)
     buttons.append(
         [
-            InlineKeyboardButton(text="👗 بوتیک مد روزانه", callback_data="btq:cat:female"),
+            InlineKeyboardButton(text="👗 بوتیک مد روزانه", callback_data="btq:open"),
             InlineKeyboardButton(text="🏠 کارت من", callback_data="act:me"),
         ]
     )

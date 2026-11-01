@@ -194,11 +194,15 @@ async def cmd_start_wear(message: Message, state: FSMContext) -> None:
 
     Telegram Mini Apps opened from a menu button or glass button cannot use
     sendMessage, so the save travels via this deep link instead.
+
+    If no payload exists, delegate to main start handler.
     """
     if not message.text:
         return
     parts = message.text.split(maxsplit=1)
     if len(parts) < 2:
+        # No payload → delegate to main start handler
+        await cmd_start(message, state)
         return
     arg = parts[1]
     if arg.startswith("w_"):
@@ -207,6 +211,8 @@ async def cmd_start_wear(message: Message, state: FSMContext) -> None:
     if arg.startswith("wear_"):
         await _handle_wear_payload(message, arg[len("wear_"):], state=state)
         return
+    # Unknown payload → delegate to main start handler
+    await cmd_start(message, state)
 
 
 async def _handle_compact_wear_payload(
@@ -370,11 +376,7 @@ async def _handle_compact_wear_payload(
                     [
                         InlineKeyboardButton(
                             text="🛍 ویترین بوتیک و مد",
-                            callback_data=(
-                                "btq:cat:female"
-                                if player.gender == "دختر"
-                                else "btq:cat:male"
-                            ),
+                            callback_data="btq:open",
                         ),
                         InlineKeyboardButton(text="🎒 کمد لباس من", callback_data="wdr:view:0"),
                     ],
@@ -562,11 +564,7 @@ async def _handle_wear_payload(
                     [
                         InlineKeyboardButton(
                             text="🛍 ویترین بوتیک و مد",
-                            callback_data=(
-                                "btq:cat:female"
-                                if player.gender == "دختر"
-                                else "btq:cat:male"
-                            ),
+                            callback_data="btq:open",
                         ),
                         InlineKeyboardButton(text="🎒 کمد لباس من", callback_data="wdr:view:0"),
                     ],
@@ -1339,11 +1337,7 @@ async def _finalize_character(
             [
                 InlineKeyboardButton(
                     text="🛍 ویترین بوتیک و مد",
-                    callback_data=(
-                        "btq:cat:female"
-                        if player.gender == "دختر"
-                        else "btq:cat:male"
-                    ),
+                    callback_data="btq:open",
                 ),
                 InlineKeyboardButton(text="🎒 کمد لباس من", callback_data="wdr:view:0"),
             ],

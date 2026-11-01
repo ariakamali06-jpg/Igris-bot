@@ -109,6 +109,37 @@ async def test_single_item_purchase_and_equip_lifecycle():
         await conn.execute("DELETE FROM players WHERE user_id = ?", (user_id,))
 
 
+async def test_cmd_start_delegation_without_payload():
+    """Verify /start without payload properly triggers player onboarding wizard or profile."""
+    from aiogram.fsm.context import FSMContext
+    from aiogram.fsm.storage.base import StorageKey
+    from aiogram.fsm.storage.memory import MemoryStorage
+
+    from handlers.onboarding import cmd_start_wear
+
+    user_id = 999888773
+    storage = MemoryStorage()
+    key = StorageKey(bot_id=1, chat_id=user_id, user_id=user_id)
+    state = FSMContext(storage=storage, key=key)
+
+    # 1. Message with plain '/start'
+    class DummyMsg:
+        text = "/start"
+        from_user = type("U", (), {"id": user_id, "full_name": "Newbie", "username": "newbie"})()
+        replies = []
+        async def reply(self, text, **kwargs):
+            self.replies.append((text, kwargs))
+            return self
+
+    msg = DummyMsg()
+    # Should delegate to cmd_start without raising exception or returning early
+    await cmd_start_wear(msg, state)
+    # New player gets channel join check or name wizard
+    data = await state.get_data()
+    # Either tracked_msg_ids (channel check) or wizard state was initiated
+    assert "tracked_msg_ids" in data or len(msg.replies) > 0
+
+
 async def test_zero_bandwidth_boutique_text_catalog():
     """Verify boutique generates lightweight text catalog with no premature images."""
     user_id = 999888772

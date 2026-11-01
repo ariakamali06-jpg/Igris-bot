@@ -520,7 +520,7 @@ async def _build_wardrobe_card(
             )
         buttons.append(
             [
-                InlineKeyboardButton(text="🛍 ویترین بوتیک مد", callback_data="btq:cat:female"),
+                InlineKeyboardButton(text="🛍 ویترین بوتیک مد", callback_data="btq:open"),
                 InlineKeyboardButton(text="🎨 انتخاب رنگ پوست", callback_data="wdr:skin_menu"),
             ]
         )
@@ -608,7 +608,7 @@ async def _build_wardrobe_card(
         )
 
     bottom_row = [
-        InlineKeyboardButton(text="🛍 رفتن به بوتیک", callback_data="btq:cat:female"),
+        InlineKeyboardButton(text="🛍 رفتن به بوتیک", callback_data="btq:open"),
         InlineKeyboardButton(text="🚪 بستن کمد", callback_data="btq:close"),
     ]
 
@@ -772,7 +772,7 @@ async def handle_avatar_command(message: Message) -> None:
             ],
             [
                 InlineKeyboardButton(text="👕 کمد لباس من", callback_data="wdr:view:0"),
-                InlineKeyboardButton(text="🛍 ویترین بوتیک", callback_data="btq:cat:female"),
+                InlineKeyboardButton(text="🛍 ویترین بوتیک", callback_data="btq:open"),
             ],
             [
                 InlineKeyboardButton(text="🚪 بستن", callback_data="btq:close"),
@@ -832,7 +832,7 @@ async def handle_customizer_command(message: Message) -> None:
     buttons.append(
         [
             InlineKeyboardButton(text="👕 کمد لباس من", callback_data="wdr:view:0"),
-            InlineKeyboardButton(text="🛍 ویترین بوتیک", callback_data="btq:cat:female"),
+            InlineKeyboardButton(text="🛍 ویترین بوتیک", callback_data="btq:open"),
         ]
     )
     buttons.append([InlineKeyboardButton(text="🚪 بستن", callback_data="btq:close")])
@@ -948,11 +948,7 @@ async def handle_customizer_webapp_data(message: Message) -> None:
                     [
                         InlineKeyboardButton(
                             text="🛍 ویترین بوتیک و مد",
-                            callback_data=(
-                                "btq:cat:female"
-                                if player.gender == "دختر"
-                                else "btq:cat:male"
-                            ),
+                            callback_data="btq:open",
                         ),
                         InlineKeyboardButton(text="🎒 کمد لباس من", callback_data="wdr:view:0"),
                     ],

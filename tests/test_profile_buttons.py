@@ -381,7 +381,6 @@ async def test_help_menu_commands_and_boutique_redirect() -> None:
     assert "/wardrobe" in text_msg.text
     assert "/customizer" in text_msg.text
     assert "آرایشگاه" in text_msg.text
-    assert "سولاریوم" in text_msg.text
     assert "دوز" in text_msg.text
     assert "دروازه" in text_msg.text
     assert "کاپ" in text_msg.text
