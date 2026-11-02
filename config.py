@@ -291,6 +291,7 @@ class Settings(BaseSettings):
     bazaar_price_min: int = 10
     bazaar_price_max: int = 250_000
     bazaar_max_active: int = 10  # live listings per seller
+    bazaar_listing_fee: int = 100  # کارمزد ثبت آگهی
     cooldown_bazaar: int = 5
 
     # --- Ocean port phase 3: underworld (سایه / اخاذی) ----------------------

@@ -1173,43 +1173,64 @@ async def handle_customizer_webapp_data(message: Message) -> None:
 
 
 async def open_boutique_from_callback(call: CallbackQuery) -> None:
-    """Open daily boutique items catalog from inline callback."""
+    """Open shop mini-app in Shop Mode (unified gateway for all boutique buttons)."""
     if not call.from_user or not call.message:
         await call.answer()
         return
 
     user_id = call.from_user.id
-    await game.ensure_player(
-        user_id=user_id,
-        username=call.from_user.username or "",
-        display_name=call.from_user.full_name or "مسافر",
-    )
-    render_url, caption, markup = await _build_boutique_catalog(
-        user_id=user_id,
-        category="top",
-        page=0,
-    )
-
-    is_photo_message = bool(getattr(call.message, "photo", None))
-    if is_photo_message:
-        try:
-            await call.message.edit_caption(
-                caption=caption, reply_markup=markup, parse_mode="HTML"
-            )
-        except TelegramBadRequest as exc:
-            logger.debug("edit_caption error in boutique callback: %s", exc)
-            with contextlib.suppress(Exception):
-                await call.message.edit_text(text=caption, reply_markup=markup, parse_mode="HTML")
-    else:
+    user = call.from_user
+    
+    try:
+        player = await hydrate(user_id, user.full_name, user.username)
+        custom_url = await avatar.get_customizer_url(user_id, mode="shop")
+        text = (
+            "🛍 <b>بوتیک مد و فروشگاه لباس تیرامیکس</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            f"👤 شهروند: {player.display_name}\n"
+            "برای خرید لباس و پرو استایل، روش مورد نظر خود را انتخاب کنید:\n\n"
+            "۱. 📱 <b>مینی‌اپ تصویری فروشگاه (پیشنهادی):</b>\n"
+            "مشاهده زنده لباس‌ها، خرید مستقیم با قیمت روی کارت، پرو همزمان روی مانکن.\n\n"
+            "۲. 💬 <b>کمد شخصی:</b>\n"
+            "مشاهده و مدیریت لباس‌های خریداری‌شده."
+        )
+        markup = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="📱 باز کردن فروشگاه مد (مینی‌اپ)",
+                        web_app=WebAppInfo(url=custom_url),
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="👗 کمد لباس‌های من", callback_data="wdr:view:0"
+                    ),
+                    InlineKeyboardButton(
+                        text="💇‍♀️ آرایشگاه", callback_data="sal:menu"
+                    ),
+                ],
+                [
+                    InlineKeyboardButton(text="🚪 بستن", callback_data="btq:close"),
+                ],
+            ]
+        )
+        
+        # Try to edit existing message, otherwise send new one
+        with contextlib.suppress(TelegramBadRequest):
+            await call.message.edit_text(text, reply_markup=markup)
+            await call.answer()
+            return
+        
+        # If edit failed, delete old and send new
         with contextlib.suppress(Exception):
             await call.message.delete()
-        photo_payload = await _render_photo_payload(render_url, "boutique.png")
-        await call.message.answer_photo(
-            photo=photo_payload,
-            caption=caption,
-            reply_markup=markup,
-        )
-    await call.answer()
+        await call.message.answer(text, reply_markup=markup)
+        await call.answer()
+        
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("Boutique callback error")
+        await call.answer(f"❌ خطا: {exc}", show_alert=True)
 
 
 @router.callback_query(F.data.startswith("btq:"))

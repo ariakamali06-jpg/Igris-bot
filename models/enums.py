@@ -143,6 +143,7 @@ class ActivityKind(StrEnum):
     # --- Ocean port phase 3 -------------------------------------------------
     BLACKMARKET = "blackmarket"
     BAZAAR = "bazaar"
+    BAZAAR_FEE = "bazaar_fee"
     SHADOW = "shadow"
     EXTORT = "extort"
     PET = "pet"

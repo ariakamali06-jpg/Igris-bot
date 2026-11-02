@@ -204,12 +204,10 @@ async def test_shop_button_works_from_photo_card(player) -> None:
     await shop.cb_shop(call)
 
     assert call.alerts == [], f"callback errored: {call.alerts}"
-    assert card.sent == []
-    assert "Boutique" in (card.caption or "") or "بوتیک" in (card.caption or ""), (
-        f"caption was not updated: {card.caption!r}"
-    )
-    has_back = _has_button(card.reply_markup, "Back to card")
-    assert has_back or _has_button(card.reply_markup, "کارت من")
+    # Shop now redirects to boutique gateway (unified with /shop command)
+    # It sends a new text message instead of editing caption
+    assert len(card.sent) == 1, "should send boutique gateway message"
+    assert "بوتیک" in card.sent[0]["text"] or "فروشگاه" in card.sent[0]["text"]
 
 
 async def test_inventory_pagination_stays_on_caption(player) -> None:
@@ -393,18 +391,17 @@ async def test_help_menu_commands_and_boutique_redirect() -> None:
     assert "سپر خرید" in text_msg.text
     assert _has_button(text_msg.reply_markup, "فروشگاه و بوتیک مد")
 
-    # 3. کلیک روی دکمه فروشگاه از منوی راهنما (btq:open) ویترین تصویری بوتیک را باز می‌کند
+    # 3. کلیک روی دکمه فروشگاه از منوی راهنما (btq:open) حالا به shop gateway redirect می‌شود
     call_btq = FakeCall("btq:open", text_msg)
     await boutique.handle_boutique_callback(call_btq)
-    assert len(text_msg.sent) == 1
-    assert text_msg.sent[0]["kind"] == "photo"
-    assert "بوتیک" in (text_msg.sent[0].get("caption") or "")
+    # Now it edits the text message to show shop gateway
+    assert "بوتیک" in (text_msg.text or "") or "فروشگاه" in (text_msg.text or "")
 
-    # 4. کال‌بک قدیمی shop:0 نیز به ویترین مدرن و دیداری بوتیک متصل است
+    # 4. کال‌بک قدیمی shop:0 نیز به shop gateway متصل است
     photo_card = CardMessage(photo=True)
     call_shop0 = FakeCall("shop:0", photo_card)
     await shop.cb_shop(call_shop0)
-    assert "بوتیک" in (photo_card.caption or "")
-    assert _has_button(photo_card.reply_markup, "کارت من")
+    assert len(photo_card.sent) == 1
+    assert "بوتیک" in photo_card.sent[0]["text"] or "فروشگاه" in photo_card.sent[0]["text"]
 
 
