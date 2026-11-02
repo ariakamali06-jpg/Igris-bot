@@ -299,11 +299,11 @@ async def _build_boutique_catalog(
     lines.append("💡 <i>برای دیدن مشخصات، پرو روی کاراکتر یا خرید، روی دکمه هر آیتم بزنید.</i>")
 
     # Keyboard layout
-    custom_url = await avatar.get_customizer_url(user_id)
+    custom_url = await avatar.get_customizer_url(user_id, mode="shop")
     keyboard: list[list[InlineKeyboardButton]] = [
         [
             InlineKeyboardButton(
-                text="📱 ورود به مینی‌اپ کاتالوگ و پرو زنده",
+                text="📱 ورود به مینی‌اپ فروشگاه (Shop Mode)",
                 web_app=WebAppInfo(url=custom_url),
             )
         ]
@@ -338,7 +338,7 @@ async def _build_boutique_catalog(
 
     # Footer row
     keyboard.append([
-        InlineKeyboardButton(text="🏠 کارت من", callback_data="act:me"),
+        InlineKeyboardButton(text="🔙 منوی فروشگاه", callback_data="btq:hub"),
         InlineKeyboardButton(text="👕 کمد من", callback_data="wdr:view:0"),
         InlineKeyboardButton(text="🚪 بستن", callback_data="btq:close"),
     ])
@@ -814,14 +814,16 @@ async def handle_boutique_command(message: Message) -> None:
         player = await hydrate(user_id, user.full_name, user.username)
         custom_url = await avatar.get_customizer_url(user_id, mode="shop")
         text = (
-            "🛍 <b>بوتیک مد و فروشگاه لباس تیرامیکس</b>\n"
+            "🛍 <b>مرکز خرید و بوتیک مد تیرامیکس (Igris Fashion & Shop)</b>\n"
             "━━━━━━━━━━━━━━━━━━━━\n"
             f"👤 شهروند: {player.display_name}\n"
-            "برای خرید لباس و پرو استایل، روش مورد نظر خود را انتخاب کنید:\n\n"
-            "۱. 📱 <b>مینی‌اپ تصویری فروشگاه (پیشنهادی):</b>\n"
-            "مشاهده زنده لباس‌ها، خرید مستقیم با قیمت روی کارت، پرو همزمان روی مانکن.\n\n"
-            "۲. 💬 <b>کمد شخصی:</b>\n"
-            "مشاهده و مدیریت لباس‌های خریداری‌شده."
+            "برای ورود به بخش خرید و پرو لباس‌ها، روش مورد نظر خود را انتخاب کنید:\n\n"
+            "۱. 📱 <b>مینی‌اپ دیداری و گرافیکی (پیشنهادی):</b>\n"
+            "مشاهده زنده لباس‌ها روی مانکن، پرو همزمان و خرید مستقیم در مینی‌اپ لمسی.\n\n"
+            "۲. 💬 <b>ویترین متنی داخل تلگرام:</b>\n"
+            "مرور سریع کاتالوگ روزانه بر اساس دسته‌بندی (بالاتنه، پایین‌تنه، کفش و اکسسوری).\n\n"
+            "۳. 👗 <b>کمد شخصی:</b>\n"
+            "مشاهده، پوشیدن و مدیریت لباس‌های خریداری‌شده."
         )
         markup = InlineKeyboardMarkup(
             inline_keyboard=[
@@ -830,6 +832,11 @@ async def handle_boutique_command(message: Message) -> None:
                         text="📱 باز کردن فروشگاه مد (مینی‌اپ)",
                         web_app=WebAppInfo(url=custom_url),
                     )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="🛍 مشاهده ویترین متنی بوتیک", callback_data="btq:catalog:top:0"
+                    ),
                 ],
                 [
                     InlineKeyboardButton(
@@ -845,6 +852,24 @@ async def handle_boutique_command(message: Message) -> None:
             ]
         )
         await message.reply(text, reply_markup=markup)
+    except Exception as exc:  # noqa: BLE001
+        await answer_error(exc, message=message)
+
+
+@router.message(F.text.lower().in_({"ویترین", "کاتالوگ", "ویترین بوتیک", "کاتالوگ بوتیک"}))
+async def handle_boutique_showcase_command(message: Message) -> None:
+    """Directly open daily boutique photo & text showcase."""
+    if not message.from_user:
+        return
+    user_id = message.from_user.id
+    try:
+        render_url, caption, markup = await _build_boutique_catalog(
+            user_id=user_id,
+            category="top",
+            page=0,
+        )
+        photo_payload = await _render_photo_payload(render_url, "boutique.png")
+        await message.reply_photo(photo=photo_payload, caption=caption, reply_markup=markup)
     except Exception as exc:  # noqa: BLE001
         await answer_error(exc, message=message)
 
@@ -1180,19 +1205,21 @@ async def open_boutique_from_callback(call: CallbackQuery) -> None:
 
     user_id = call.from_user.id
     user = call.from_user
-    
+
     try:
         player = await hydrate(user_id, user.full_name, user.username)
         custom_url = await avatar.get_customizer_url(user_id, mode="shop")
         text = (
-            "🛍 <b>بوتیک مد و فروشگاه لباس تیرامیکس</b>\n"
+            "🛍 <b>مرکز خرید و بوتیک مد تیرامیکس (Igris Fashion & Shop)</b>\n"
             "━━━━━━━━━━━━━━━━━━━━\n"
             f"👤 شهروند: {player.display_name}\n"
-            "برای خرید لباس و پرو استایل، روش مورد نظر خود را انتخاب کنید:\n\n"
-            "۱. 📱 <b>مینی‌اپ تصویری فروشگاه (پیشنهادی):</b>\n"
-            "مشاهده زنده لباس‌ها، خرید مستقیم با قیمت روی کارت، پرو همزمان روی مانکن.\n\n"
-            "۲. 💬 <b>کمد شخصی:</b>\n"
-            "مشاهده و مدیریت لباس‌های خریداری‌شده."
+            "برای ورود به بخش خرید و پرو لباس‌ها، روش مورد نظر خود را انتخاب کنید:\n\n"
+            "۱. 📱 <b>مینی‌اپ دیداری و گرافیکی (پیشنهادی):</b>\n"
+            "مشاهده زنده لباس‌ها روی مانکن، پرو همزمان و خرید مستقیم در مینی‌اپ لمسی.\n\n"
+            "۲. 💬 <b>ویترین متنی داخل تلگرام:</b>\n"
+            "مرور سریع کاتالوگ روزانه بر اساس دسته‌بندی (بالاتنه، پایین‌تنه، کفش و اکسسوری).\n\n"
+            "۳. 👗 <b>کمد شخصی:</b>\n"
+            "مشاهده، پوشیدن و مدیریت لباس‌های خریداری‌شده."
         )
         markup = InlineKeyboardMarkup(
             inline_keyboard=[
@@ -1201,6 +1228,11 @@ async def open_boutique_from_callback(call: CallbackQuery) -> None:
                         text="📱 باز کردن فروشگاه مد (مینی‌اپ)",
                         web_app=WebAppInfo(url=custom_url),
                     )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="🛍 مشاهده ویترین متنی بوتیک", callback_data="btq:catalog:top:0"
+                    ),
                 ],
                 [
                     InlineKeyboardButton(
@@ -1215,19 +1247,24 @@ async def open_boutique_from_callback(call: CallbackQuery) -> None:
                 ],
             ]
         )
-        
-        # Try to edit existing message, otherwise send new one
+
+        if call.message.photo:
+            with contextlib.suppress(Exception):
+                await call.message.delete()
+            await call.message.answer(text, reply_markup=markup)
+            await call.answer()
+            return
+
         with contextlib.suppress(TelegramBadRequest):
             await call.message.edit_text(text, reply_markup=markup)
             await call.answer()
             return
-        
-        # If edit failed, delete old and send new
+
         with contextlib.suppress(Exception):
             await call.message.delete()
         await call.message.answer(text, reply_markup=markup)
         await call.answer()
-        
+
     except Exception as exc:  # noqa: BLE001
         logger.exception("Boutique callback error")
         await call.answer(f"❌ خطا: {exc}", show_alert=True)
@@ -1244,8 +1281,30 @@ async def handle_boutique_callback(call: CallbackQuery) -> None:
     parts = call.data.split(":")
     action = parts[1] if len(parts) > 1 else ""
 
-    if action in ("open", "main"):
+    if action in ("open", "main", "hub"):
         await open_boutique_from_callback(call)
+        return
+
+    if action in ("catalog", "showcase"):
+        cat_key = parts[2] if len(parts) > 2 else "top"
+        page = int(parts[3]) if len(parts) > 3 else 0
+        render_url, caption, markup = await _build_boutique_catalog(
+            user_id=user_id,
+            category=cat_key,
+            page=page,
+        )
+        if call.message.photo:
+            await _update_boutique_view(call, caption=caption, markup=markup, media_url=None)
+        else:
+            photo_payload = await _render_photo_payload(render_url, "boutique.png")
+            with contextlib.suppress(Exception):
+                await call.message.delete()
+            await call.message.answer_photo(
+                photo=photo_payload,
+                caption=caption,
+                reply_markup=markup,
+            )
+        await call.answer()
         return
 
     if action == "close":

@@ -13,7 +13,7 @@ from config import settings
 from database.connection import db
 from handlers.common import CommandOrText, answer_error, hydrate
 from models.enums import ActivityKind
-from services import avatar, bazaar, economy
+from services import avatar, bazaar, economy, game
 from services.game import GameError
 
 logger = logging.getLogger(__name__)
@@ -165,38 +165,59 @@ async def cb_bazaar(call: CallbackQuery) -> None:
             await call.answer(f"✅ {result.get('message', 'آگهی لغو شد')}", show_alert=True)
 
         elif action == "sell_menu":
-            # مرحله ۱: نمایش لیست آیتم‌های کمد برای انتخاب
-            owned_items = await avatar.list_owned_items(user.id)
+            # مرحله ۱: جمع‌آوری آیتم‌های قابل فروش (هم کوله‌پشتی و هم کمد لباس)
+            inv_rows = await game.list_inventory(user.id)
+            wdr_items = await avatar.list_owned_items(user.id)
 
-            if not owned_items:
-                await call.answer("❌ هیچ آیتمی در کمد شما نیست!", show_alert=True)
+            sellable: list[dict[str, str]] = []
+            # ۱. آیتم‌های غیرمجهز کوله‌پشتی
+            for row in inv_rows:
+                if not row["equipped"]:
+                    sellable.append({
+                        "id": f"rpg:{row['id']}",
+                        "name": f"🎒 {row['name']}",
+                        "cat": "تجهیزات",
+                    })
+
+            # ۲. آیتم‌های غیرمجهز کمد لباس
+            for it in wdr_items:
+                if not it.get("is_equipped"):
+                    sellable.append({
+                        "id": f"wdr:{it['var_id']}",
+                        "name": f"👗 {it['name']}",
+                        "cat": it.get("category", "پوشاک"),
+                    })
+
+            if not sellable:
+                await call.answer(
+                    "❌ هیچ آیتم آزادی در کیفت یا کمدت نداری! (آیتم‌های بر تن قابل فروش نیستند)",
+                    show_alert=True,
+                )
                 return
 
             text = (
                 "➕ <b>ثبت آگهی فروش در بازارچه</b>\n"
                 "━━━━━━━━━━━━━━━━━━━━\n"
-                f"📦 شما {len(owned_items)} آیتم در کمد دارید.\n\n"
-                "یک آیتم برای فروش انتخاب کنید:"
+                f"📦 شما {len(sellable)} آیتم آزاد و قابل فروش دارید.\n\n"
+                "کالای مورد نظر برای فروش را انتخاب کنید:"
             )
 
-            # ساخت دکمه‌های انتخاب آیتم (حداکثر ۱۰ آیتم اول)
             rows: list[list[InlineKeyboardButton]] = []
-            for item in owned_items[:10]:
-                var_id = item["var_id"]
+            for item in sellable[:10]:
+                code = item["id"]
                 name = item["name"][:25]
-                cat = item["category"]
                 rows.append([
                     InlineKeyboardButton(
-                        text=f"🏷 {name} ({cat})",
-                        callback_data=f"bzr:sel_item:{var_id}"
+                        text=f"{name}",
+                        callback_data=f"bzr:sel:{code}",
                     )
                 ])
 
-            if len(owned_items) > 10:
+            if len(sellable) > 10:
                 rows.append([
                     InlineKeyboardButton(
-                        text=f"⚠️ فقط ۱۰ آیتم اول نمایش داده شد ({len(owned_items)} کل)",
-                        callback_data="bzr:noop"
+                        text=f"⚠️ ۱۰ مورد اول نمایش داده شد ({len(sellable)} کل)",
+                        callback_data="bzr:noop",
                     )
                 ])
 
@@ -208,28 +229,20 @@ async def cb_bazaar(call: CallbackQuery) -> None:
             await call.message.edit_text(text, reply_markup=markup)
             await call.answer()
 
-        elif action == "sel_item":
-            # مرحله ۲: آیتم انتخاب شد، حالا قیمت بپرس
+        elif action in ("sel", "sel_item"):
+            # مرحله ۲: کالا انتخاب شد، حالا قیمت بپرس
             if len(parts) < 3:
-                await call.answer("❌ خطا در انتخاب آیتم", show_alert=True)
+                await call.answer("❌ خطا در انتخاب کالا", show_alert=True)
                 return
 
-            var_id = int(parts[2])
-
-            # پیدا کردن نام آیتم
-            owned_items = await avatar.list_owned_items(user.id)
-            selected_item = next((it for it in owned_items if it["var_id"] == var_id), None)
-
-            if not selected_item:
-                await call.answer("❌ این آیتم در کمد شما نیست!", show_alert=True)
-                return
-
-            item_name = selected_item["name"]
+            item_code = ":".join(parts[2:])
+            clean_query = item_code.replace("rpg:", "")
+            item_name = bazaar._item_name(clean_query)
 
             text = (
                 "💰 <b>تعیین قیمت فروش</b>\n"
                 "━━━━━━━━━━━━━━━━━━━━\n"
-                f"📦 آیتم: <b>{item_name}</b>\n\n"
+                f"📦 کالای انتخابی: <b>{item_name}</b>\n\n"
                 "قیمت مورد نظر خود را انتخاب کنید:\n"
                 f"💵 حداقل: {settings.bazaar_price_min:,} رکسار\n"
                 f"💵 حداکثر: {settings.bazaar_price_max:,} رکسار\n\n"
@@ -237,7 +250,7 @@ async def cb_bazaar(call: CallbackQuery) -> None:
             )
 
             # پیشنهاد قیمت‌های از پیش تعیین شده
-            suggested_prices = [1000, 2500, 5000, 10000, 25000, 50000]
+            suggested_prices = [500, 1000, 2500, 5000, 10000, 25000]
             rows: list[list[InlineKeyboardButton]] = []
 
             for i in range(0, len(suggested_prices), 2):
@@ -249,7 +262,7 @@ async def cb_bazaar(call: CallbackQuery) -> None:
                             row.append(
                                 InlineKeyboardButton(
                                     text=f"💰 {price:,} رکسار",
-                                    callback_data=f"bzr:set_price:{var_id}:{price}"
+                                    callback_data=f"bzr:set_price:{price}:{item_code}",
                                 )
                             )
                 if row:
@@ -258,7 +271,7 @@ async def cb_bazaar(call: CallbackQuery) -> None:
             rows.append([
                 InlineKeyboardButton(
                     text="✏️ قیمت دلخواه (متنی)",
-                    callback_data=f"bzr:custom_price:{var_id}"
+                    callback_data=f"bzr:custom_price:{item_code}",
                 )
             ])
             rows.append([
@@ -269,48 +282,49 @@ async def cb_bazaar(call: CallbackQuery) -> None:
             await call.message.edit_text(text, reply_markup=markup)
             await call.answer()
 
-        elif action == "custom_price":
+        elif action in ("custom_price", "cprc"):
             # راهنمای ورود قیمت دستی
             if len(parts) < 3:
                 await call.answer("❌ خطا", show_alert=True)
                 return
 
-            var_id = int(parts[2])
+            item_code = ":".join(parts[2:])
+            clean_query = item_code.replace("rpg:", "")
+            item_name = bazaar._item_name(clean_query)
 
             text = (
                 "✏️ <b>ورود قیمت دلخواه</b>\n"
                 "━━━━━━━━━━━━━━━━━━━━\n"
-                "برای تعیین قیمت دلخواه، از دستور زیر استفاده کنید:\n\n"
-                f"<code>بازارچه فروش {var_id} [قیمت]</code>\n\n"
-                f"💵 مثال: <code>بازارچه فروش {var_id} 15000</code>\n\n"
+                f"📦 کالا: <b>{item_name}</b>\n\n"
+                "برای تعیین قیمت دلخواه، از دستور زیر در چت استفاده کنید:\n\n"
+                f"<code>بازارچه فروش {clean_query} [قیمت]</code>\n\n"
+                f"💵 مثال: <code>بازارچه فروش {clean_query} 15000</code>\n\n"
                 f"⚠️ کارمزد ثبت: {settings.bazaar_listing_fee:,} رکسار"
             )
 
             markup = InlineKeyboardMarkup(
                 inline_keyboard=[
-                    [InlineKeyboardButton(text="🔙 بازگشت", callback_data=f"bzr:sel_item:{var_id}")]
+                    [InlineKeyboardButton(text="🔙 بازگشت", callback_data=f"bzr:sel:{item_code}")]
                 ]
             )
             await call.message.edit_text(text, reply_markup=markup)
             await call.answer()
 
         elif action == "set_price":
-            # مرحله ۳: قیمت انتخاب شد، ثبت آگهی با کسر کارمزد
+            # مرحله ۳: ثبت آگهی با کسر کارمزد
             if len(parts) < 4:
                 await call.answer("❌ خطا در تعیین قیمت", show_alert=True)
                 return
 
-            var_id = int(parts[2])
-            price = int(parts[3])
+            price = int(parts[2])
+            item_code = ":".join(parts[3:])
+            clean_query = item_code.replace("rpg:", "")
 
             # بررسی موجودی برای کارمزد
-            await hydrate(user.id, user.full_name, user.username)
-
-            # دریافت موجودی نقد
             async with db.read() as conn:
                 cursor = await conn.execute(
                     "SELECT credits FROM wallets WHERE user_id = ?",
-                    (user.id,)
+                    (user.id,),
                 )
                 row = await cursor.fetchone()
                 await cursor.close()
@@ -321,32 +335,21 @@ async def cb_bazaar(call: CallbackQuery) -> None:
             if current_credits < listing_fee:
                 await call.answer(
                     f"❌ موجودی شما برای پرداخت کارمزد ({listing_fee:,} رکسار) کافی نیست!",
-                    show_alert=True
+                    show_alert=True,
                 )
-                return
-
-            # پیدا کردن آیتم برای ثبت
-            from database.items import ITEMS
-            item = next(
-                (it for it in ITEMS if it.id == str(var_id) or str(var_id) in str(it.id)),
-                None
-            )
-
-            if not item:
-                await call.answer("❌ آیتم نامعتبر است!", show_alert=True)
                 return
 
             try:
                 economy.require_ready(user.id, "bazaar_sell", settings.cooldown_bazaar)
 
                 # ثبت آگهی
-                result = await bazaar.list_item(user.id, item.id, price)
+                result = await bazaar.list_item(user.id, clean_query, price)
 
                 # کسر کارمزد
                 async with db.write() as conn:
                     await conn.execute(
                         "UPDATE wallets SET credits = credits - ? WHERE user_id = ?",
-                        (listing_fee, user.id)
+                        (listing_fee, user.id),
                     )
                     await conn.execute(
                         """INSERT INTO activity_log
@@ -357,16 +360,16 @@ async def cb_bazaar(call: CallbackQuery) -> None:
                             ActivityKind.BAZAAR_FEE.value,
                             f"کارمزد ثبت آگهی #{result.get('listing_id', 0)}",
                             -listing_fee,
-                            int(time.time())
-                        )
+                            int(time.time()),
+                        ),
                     )
 
-                # بازگشت به لیست اصلی
+                # بازگشت به لیست اصلی بازارچه
                 text, markup = await _render_bazaar_view(user.id)
                 await call.message.edit_text(text, reply_markup=markup)
                 await call.answer(
-                    f"✅ آگهی ثبت شد! کارمزد {listing_fee:,} رکسار کسر شد.",
-                    show_alert=True
+                    f"✅ آگهی ثبت شد! ({listing_fee:,} رکسار کارمزد کسر شد)",
+                    show_alert=True,
                 )
             except GameError as ge:
                 await call.answer(f"❌ {ge}", show_alert=True)

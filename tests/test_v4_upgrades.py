@@ -9,11 +9,11 @@
 from __future__ import annotations
 
 import json
+
 import pytest
 
 from database.connection import db
 from database.seed import seed_catalog
-from models.player import Player
 from services import avatar, food, tiramix
 
 
@@ -149,3 +149,81 @@ async def test_customizer_url_shop_mode():
     assert payload["cr"] == 15000
     assert payload["mode"] == "shop"
     assert payload["gen"] == "male"
+    assert "shop_items" in payload
+    assert len(payload["shop_items"]) == 80
+
+
+@pytest.mark.asyncio
+async def test_bazaar_wardrobe_item_listing_and_buy():
+    """Verify that wardrobe clothing items can be listed, escrowed, and bought in bazaar."""
+    from services import bazaar, economy
+
+    seller_id = 998811
+    buyer_id = 998822
+
+    from services import game
+    await game.ensure_player(seller_id, "seller", "فروشنده")
+    await game.ensure_player(buyer_id, "buyer", "خریدار")
+
+    # Give seller a wardrobe item (var_id 28144)
+    await avatar.grant_single_item(seller_id, 28144, price_paid=1000)
+    assert await avatar.owns_item(seller_id, 28144) is True
+
+    # Fund seller and buyer
+    async with db.write() as conn:
+        await conn.execute(
+            "INSERT OR REPLACE INTO wallets (user_id, credits) VALUES (?, ?)",
+            (seller_id, 5000),
+        )
+        await conn.execute(
+            "INSERT OR REPLACE INTO wallets (user_id, credits) VALUES (?, ?)",
+            (buyer_id, 20000),
+        )
+
+    # 1. Seller lists the wardrobe item for 8,000 reksar
+    res = await bazaar.list_item(seller_id, "wdr:28144", 8000)
+    assert res["success"] is True
+    listing_id = res["listing_id"]
+
+    # Item must be removed from seller's wardrobe while escrowed
+    assert await avatar.owns_item(seller_id, 28144) is False
+
+    # 2. Buyer purchases the listing
+    buy_res = await bazaar.buy_listing(buyer_id, listing_id)
+    assert buy_res["success"] is True
+
+    # Item must now be in buyer's wardrobe!
+    assert await avatar.owns_item(buyer_id, 28144) is True
+    # And still NOT in seller's wardrobe
+    assert await avatar.owns_item(seller_id, 28144) is False
+
+    # Check wallet balances: seller +8000, buyer -8000
+    s_bal, _ = await economy.balances(seller_id)
+    b_bal, _ = await economy.balances(buyer_id)
+    assert s_bal == 13000
+    assert b_bal == 12000
+
+
+@pytest.mark.asyncio
+async def test_bazaar_wardrobe_item_listing_cancel():
+    """Verify that cancelling a wardrobe listing returns the item to seller."""
+    from services import bazaar
+
+    seller_id = 887711
+    from services import game
+    await game.ensure_player(seller_id, "seller2", "فروشنده۲")
+
+    await avatar.grant_single_item(seller_id, 33817, price_paid=1500)
+    assert await avatar.owns_item(seller_id, 33817) is True
+
+    # List item
+    res = await bazaar.list_item(seller_id, "wdr:33817", 5000)
+    listing_id = res["listing_id"]
+    assert await avatar.owns_item(seller_id, 33817) is False
+
+    # Cancel listing
+    cancel_res = await bazaar.cancel(seller_id, listing_id)
+    assert cancel_res["success"] is True
+
+    # Item must be back in seller's wardrobe!
+    assert await avatar.owns_item(seller_id, 33817) is True

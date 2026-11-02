@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import contextlib
 import hashlib
 import io
 import json
@@ -1213,6 +1214,97 @@ async def list_owned_items(user_id: int) -> list[dict[str, Any]]:
     return items
 
 
+async def grant_single_item(
+    user_id: int, var_id: int, price_paid: int = 0, conn: Any | None = None
+) -> bool:
+    """Grant an individual clothing item to player_wardrobe (e.g. from bazaar purchase)."""
+    from services import catalog
+
+    it_info = catalog.get_catalog_item_by_var_id(var_id)
+    item_title = f"✨ {it_info['name']}" if it_info else f"✨ لباس #{var_id}"
+    item_gender = it_info.get("gender", "unisex") if it_info else "unisex"
+    virtual_set_id = 1000000 + var_id
+    now_ts = int(time.time())
+
+    query = """
+        INSERT INTO player_wardrobe
+            (user_id, set_id, set_name, gender, item_count,
+             var_ids, is_plus_size, price_paid, acquired_at)
+        VALUES (?, ?, ?, ?, 1, ?, 0, ?, ?)
+        ON CONFLICT(user_id, set_id) DO UPDATE SET
+            var_ids = excluded.var_ids,
+            acquired_at = excluded.acquired_at
+    """
+    params = (
+        user_id,
+        virtual_set_id,
+        item_title,
+        item_gender,
+        json.dumps([var_id]),
+        price_paid,
+        now_ts,
+    )
+
+    if conn is not None:
+        await conn.execute(query, params)
+    else:
+        async with db.write() as c:
+            await c.execute(query, params)
+
+    invalidate_avatar_cache(user_id)
+    return True
+
+
+async def remove_item_from_wardrobe(
+    user_id: int, var_id: int, conn: Any | None = None
+) -> bool:
+    """Remove a single clothing item from player_wardrobe (used when escrowed in bazaar)."""
+    av = await get_player_avatar(user_id)
+    if var_id in av.get("equipped_var_ids", []):
+        with contextlib.suppress(Exception):
+            await unequip_single_item(user_id, var_id)
+
+    virtual_set_id = 1000000 + var_id
+
+    async def _do_remove(c: Any) -> bool:
+        cur = await c.execute(
+            "DELETE FROM player_wardrobe WHERE user_id = ? AND set_id = ?",
+            (user_id, virtual_set_id),
+        )
+        if cur.rowcount > 0:
+            invalidate_avatar_cache(user_id)
+            return True
+
+        cur = await c.execute(
+            "SELECT id, set_id, var_ids FROM player_wardrobe WHERE user_id = ?",
+            (user_id,),
+        )
+        rows = await cur.fetchall()
+        for r in rows:
+            vids = json.loads(r["var_ids"] or "[]")
+            if var_id in vids:
+                new_vids = [v for v in vids if v != var_id]
+                if new_vids:
+                    await c.execute(
+                        "UPDATE player_wardrobe SET var_ids = ? WHERE id = ?",
+                        (json.dumps(new_vids), r["id"]),
+                    )
+                else:
+                    await c.execute(
+                        "DELETE FROM player_wardrobe WHERE id = ?",
+                        (r["id"],),
+                    )
+                invalidate_avatar_cache(user_id)
+                return True
+        return False
+
+    if conn is not None:
+        return await _do_remove(conn)
+
+    async with db.write() as c:
+        return await _do_remove(c)
+
+
 
 _USER_WARDROBE_MSG: dict[int, tuple[int, int]] = {}
 
@@ -1421,15 +1513,21 @@ async def get_customizer_url(
     else:
         resolved_mode = mode
 
-    # If shop mode, get daily boutique items
+    # If shop mode, get daily boutique items from catalog (synced with text boutique)
     shop_var_ids: list[int] = []
     if resolved_mode == "shop":
         try:
-            daily_sets = get_daily_boutique(gender=gen_str, limit=8)
-            for dset in daily_sets:
-                shop_var_ids.extend(dset.get("var_ids", []))
-        except Exception:
-            pass
+            from services import catalog
+            for cat_key in ("top", "bottom", "shoes", "acc"):
+                cat_data = catalog.get_daily_boutique_items(
+                    category_key=cat_key, page=0, page_size=20
+                )
+                for it in cat_data.get("items", []):
+                    vid = it.get("var_id")
+                    if vid:
+                        shop_var_ids.append(int(vid))
+        except Exception as exc:
+            logger.warning("Failed to collect daily shop items: %s", exc)
 
     payload = {
         "u": user_id,

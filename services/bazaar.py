@@ -8,6 +8,8 @@ twice or vanish mid-deal.
 
 from __future__ import annotations
 
+import contextlib
+import json
 import logging
 import time
 from typing import Any
@@ -43,6 +45,14 @@ def find_item(query: str) -> ItemDef | None:
 
 
 def _item_name(item_id: str) -> str:
+    if item_id.startswith("wdr:"):
+        try:
+            var_id = int(item_id.split(":")[1])
+            from services import catalog
+            it = catalog.get_catalog_item_by_var_id(var_id)
+            return f"👗 {it['name']}" if it else f"👗 لباس #{var_id}"
+        except Exception:
+            return f"👗 لباس {item_id}"
     item = ITEMS_BY_ID.get(item_id)
     return item.name if item else item_id
 
@@ -88,13 +98,110 @@ async def browse(limit: int = 20) -> dict[str, Any]:
 
 
 async def list_item(user_id: int, query: str, price: int) -> dict[str, Any]:
-    """Escrow one owned item into an active listing."""
+    """Escrow one owned item (RPG item or wardrobe clothing) into an active listing."""
     if not settings.bazaar_price_min <= price <= settings.bazaar_price_max:
         raise GameError(
             f"قیمت باید بین {settings.bazaar_price_min:,} و "
             f"{settings.bazaar_price_max:,} رکسار باشه."
         )
-    item = find_item(query)
+
+    clean_query = query.strip()
+    is_wdr = clean_query.startswith("wdr:") or (clean_query.isdigit() and len(clean_query) > 3)
+
+    if is_wdr:
+        var_id_str = clean_query.replace("wdr:", "")
+        try:
+            var_id = int(var_id_str)
+        except ValueError:
+            raise GameError("شناسه لباس نامعتبر است.") from None
+
+        from services import avatar
+        if not await avatar.owns_item(user_id, var_id):
+            raise GameError("این لباس در کمد شما نیست.")
+
+        # Unequip before taking write lock if equipped
+        av = await avatar.get_player_avatar(user_id)
+        if var_id in av.get("equipped_var_ids", []):
+            with contextlib.suppress(Exception):
+                await avatar.unequip_single_item(user_id, var_id)
+
+        item_id = f"wdr:{var_id}"
+        item_name = _item_name(item_id)
+
+        async with db.write() as conn:
+            cursor = await conn.execute(
+                "SELECT COUNT(*) AS n FROM bazaar_listings "
+                "WHERE seller_id = ? AND status = 'active'",
+                (user_id,),
+            )
+            count_row = await cursor.fetchone()
+            await cursor.close()
+            if count_row and int(count_row["n"]) >= settings.bazaar_max_active:
+                raise GameError(
+                    f"همزمان حداکثر {settings.bazaar_max_active} آگهی می‌تونی داشته باشی."
+                )
+
+            # Remove from wardrobe using conn directly
+            virtual_set_id = 1000000 + var_id
+            cur = await conn.execute(
+                "DELETE FROM player_wardrobe WHERE user_id = ? AND set_id = ?",
+                (user_id, virtual_set_id),
+            )
+            if cur.rowcount == 0:
+                cur = await conn.execute(
+                    "SELECT id, var_ids FROM player_wardrobe WHERE user_id = ?",
+                    (user_id,),
+                )
+                rows = await cur.fetchall()
+                for r in rows:
+                    vids = json.loads(r["var_ids"] or "[]")
+                    if var_id in vids:
+                        new_vids = [v for v in vids if v != var_id]
+                        if new_vids:
+                            await conn.execute(
+                                "UPDATE player_wardrobe SET var_ids = ? WHERE id = ?",
+                                (json.dumps(new_vids), r["id"]),
+                            )
+                        else:
+                            await conn.execute(
+                                "DELETE FROM player_wardrobe WHERE id = ?",
+                                (r["id"],),
+                            )
+                        break
+
+            # Ensure items row exists to satisfy foreign key constraint on bazaar_listings(item_id)
+            await conn.execute(
+                """
+                INSERT OR IGNORE INTO items
+                (id, name, slot, rarity, atk, defense, drip,
+                 price_credits, price_soul_shards, layer_key, description, shop_pool)
+                VALUES (?, ?, 'accessory', 'common', 0, 0, 0, 0, 0, ?, 'Wardrobe item', 'rotating')
+                """,
+                (item_id, item_name, f"wdr_{var_id}"),
+            )
+
+            cursor = await conn.execute(
+                "INSERT INTO bazaar_listings (seller_id, item_id, price, created_at) "
+                "VALUES (?, ?, ?, ?)",
+                (user_id, item_id, price, int(time.time())),
+            )
+            listing_id = int(cursor.lastrowid or 0)
+            await cursor.close()
+
+        avatar.invalidate_avatar_cache(user_id)
+        return {
+            "success": True,
+            "listing_id": listing_id,
+            "item_id": item_id,
+            "price": price,
+            "message": (
+                f"📋 آگهی #{listing_id} ثبت شد — <b>{_item_name(item_id)}</b> "
+                f"به قیمت <b>{price:,}</b> رکسار (تا زمان فروش در بازارچه امانت است)."
+            ),
+        }
+
+    # 2. Regular RPG inventory item
+    item = find_item(clean_query)
     if item is None:
         raise GameError("چنین کالایی توی کاتالوگ نیست.")
 
@@ -135,7 +242,7 @@ async def list_item(user_id: int, query: str, price: int) -> dict[str, Any]:
         "price": price,
         "message": (
             f"📋 آگهی #{listing_id} ثبت شد — <b>{item.name}</b> "
-            f"به قیمت <b>{price:,}</b> سکه (تا فروش رفتن از کیفته)."
+            f"به قیمت <b>{price:,}</b> رکسار (تا زمان فروش در بازارچه امانت است)."
         ),
     }
 
@@ -159,15 +266,60 @@ async def buy_listing(buyer_id: int, listing_id: int) -> dict[str, Any]:
         item_id = str(row["item_id"])
         seller_id = int(row["seller_id"])
 
+        # Check buyer funds
+        cursor = await conn.execute(
+            "SELECT credits FROM wallets WHERE user_id = ?", (buyer_id,)
+        )
+        wrow = await cursor.fetchone()
+        await cursor.close()
+        buyer_cr = int(wrow["credits"]) if wrow else 0
+        if buyer_cr < price:
+            raise GameError(
+                f"موجودی شما کافی نیست! (قیمت: {price:,} رکسار - موجودی شما: {buyer_cr:,} رکسار)"
+            )
+
         await conn.execute(
             "UPDATE bazaar_listings SET status = 'sold', buyer_id = ?, "
             "resolved_at = ? WHERE id = ?",
             (buyer_id, int(time.time()), listing_id),
         )
-        await conn.execute(
-            "INSERT INTO inventory (user_id, item_id, acquired_at) VALUES (?, ?, ?)",
-            (buyer_id, item_id, int(time.time())),
-        )
+
+        # Grant item to buyer directly on connection
+        if item_id.startswith("wdr:"):
+            var_id = int(item_id.split(":")[1])
+            from services import avatar, catalog
+            it_info = catalog.get_catalog_item_by_var_id(var_id)
+            item_title = f"✨ {it_info['name']}" if it_info else f"✨ لباس #{var_id}"
+            item_gender = it_info.get("gender", "unisex") if it_info else "unisex"
+            virtual_set_id = 1000000 + var_id
+            now_ts = int(time.time())
+
+            await conn.execute(
+                """
+                INSERT INTO player_wardrobe
+                    (user_id, set_id, set_name, gender, item_count,
+                     var_ids, is_plus_size, price_paid, acquired_at)
+                VALUES (?, ?, ?, ?, 1, ?, 0, ?, ?)
+                ON CONFLICT(user_id, set_id) DO UPDATE SET
+                    var_ids = excluded.var_ids,
+                    acquired_at = excluded.acquired_at
+                """,
+                (
+                    buyer_id,
+                    virtual_set_id,
+                    item_title,
+                    item_gender,
+                    json.dumps([var_id]),
+                    price,
+                    now_ts,
+                ),
+            )
+        else:
+            await conn.execute(
+                "INSERT INTO inventory (user_id, item_id, acquired_at) VALUES (?, ?, ?)",
+                (buyer_id, item_id, int(time.time())),
+            )
+
         await economy.mutate(
             conn,
             buyer_id,
@@ -183,14 +335,18 @@ async def buy_listing(buyer_id: int, listing_id: int) -> dict[str, Any]:
             ref=f"bazaar:sale:{listing_id}",
         )
 
+    if item_id.startswith("wdr:"):
+        from services import avatar
+        avatar.invalidate_avatar_cache(buyer_id)
+
     return {
         "success": True,
         "listing_id": listing_id,
         "item_id": item_id,
         "price": price,
         "message": (
-            f"🤝 معامله #{listing_id} شد — <b>{_item_name(item_id)}</b> "
-            f"رفت خریدار، <b>{price:,}</b> رکسار رفت فروشنده."
+            f"🤝 معامله #{listing_id} انجام شد — <b>{_item_name(item_id)}</b> "
+            f"به خریدار تحویل داده شد و <b>{price:,}</b> رکسار به فروشنده واریز شد."
         ),
     }
 
@@ -206,7 +362,7 @@ async def cancel(user_id: int, listing_id: int) -> dict[str, Any]:
         if row is None:
             raise GameError("چنین آگهی‌ای پیدا نشد.")
         if int(row["seller_id"]) != user_id:
-            raise GameError("این آگهی مال تو نیست.")
+            raise GameError("این آگهی مال شما نیست.")
         if row["status"] != "active":
             raise GameError("این آگهی قبلاً بسته شده.")
 
@@ -216,16 +372,43 @@ async def cancel(user_id: int, listing_id: int) -> dict[str, Any]:
             "WHERE id = ?",
             (int(time.time()), listing_id),
         )
-        await conn.execute(
-            "INSERT INTO inventory (user_id, item_id, acquired_at) VALUES (?, ?, ?)",
-            (user_id, item_id, int(time.time())),
-        )
+
+        if item_id.startswith("wdr:"):
+            var_id = int(item_id.split(":")[1])
+            from services import catalog
+            it_info = catalog.get_catalog_item_by_var_id(var_id)
+            item_title = f"✨ {it_info['name']}" if it_info else f"✨ لباس #{var_id}"
+            item_gender = it_info.get("gender", "unisex") if it_info else "unisex"
+            virtual_set_id = 1000000 + var_id
+            now_ts = int(time.time())
+
+            await conn.execute(
+                """
+                INSERT INTO player_wardrobe
+                    (user_id, set_id, set_name, gender, item_count,
+                     var_ids, is_plus_size, price_paid, acquired_at)
+                VALUES (?, ?, ?, ?, 1, ?, 0, 0, ?)
+                ON CONFLICT(user_id, set_id) DO UPDATE SET
+                    var_ids = excluded.var_ids,
+                    acquired_at = excluded.acquired_at
+                """,
+                (user_id, virtual_set_id, item_title, item_gender, json.dumps([var_id]), now_ts),
+            )
+        else:
+            await conn.execute(
+                "INSERT INTO inventory (user_id, item_id, acquired_at) VALUES (?, ?, ?)",
+                (user_id, item_id, int(time.time())),
+            )
+
+    if item_id.startswith("wdr:"):
+        from services import avatar
+        avatar.invalidate_avatar_cache(user_id)
 
     return {
         "success": True,
         "listing_id": listing_id,
         "message": (
             f"↩️ آگهی #{listing_id} لغو شد — "
-            f"<b>{_item_name(item_id)}</b> برگشت توی کیفت."
+            f"<b>{_item_name(item_id)}</b> به حساب شما بازگردانده شد."
         ),
     }

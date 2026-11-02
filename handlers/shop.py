@@ -165,16 +165,21 @@ async def cmd_shop(message: Message) -> None:
             inline_keyboard=[
                 [
                     InlineKeyboardButton(
-                        text="📱 باز کردن مینی‌اپ تصویری فروشگاه",
+                        text="📱 باز کردن فروشگاه مد (مینی‌اپ)",
                         web_app=WebAppInfo(url=custom_url),
                     )
                 ],
                 [
                     InlineKeyboardButton(
-                        text="👗 مشاهده ویترین متنی تلگرام", callback_data="btq:open"
+                        text="🛍 مشاهده ویترین متنی بوتیک", callback_data="btq:catalog:top:0"
+                    ),
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="👗 کمد لباس‌های من", callback_data="wdr:view:0"
                     ),
                     InlineKeyboardButton(
-                        text="🎒 کمد لباس‌های من", callback_data="wdr:view:0"
+                        text="💇‍♀️ آرایشگاه", callback_data="sal:menu"
                     ),
                 ],
                 [
