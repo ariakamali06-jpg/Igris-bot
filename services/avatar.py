@@ -1421,6 +1421,16 @@ async def get_customizer_url(
     else:
         resolved_mode = mode
 
+    # If shop mode, get daily boutique items
+    shop_var_ids: list[int] = []
+    if resolved_mode == "shop":
+        try:
+            daily_sets = get_daily_boutique(gender=gen_str, limit=8)
+            for dset in daily_sets:
+                shop_var_ids.extend(dset.get("var_ids", []))
+        except Exception:
+            pass
+
     payload = {
         "u": user_id,
         "name": display_name or "مسافر",
@@ -1435,6 +1445,10 @@ async def get_customizer_url(
         "owned": owned_ids,
         "owned_sets": owned_sets,
     }
+
+    # Add shop_items only in shop mode
+    if resolved_mode == "shop" and shop_var_ids:
+        payload["shop_items"] = shop_var_ids
 
     raw_json = json.dumps(payload, separators=(",", ":"))
     b64_data = base64.urlsafe_b64encode(raw_json.encode("utf-8")).decode("utf-8").rstrip("=")

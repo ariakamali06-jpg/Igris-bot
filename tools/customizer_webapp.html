@@ -4793,6 +4793,7 @@
     let pendingHairSet = null;
     let appMode = 'starter'; // 'starter' | 'wardrobe' | 'shop'
     let currentUserCoins = 250;
+    let shopItemsList = []; // آیتم‌های ست‌های روزانه بوتیک برای حالت شاپ
     let currentGender = 'female'; // 'female' | 'male'
     let ownedItemIds = [];
     let ownedSetsList = [];
@@ -5225,7 +5226,10 @@
         return pool;
       }
       if (appMode === 'shop') {
+        // در حالت شاپ، فقط آیتم‌های ست‌های روزانه بوتیک را نمایش بده (اگر موجود باشد)
+        const shopSet = shopItemsList.length > 0 ? new Set(shopItemsList) : null;
         return RAW_ITEMS.filter(it => {
+          if (shopSet && !shopSet.has(it.v)) return false;
           const isHair = it.c === 'hair' || it.s === 'hair_base' || it.s === 'hair_front' || it.s === 'hair_back' || it.s === 'hair_extensions';
           const isFace = it.c === 'makeup' || it.c === 'face_eyes' || it.c === 'face_lips' || it.c === 'face_nose' || it.s === 'eyes' || it.s === 'lips' || it.s === 'eyeshadow_lashes' || it.s === 'freckles_moles' || it.s === 'body_parts';
           const isHeadAccessory = it.s === 'headbands_clips' || it.s === 'hats' || it.s === 'earrings' || it.s === 'glasses';
@@ -5737,6 +5741,10 @@
             appMode = loadoutData.mode;
             try { localStorage.setItem('igris_app_mode', appMode); } catch (e) {}
           }
+          if (Array.isArray(loadoutData.shop_items)) {
+            shopItemsList = loadoutData.shop_items.map(Number).filter(Boolean);
+            try { localStorage.setItem('igris_shop_items', JSON.stringify(shopItemsList)); } catch (e) {}
+          }
           if (Array.isArray(loadoutData.owned)) {
             ownedItemIds = loadoutData.owned.map(Number).filter(Boolean);
             try { localStorage.setItem('igris_owned_ids', JSON.stringify(ownedItemIds)); } catch (e) {}
@@ -5824,6 +5832,11 @@
             if (savedOwned) {
               const parsed = JSON.parse(savedOwned);
               if (Array.isArray(parsed)) ownedItemIds = parsed;
+            }
+            const savedShopItems = localStorage.getItem('igris_shop_items');
+            if (savedShopItems) {
+              const parsed = JSON.parse(savedShopItems);
+              if (Array.isArray(parsed)) shopItemsList = parsed;
             }
             const savedSets = localStorage.getItem('igris_owned_sets');
             if (savedSets) {
