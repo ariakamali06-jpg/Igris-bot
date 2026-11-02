@@ -1,19 +1,16 @@
 """Tests for Tiramix Social interactions: Marriage, Divorce with Judge, Theft, Intimacy, Clans."""
 
-import pytest
 import time
+
+import pytest
 from aiogram.types import Chat, Message, User
-from aiogram.fsm.context import FSMContext
-from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.fsm.storage.base import StorageKey
 from pydantic import ConfigDict, PrivateAttr
 
 from database.connection import db
 from database.seed import seed_catalog
 from handlers import social
 from models.enums import ActivityKind
-from models.player import Player
-from services import economy, game, tiramix
+from services import economy, game
 
 
 class MutableMessage(Message):
@@ -152,7 +149,7 @@ async def test_marriage_and_intimacy(_db) -> None:
     judge_user = User(id=7777, is_bot=False, first_name="JudgeAli", username="judgeali")
     judge_call = FakeCall(data=f"judge:divorce:{u1.id}:{u2.id}", message=divorce_msg, user=judge_user)
     await social.cb_judge_verdict(judge_call)
-    
+
     p1_divorced = await game.load_player(7003)
     p2_divorced = await game.load_player(7004)
     assert p1_divorced.spouse_id is None

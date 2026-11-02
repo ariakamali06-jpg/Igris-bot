@@ -150,7 +150,7 @@ async def cmd_shop(message: Message) -> None:
         from services import avatar
 
         player = await hydrate(user.id, user.full_name, user.username)
-        custom_url = await avatar.get_customizer_url(user.id)
+        custom_url = await avatar.get_customizer_url(user.id, mode="shop")
         text = (
             "🛍 <b>مرکز خرید و بوتیک مد تیرامیکس (Igris Fashion & Shop)</b>\n"
             "━━━━━━━━━━━━━━━━━━━━\n"

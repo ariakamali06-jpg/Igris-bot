@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import contextlib
 import logging
+from typing import Any
 
 from aiogram import F, Router
 from aiogram.filters import CommandObject
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
-from config import FOOD_CATALOG
 from handlers.common import (
     CommandOrText,
     answer_error,
@@ -37,41 +37,44 @@ FOOD_WORDS = {
 }
 
 
-def _food_markup() -> InlineKeyboardMarkup:
-    """چیدمان دکمه‌های شیشه‌ای رستوران تیرامیکس برای خرید و مصرف فوری غذا."""
-    buttons: list[list[InlineKeyboardButton]] = [
-        [
-            InlineKeyboardButton(text="☕️ اسپرسو (+25⚡️) | 250", callback_data="food:buy:espresso"),
+def _food_markup(items: list[dict[str, Any]] | None = None) -> InlineKeyboardMarkup:
+    """چیدمان دکمه‌های شیشه‌ای رستوران تیرامیکس برای منوی روزانه."""
+    menu_items = items or food.get_daily_food_menu()
+    rows: list[list[InlineKeyboardButton]] = []
+    curr_row: list[InlineKeyboardButton] = []
+
+    for it in menu_items:
+        f_id = it["id"]
+        pr = f"{it['price']:,}"
+        en = f"+{it['energy']}⚡️"
+        # Short button label
+        name_words = it["name"].split()
+        short_name = f"{name_words[0]} {name_words[1]}" if len(name_words) > 1 else it["name"]
+        curr_row.append(
             InlineKeyboardButton(
-                text="⚡️ انرژی‌زا (+40⚡️) | 450", callback_data="food:buy:energy_drink"
-            ),
-        ],
-        [
-            InlineKeyboardButton(
-                text="🥪 ساندویچ (+55⚡️) | 700", callback_data="food:buy:sandwich"
-            ),
-            InlineKeyboardButton(
-                text="🍔 برگر دوبل (+75⚡️) | 1,100", callback_data="food:buy:burger"
-            ),
-        ],
-        [
-            InlineKeyboardButton(text="🍕 پیتزا (+85⚡️) | 1,500", callback_data="food:buy:pizza"),
-            InlineKeyboardButton(
-                text="🥩 چلوکباب (+100⚡️) | 2,200", callback_data="food:buy:chelokabab"
-            ),
-        ],
+                text=f"{short_name} ({en}) | {pr}", callback_data=f"food:buy:{f_id}"
+            )
+        )
+        if len(curr_row) == 2:
+            rows.append(curr_row)
+            curr_row = []
+    if curr_row:
+        rows.append(curr_row)
+
+    rows.append(
         [
             InlineKeyboardButton(text="💼 رفتن سر کار", callback_data="act:work"),
-            InlineKeyboardButton(text="🔄 به‌روزرسانی", callback_data="food:menu"),
+            InlineKeyboardButton(text="🔄 به‌روزرسانی منو", callback_data="food:menu"),
             InlineKeyboardButton(text="🚪 خروج", callback_data="food:close"),
-        ],
-    ]
-    return InlineKeyboardMarkup(inline_keyboard=buttons)
+        ]
+    )
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 async def _render_food_view(player: Player) -> tuple[str, InlineKeyboardMarkup]:
     credits_bal, _ = await economy.balances(player.user_id)
     bar = energy_bar(player.energy, 100)
+    daily_items = food.get_daily_food_menu()
     lines = [
         "🍽 <b>رستوران و کافه مرکزی شهر تیرامیکس</b>",
         "━━━━━━━━━━━━━━━━━━━━",
@@ -79,9 +82,9 @@ async def _render_food_view(player: Player) -> tuple[str, InlineKeyboardMarkup]:
         f"⚡️ <b>سطح انرژی شما:</b> <b>{player.energy}/100</b> {bar}",
         f"💰 <b>موجودی کیف پول:</b> <b>{credits_bal:,}</b> رکسار",
         "",
-        "📌 <b>منوی سرآشپز تیرامیکس:</b>",
+        "📋 <b>منوی سرآشپز امروز تیرامیکس (گردش روزانه):</b>",
     ]
-    for it in FOOD_CATALOG:
+    for it in daily_items:
         pr = f"{it['price']:,}"
         en = f"+{it['energy']}"
         lines.append(
@@ -90,7 +93,7 @@ async def _render_food_view(player: Player) -> tuple[str, InlineKeyboardMarkup]:
         )
     lines.append("")
     lines.append("💡 <i>برای سفارش و میل کردن، دکمه غذای مورد نظرتان را لمس کنید!</i>")
-    return "\n".join(lines), _food_markup()
+    return "\n".join(lines), _food_markup(daily_items)
 
 
 @router.message(CommandOrText(["food", "restaurant", "cafe", "eat"], words=FOOD_WORDS))

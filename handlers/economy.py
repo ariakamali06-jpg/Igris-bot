@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import contextlib
 import logging
+from typing import Any
 
 from aiogram import F, Router
 from aiogram.filters import CommandObject
@@ -57,7 +58,7 @@ def _activity_card(result: economy.ActivityResult) -> str:
 
 
 DAILY_WORDS = {"روزانه", "جایزه", "پاداش", "حقوق", "daily", "claim"}
-WORK_WORDS = {"کار", "شغل", "شیفت", "work", "shift"}
+WORK_WORDS = {"کار", "شیفت", "work", "shift"}
 BAL_WORDS = {"موجودی", "پول", "سکه", "کیف", "کیف پول", "حساب", "balance", "bal", "wallet", "money"}
 STATS_WORDS = {"آمار", "استاتس", "لول", "وضعیت", "stats", "level"}
 HELP_WORDS = {"راهنما", "کمک", "آموزش", "اموزش", "دستورات", "help"}
@@ -134,6 +135,57 @@ async def cmd_study(message: Message) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _job_markup(
+    unlocked_jobs: list[dict[str, Any]], current_job: str
+) -> InlineKeyboardMarkup:
+    """دکمه‌های شیشه‌ای انتخاب و استخدام در فرصت‌های شغلی."""
+    buttons: list[list[InlineKeyboardButton]] = []
+    for j in unlocked_jobs:
+        title = j["title"]
+        wage = j["wage"]
+        if title == current_job:
+            buttons.append([
+                InlineKeyboardButton(
+                    text=f"✅ {title} (شغل فعلی شما)", callback_data="noop"
+                )
+            ])
+        else:
+            buttons.append([
+                InlineKeyboardButton(
+                    text=f"💼 استخدام: {title} ({wage:,} رکسار/ساعت)",
+                    callback_data=f"job:set:{title}",
+                )
+            ])
+
+    buttons.append([
+        InlineKeyboardButton(text="🔨 رفتن به شیفت کاری (کار)", callback_data="act:work"),
+        InlineKeyboardButton(text="🚪 بستن", callback_data="btq:close"),
+    ])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def _render_job_view(player: Player) -> tuple[str, InlineKeyboardMarkup]:
+    from services import tiramix
+
+    unlocked_jobs = tiramix.list_available_jobs(player.education_level)
+    lines = [
+        "💼 <b>اداره کار و استخدام مرکزی شهر تیرامیکس</b>\n",
+        f"👤 شغل فعلی شما: <b>{player.job}</b>",
+        f"🎓 مدرک تحصیلی: <b>{player.education_title}</b>\n",
+        "📋 <b>فرصت‌های شغلی متناسب با مدرک شما:</b>",
+    ]
+    for j in unlocked_jobs:
+        lines.append(
+            f"• <b>{j['title']}</b>: ساعتی <b>{j['wage']:,}</b> رکسار\n  <i>{j['desc']}</i>"
+        )
+
+    lines.append("\n💡 <i>روی دکمه شغل مورد نظر بزنید یا دستور زیر را بنویسید:</i>")
+    lines.append("<code>شغل [نام شغل]</code>")
+
+    markup = _job_markup(unlocked_jobs, player.job)
+    return "\n".join(lines), markup
+
+
 @router.message(CommandOrText(["job", "career"], {"شغل", "کارها", "استخدام"}))
 async def cmd_job(message: Message, command: CommandObject | None = None) -> None:
     """مشاهده لیست مشاغل باز متناسب با تحصیلات یا استخدام در یک موقعیت کاری جدید."""
@@ -151,25 +203,41 @@ async def cmd_job(message: Message, command: CommandObject | None = None) -> Non
             await message.reply(res["message"])
             return
 
-        unlocked_jobs = tiramix.list_available_jobs(player.education_level)
-        lines = [
-            "💼 <b>اداره کار و استخدام مرکزی شهر تیرامیکس</b>\n",
-            f"👤 شغل فعلی شما: <b>{player.job}</b>",
-            f"🎓 مدرک تحصیلی: <b>{player.education_title}</b>\n",
-            "📋 <b>فرصت‌های شغلی متناسب با مدرک شما:</b>",
-        ]
-        for j in unlocked_jobs:
-            lines.append(
-                f"• <b>{j['title']}</b>: ساعتی <b>{j['wage']:,}</b> سکه\n  <i>{j['desc']}</i>"
-            )
-
-        lines.append("\n💡 <i>برای استخدام در یک شغل، نام آن را بنویسید:</i>")
-        lines.append("<code>شغل [نام شغل]</code>")
-        lines.append("<i>مثال: شغل برنامه‌نویس جونیور</i>")
-
-        await message.reply("\n".join(lines))
+        text, markup = _render_job_view(player)
+        await message.reply(text, reply_markup=markup)
     except Exception as exc:  # noqa: BLE001
         await answer_error(exc, message=message)
+
+
+@router.callback_query(F.data.startswith("job:set:"))
+async def cb_job_set(call: CallbackQuery) -> None:
+    """استخدام فوری با کلیک دکمه‌های شیشه‌ای اداره کار."""
+    user = call.from_user
+    if user is None or not call.data:
+        return
+    job_title = call.data[len("job:set:") :].strip()
+    try:
+        from services import tiramix
+
+        player = await hydrate(user.id, user.full_name, user.username)
+        res = await tiramix.set_player_job(player, job_title)
+        alert_txt = (
+            res["message"]
+            .replace("<b>", "")
+            .replace("</b>", "")
+            .replace("<code>", "")
+            .replace("</code>", "")
+        )
+        await call.answer(alert_txt[:200], show_alert=True)
+
+        fresh = await hydrate(user.id, user.full_name, user.username)
+        text, markup = _render_job_view(fresh)
+        msg = editable_message(call)
+        if msg:
+            with contextlib.suppress(Exception):
+                await msg.edit_text(text, reply_markup=markup, parse_mode="HTML")
+    except Exception as exc:  # noqa: BLE001
+        await answer_error(exc, callback=call)
 
 
 # ---------------------------------------------------------------------------
@@ -711,17 +779,23 @@ async def cmd_stats(message: Message) -> None:
 
 @router.callback_query(F.data == "act:work")
 async def cb_work(call: CallbackQuery) -> None:
-    """کلیک دکمه سریع کار در زیر کارت پروفایل."""
+    """کلیک دکمه سریع کار در زیر کارت پروفایل یا منوی غذا."""
     user = call.from_user
     if user is None:
         return
     try:
-        economy.require_ready(user.id, "work", settings.cooldown_work)
+        from services import tiramix
+
         player = await hydrate(user.id, user.full_name, user.username)
-        result = await economy.do_work(player.user_id, player.level, player.drip)
-        await call.answer(
-            f"{result.headline}: {result.detail}", show_alert=True
+        res = await tiramix.execute_work(player)
+        alert_text = (
+            res["message"]
+            .replace("<b>", "")
+            .replace("</b>", "")
+            .replace("<code>", "")
+            .replace("</code>", "")
         )
+        await call.answer(alert_text[:200], show_alert=True)
     except Exception as exc:  # noqa: BLE001
         await answer_error(exc, callback=call)
 

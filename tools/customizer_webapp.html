@@ -4612,7 +4612,7 @@
       <div class="header-branding">
         <span class="header-logo-icon">⚔️</span>
         <span class="header-title">ایگریس</span>
-        <span class="header-badge">شخصی‌سازی</span>
+        <span id="appHeaderBadge" class="header-badge">شخصی‌سازی</span>
       </div>
       <button class="header-backpack-btn" onclick="openLayerDrawer()" title="مشاهده لایه‌ها">
         <span>🎒 لایه‌ها</span>
@@ -4628,7 +4628,7 @@
       </div>
       <div class="player-stats">
         <span id="playerStripLevel" class="stat-tag">⚡ لول ۱</span>
-        <span id="playerStripCoins" class="stat-tag coins">💰 ۲۵۰ سکه</span>
+        <span id="playerStripCoins" class="stat-tag coins">💰 ۲۵۰ رکسار</span>
       </div>
     </div>
 
@@ -4791,7 +4791,8 @@
     let currentSkinIdx = 1; // 1 to 5 (or 6 for plus)
     let isZoomed = false;
     let pendingHairSet = null;
-    let appMode = 'starter'; // 'starter' (5 sets) | 'wardrobe' (owned items only)
+    let appMode = 'starter'; // 'starter' | 'wardrobe' | 'shop'
+    let currentUserCoins = 250;
     let currentGender = 'female'; // 'female' | 'male'
     let ownedItemIds = [];
     let ownedSetsList = [];
@@ -4979,7 +4980,19 @@
 
       document.getElementById('headerBackpackBadge').innerText = countFa;
       document.getElementById('dockLayersBadge').innerText = countFa;
-      document.getElementById('dockSaveBadge').innerText = `${countFa} قلم`;
+
+      const dockSaveBtn = document.getElementById('dockSaveBtn');
+      if (appMode === 'shop') {
+        const unowned = equippedVarList.filter(v => !ownedItemIds.includes(v));
+        if (unowned.length > 0) {
+          const totalCost = unowned.reduce((sum, v) => sum + getItemPrice(ITEMS_BY_VAR.get(v)), 0);
+          dockSaveBtn.innerHTML = `<span>🛒</span><span>خرید (${totalCost.toLocaleString('fa-IR')} رکسار)</span><span id="dockSaveBadge" class="dock-save-badge">${unowned.length.toLocaleString('fa-IR')} جدید</span>`;
+        } else {
+          dockSaveBtn.innerHTML = `<span>💾</span><span>ذخیره استایل</span><span id="dockSaveBadge" class="dock-save-badge">${countFa} قلم</span>`;
+        }
+      } else {
+        document.getElementById('dockSaveBadge').innerText = `${countFa} قلم`;
+      }
 
       if (tg?.MainButton) {
         try {
@@ -5184,6 +5197,12 @@
       });
     }
 
+    function getItemPrice(it) {
+      if (!it || it.g === 'unisex') return 2000;
+      if (it.g === currentGender) return 1200;
+      return 4800;
+    }
+
     function getAvailableItems() {
       if (appMode === 'wardrobe') {
         const ownedSet = new Set(ownedItemIds.length > 0 ? ownedItemIds : equippedVarList);
@@ -5204,6 +5223,15 @@
           }
         }
         return pool;
+      }
+      if (appMode === 'shop') {
+        return RAW_ITEMS.filter(it => {
+          const isHair = it.c === 'hair' || it.s === 'hair_base' || it.s === 'hair_front' || it.s === 'hair_back' || it.s === 'hair_extensions';
+          const isFace = it.c === 'makeup' || it.c === 'face_eyes' || it.c === 'face_lips' || it.c === 'face_nose' || it.s === 'eyes' || it.s === 'lips' || it.s === 'eyeshadow_lashes' || it.s === 'freckles_moles' || it.s === 'body_parts';
+          const isHeadAccessory = it.s === 'headbands_clips' || it.s === 'hats' || it.s === 'earrings' || it.s === 'glasses';
+          if (isHair || (isFace && !isHeadAccessory)) return false;
+          return it.g === currentGender || it.g === 'unisex';
+        });
       }
       return RAW_ITEMS.filter(it => it.g === currentGender || it.g === 'unisex');
     }
@@ -5287,7 +5315,7 @@
         extra: 'اکسسوری'
       };
 
-      const modeTitle = (appMode === 'wardrobe') ? 'کمد شخصی' : 'انتخاب اولیه';
+      const modeTitle = (appMode === 'wardrobe') ? 'کمد شخصی' : ((appMode === 'shop') ? 'فروشگاه مد' : 'انتخاب اولیه');
       statusText.innerText = `${zoneNames[currentZone] || 'کاتالوگ'} (${modeTitle})`;
       countText.innerText = `${filtered.length.toLocaleString('fa-IR')} قلم موجود`;
 
@@ -5303,12 +5331,25 @@
 
       grid.innerHTML = filtered.map(it => {
         const isEq = equippedVarList.includes(it.v);
+        const isOwned = ownedItemIds.includes(it.v);
         const isHairSet = it.st && HAIR_SETS[it.st] && HAIR_SETS[it.st].length > 1;
         const thumbUrl = `https://cdn.everskies.com/render/${getSlug([it.v])}.png?m=1`;
 
+        let badgeHtml = '';
+        if (appMode === 'shop') {
+          if (isOwned) {
+            badgeHtml = '<span class="item-shop-badge owned" style="position:absolute;top:4px;right:4px;font-size:9px;background:rgba(16,185,129,0.9);color:#fff;padding:2px 6px;border-radius:6px;font-weight:700;">✅ در کمد</span>';
+          } else {
+            const pr = getItemPrice(it);
+            badgeHtml = `<span class="item-shop-badge price" style="position:absolute;top:4px;right:4px;font-size:9px;background:rgba(234,179,8,0.95);color:#000;padding:2px 6px;border-radius:6px;font-weight:800;">🏷️ ${pr.toLocaleString('fa-IR')} رکسار</span>`;
+          }
+        } else if (isHairSet) {
+          badgeHtml = '<span class="item-hair-badge" title="ست چندتکه مو">⚡</span>';
+        }
+
         return `
           <div class="item-card ${isEq ? 'equipped' : ''}" data-vid="${it.v}" onclick="toggleItem(${it.v})">
-            ${isHairSet ? '<span class="item-hair-badge" title="ست چندتکه مو">⚡</span>' : ''}
+            ${badgeHtml}
             <img class="item-thumb-img" src="${thumbUrl}" loading="lazy" alt="${it.n}" onerror="if(!this.dataset.t){this.dataset.t='1';this.src='https://cdn.everskies.com/render/'+getSlug([${it.v}]) + '.png?m=0';}else{this.style.opacity='0.4';}">
             <span class="item-name-tag">${it.n}</span>
           </div>
@@ -5519,6 +5560,17 @@
         return;
       }
 
+      if (appMode === 'shop') {
+        const unowned = equippedVarList.filter(v => !ownedItemIds.includes(v));
+        if (unowned.length > 0) {
+          const totalCost = unowned.reduce((sum, v) => sum + getItemPrice(ITEMS_BY_VAR.get(v)), 0);
+          if (currentUserCoins < totalCost) {
+            showToast(`❌ موجودی رکسار شما کافی نیست! (قیمت: ${totalCost.toLocaleString('fa-IR')} - موجودی: ${currentUserCoins.toLocaleString('fa-IR')} رکسار)`);
+            return;
+          }
+        }
+      }
+
       const payload = {
         skin: currentSkinIdx,
         body: currentBodyType,
@@ -5720,7 +5772,15 @@
                 lvlEl.innerText = `⚡ لول ${loadoutData.lvl}`;
               }
               if (coinsEl && loadoutData.cr !== undefined) {
-                coinsEl.innerText = `💰 ${Number(loadoutData.cr).toLocaleString('fa-IR')} سکه`;
+                currentUserCoins = Number(loadoutData.cr);
+                try { localStorage.setItem('igris_coins', String(currentUserCoins)); } catch (e) {}
+                coinsEl.innerText = `💰 ${currentUserCoins.toLocaleString('fa-IR')} رکسار`;
+              }
+              if (loadoutData.name) {
+                try { localStorage.setItem('igris_name', loadoutData.name); } catch (e) {}
+              }
+              if (loadoutData.lvl) {
+                try { localStorage.setItem('igris_level', String(loadoutData.lvl)); } catch (e) {}
               }
               strip.style.display = 'flex';
             }
@@ -5741,7 +5801,25 @@
             const savedGen = localStorage.getItem('igris_gender');
             if (savedGen === 'male' || savedGen === 'female') currentGender = savedGen;
             const savedMode = localStorage.getItem('igris_app_mode');
-            if (savedMode === 'wardrobe' || savedMode === 'starter') appMode = savedMode;
+            if (savedMode === 'wardrobe' || savedMode === 'starter' || savedMode === 'shop') appMode = savedMode;
+            const savedCoins = localStorage.getItem('igris_coins');
+            if (savedCoins) currentUserCoins = Number(savedCoins);
+            const savedName = localStorage.getItem('igris_name');
+            const savedLvl = localStorage.getItem('igris_level');
+            if (savedName || savedCoins) {
+              const strip = document.getElementById('playerProfileStrip');
+              const nameEl = document.getElementById('playerStripName');
+              const subEl = document.getElementById('playerStripSub');
+              const lvlEl = document.getElementById('playerStripLevel');
+              const coinsEl = document.getElementById('playerStripCoins');
+              if (strip) {
+                if (nameEl && savedName) nameEl.innerText = `👤 ${savedName}`;
+                if (subEl) subEl.innerText = currentGender === 'female' ? 'شهروند تیرامیکس (دختر)' : 'شهروند تیرامیکس (پسر)';
+                if (lvlEl && savedLvl) lvlEl.innerText = `⚡ لول ${savedLvl}`;
+                if (coinsEl) coinsEl.innerText = `💰 ${currentUserCoins.toLocaleString('fa-IR')} رکسار`;
+                strip.style.display = 'flex';
+              }
+            }
             const savedOwned = localStorage.getItem('igris_owned_ids');
             if (savedOwned) {
               const parsed = JSON.parse(savedOwned);
@@ -5787,6 +5865,14 @@
             equippedVarList.unshift(defaultBottom);
             try { localStorage.setItem('igris_equipped_items', JSON.stringify(equippedVarList)); } catch (e) {}
           }
+        }
+
+        // به‌روزرسانی نشان هدر بر اساس حالت برنامه
+        const badgeEl = document.getElementById('appHeaderBadge');
+        if (badgeEl) {
+          if (appMode === 'shop') badgeEl.innerText = '🛍️ فروشگاه مد';
+          else if (appMode === 'wardrobe') badgeEl.innerText = 'کمد لباس';
+          else badgeEl.innerText = 'شخصی‌سازی';
         }
 
         renderSkinSwatches();

@@ -5,7 +5,9 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
 import logging
+import time
 from typing import Any
 
 from aiogram import F, Router
@@ -23,6 +25,7 @@ from aiogram.types import (
 )
 
 from config import settings
+from database.connection import db
 from handlers.common import (
     CommandOrText,
     answer_error,
@@ -31,7 +34,8 @@ from handlers.common import (
     hydrate,
 )
 from handlers.profile import _send_profile
-from services import avatar, game
+from models.enums import ActivityKind
+from services import avatar, economy, game
 from services.channels import channel_join_markup, get_missing_channels
 
 logger = logging.getLogger(__name__)
@@ -251,6 +255,52 @@ async def _handle_compact_wear_payload(
         fsm_state = (await state.get_state()) if state else None
         is_new_player = (player.onboarding_completed == 0) or (fsm_state is not None)
 
+        total_bought_price = 0
+        unowned_vars = []
+        if not is_new_player:
+            unowned_vars = [v for v in var_ids if not await avatar.owns_item(user.id, v)]
+            if unowned_vars:
+                from services import catalog
+                items_to_add = []
+                for v in unowned_vars:
+                    it = catalog.get_catalog_item_by_var_id(v)
+                    g = it.get("gender", "unisex") if it else "unisex"
+                    p, _ = avatar.calculate_item_price(g, player.gender)
+                    items_to_add.append((v, it, p))
+                    total_bought_price += p
+
+                creds, _ = await economy.balances(user.id)
+                if creds < total_bought_price:
+                    await message.reply(
+                        f"❌ <b>موجودی رکسار شما برای خرید لباس‌های جدید کافی نیست!</b>\n\n"
+                        f"مبلغ کل اقلام انتخابی: <b>{total_bought_price:,}</b> رکسار\n"
+                        f"موجودی کیف پول شما: <b>{creds:,}</b> رکسار\n\n"
+                        "با دستور <code>کار</code> یا برداشت از بانک موجودی خود را افزایش دهید."
+                    )
+                    return
+
+                await economy.spend(
+                    user.id, credits=total_bought_price, kind=ActivityKind.SHOP_BUY
+                )
+                now_ts = int(time.time())
+                async with db.write() as conn:
+                    for v, it, p in items_to_add:
+                        v_set_id = 1000000 + v
+                        title = f"✨ {it['name']}" if it else f"✨ لباس #{v}"
+                        it_gen = it.get("gender", "unisex") if it else "unisex"
+                        await conn.execute(
+                            """
+                            INSERT INTO player_wardrobe
+                                (user_id, set_id, set_name, gender, item_count,
+                                 var_ids, is_plus_size, price_paid, acquired_at)
+                            VALUES (?, ?, ?, ?, 1, ?, 0, ?, ?)
+                            ON CONFLICT(user_id, set_id) DO UPDATE SET
+                                var_ids = excluded.var_ids,
+                                acquired_at = excluded.acquired_at
+                            """,
+                            (user.id, v_set_id, title, it_gen, json.dumps([v]), p, now_ts),
+                        )
+
         await avatar.save_custom_avatar(
             user_id=user.id,
             var_ids=var_ids,
@@ -389,12 +439,21 @@ async def _handle_compact_wear_payload(
                 ]
             )
         else:
-            caption = (
-                "✅ <b>استایل کاراکتر از مینی‌اپ ثبت شد!</b>\n"
-                "━━━━━━━━━━━━━━━━━━━━\n"
-                f"👕 <b>قطعات:</b> {len(var_ids)} قلم\n"
-                f"🧍 <b>فرم بدنه:</b> {'پلاس' if is_plus else 'اسلیم'}"
-            )
+            if total_bought_price > 0:
+                caption = (
+                    "🎉 <b>خرید موفق از مینی‌اپ فروشگاه تیرامیکس!</b> 🛍✨\n"
+                    "━━━━━━━━━━━━━━━━━━━━\n"
+                    f"تعداد <b>{len(unowned_vars)} قلم</b> لباس جدید با موفقیت خریداری شد.\n"
+                    f"💰 کل مبلغ پرداختی: <b>{total_bought_price:,}</b> رکسار\n"
+                    "👕 لباس‌ها به کمد دائمی شما اضافه شدند و بر تن نشستند!"
+                )
+            else:
+                caption = (
+                    "✅ <b>استایل کاراکتر از مینی‌اپ ثبت شد!</b>\n"
+                    "━━━━━━━━━━━━━━━━━━━━\n"
+                    f"👕 <b>قطعات:</b> {len(var_ids)} قلم\n"
+                    f"🧍 <b>فرم بدنه:</b> {'پلاس' if is_plus else 'اسلیم'}"
+                )
             markup = InlineKeyboardMarkup(
                 inline_keyboard=[
                     [

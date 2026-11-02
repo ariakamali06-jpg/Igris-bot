@@ -21,6 +21,18 @@ def get_food_catalog() -> tuple[dict[str, Any], ...]:
     return FOOD_CATALOG
 
 
+def get_daily_food_menu(day_offset: int = 0) -> list[dict[str, Any]]:
+    """انتخاب ۶ غذای متغیر روزانه (از هر سطح ۱ غذا) بر اساس روز تقویمی."""
+    day_idx = int((time.time() // 86400) + day_offset)
+    menu: list[dict[str, Any]] = []
+    for tier in range(1, 7):
+        tier_items = [it for it in FOOD_CATALOG if it.get("tier") == tier]
+        if tier_items:
+            pick = tier_items[(day_idx + tier) % len(tier_items)]
+            menu.append(pick)
+    return menu
+
+
 def find_food_item(query: str) -> dict[str, Any] | None:
     """جستجوی غذا با شناسه یا نام فارسی."""
     q = query.strip().lower()

@@ -1080,14 +1080,29 @@ async def buy_boutique_item(
 
 
 async def equip_single_item(user_id: int, var_id: int) -> dict[str, Any]:
-    """Equip an owned single clothing item onto character's active avatar."""
+    """Equip an owned single clothing item onto character's active avatar.
+
+    If the item was previously unequipped, restore it to its exact previous
+    Z-Index layer position. If equipping for the first time, place it at the
+    very top (index 0).
+    """
     av = await get_player_avatar(user_id)
     cur_vars = list(av.get("equipped_var_ids", []))
     if var_id in cur_vars:
         return {"equipped": False, "message": "این لباس هم‌اکنون بر تن کاراکتر شماست!"}
 
-    # Add item to active outfit (placed as top layer)
-    new_vars = [var_id] + [v for v in cur_vars if v != var_id]
+    makeup = av.get("makeup_data") or {}
+    slots = makeup.get("last_item_slots") or {}
+
+    if str(var_id) in slots:
+        # Previously unequipped item — restore to its previous layer position!
+        saved_pos = int(slots[str(var_id)])
+        target_pos = max(0, min(saved_pos, len(cur_vars)))
+        new_vars = list(cur_vars)
+        new_vars.insert(target_pos, var_id)
+    else:
+        # First time equipping — place at the topmost foreground (index 0)
+        new_vars = [var_id] + cur_vars
 
     now_ts = int(time.time())
     async with db.write() as conn:
@@ -1109,11 +1124,17 @@ async def equip_single_item(user_id: int, var_id: int) -> dict[str, Any]:
 
 
 async def unequip_single_item(user_id: int, var_id: int) -> dict[str, Any]:
-    """Remove a single clothing item from character's active avatar without affecting others."""
+    """Remove a single clothing item while remembering its layer position."""
     av = await get_player_avatar(user_id)
     cur_vars = list(av.get("equipped_var_ids", []))
     if var_id not in cur_vars:
         return {"unequipped": False, "message": "این لباس بر تن کاراکتر شما نیست!"}
+
+    old_pos = cur_vars.index(var_id)
+    makeup = dict(av.get("makeup_data") or {})
+    slots = dict(makeup.get("last_item_slots") or {})
+    slots[str(var_id)] = old_pos
+    makeup["last_item_slots"] = slots
 
     new_vars = [v for v in cur_vars if v != var_id]
 
@@ -1122,10 +1143,10 @@ async def unequip_single_item(user_id: int, var_id: int) -> dict[str, Any]:
         await conn.execute(
             """
             UPDATE player_avatar
-            SET equipped_var_ids = ?, updated_at = ?
+            SET equipped_var_ids = ?, makeup_data = ?, updated_at = ?
             WHERE user_id = ?
             """,
-            (json.dumps(new_vars), now_ts, user_id),
+            (json.dumps(new_vars), json.dumps(makeup), now_ts, user_id),
         )
 
     invalidate_avatar_cache(user_id)
@@ -1317,6 +1338,7 @@ async def get_customizer_url(
     skin_tone: int | None = None,
     is_plus_size: int | None = None,
     var_ids: list[int] | None = None,
+    mode: str | None = None,
 ) -> str:
     """Generate personalized Telegram Mini App URL carrying user loadout."""
     base_url = settings.webapp_url.rstrip("/")
@@ -1346,7 +1368,7 @@ async def get_customizer_url(
         level = level or player.level
         gender = gender or player.gender
 
-    if credits is None:
+    if credits is None and user_id:
         try:
             credits_val, _ = await economy.balances(user_id)
             credits = credits_val
@@ -1393,19 +1415,23 @@ async def get_customizer_url(
 
     active_bot = RUNTIME_BOT_USERNAME or settings.bot_username
 
-    has_wardrobe = bool(owned_ids or is_onboarded)
+    if mode is None:
+        has_wardrobe = bool(owned_ids or is_onboarded)
+        resolved_mode = "wardrobe" if has_wardrobe else "starter"
+    else:
+        resolved_mode = mode
 
     payload = {
         "u": user_id,
         "name": display_name or "مسافر",
         "lvl": level or 1,
-        "cr": credits or 0,
+        "cr": credits if credits is not None else 0,
         "gen": gen_str,
         "skin": skin_idx,
         "body": "plus" if is_plus else "slim",
         "items": var_ids or [],
         "bot": active_bot,
-        "mode": "wardrobe" if has_wardrobe else "starter",
+        "mode": resolved_mode,
         "owned": owned_ids,
         "owned_sets": owned_sets,
     }

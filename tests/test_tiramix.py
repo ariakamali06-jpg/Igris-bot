@@ -1,10 +1,12 @@
 """Tests for Tiramix Life Simulator service."""
 
-import pytest
 import time
+
+import pytest
+
 from database.connection import db
 from models.player import Player
-from services import economy, tiramix
+from services import tiramix
 
 
 @pytest.fixture(autouse=True)
@@ -19,7 +21,7 @@ async def _setup_db():
         await conn.execute("DELETE FROM wallets WHERE user_id IN (1001, 1002, 1003)")
         await conn.execute("DELETE FROM clans WHERE leader_id IN (1001, 1002, 1003)")
         await conn.execute("DELETE FROM players WHERE user_id IN (1001, 1002, 1003)")
-        
+
         # Insert test players
         for uid, name in [(1001, "PlayerOne"), (1002, "PlayerTwo"), (1003, "PlayerThree")]:
             await conn.execute(

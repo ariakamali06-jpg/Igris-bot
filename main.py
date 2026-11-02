@@ -124,24 +124,13 @@ async def on_startup(bot: Bot) -> None:
     except Exception as exc:
         logger.warning("Could not check/delete webhook: %s", exc)
 
-    if settings.webapp_url:
-        try:
-            from aiogram.types import MenuButtonWebApp, WebAppInfo
+    try:
+        from aiogram.types import MenuButtonDefault
 
-            menu_url = settings.webapp_url
-            if me.username:
-                sep = "&" if "?" in menu_url else "?"
-                menu_url = f"{menu_url}{sep}bot={me.username}"
-
-            await bot.set_chat_menu_button(
-                menu_button=MenuButtonWebApp(
-                    text="🎨 کاستومایز",
-                    web_app=WebAppInfo(url=menu_url),
-                )
-            )
-            logger.info("Chat menu button registered: %s", menu_url)
-        except Exception as exc:
-            logger.warning("Could not set chat menu button: %s", exc)
+        await bot.set_chat_menu_button(menu_button=MenuButtonDefault())
+        logger.info("Chat menu button reset to default.")
+    except Exception as exc:
+        logger.warning("Could not reset chat menu button: %s", exc)
 
 
 async def on_shutdown() -> None:

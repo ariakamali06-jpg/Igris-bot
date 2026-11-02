@@ -20,7 +20,7 @@ from services import economy, game
 # Constants & Rules
 # ---------------------------------------------------------------------------
 
-WORK_COOLDOWN = 30         # 30 seconds (energy is primary throttle)
+BASE_WORK_COOLDOWN = 480   # 8 minutes base cooldown
 STUDY_COOLDOWN = 60        # 1 minute per term
 STEAL_COOLDOWN = 21600      # 6 hours
 DUEL_COOLDOWN = 10800       # 3 hours
@@ -28,6 +28,13 @@ INTIMACY_COOLDOWN = 28800   # 8 hours
 AFFAIR_COOLDOWN = 43200     # 12 hours
 JAIL_DURATION = 1800        # 30 minutes
 PREGNANCY_DURATION = 86400  # 24 hours
+
+
+def get_work_cooldown(level: int) -> int:
+    """محاسبه کول‌داون کار: ۸ دقیقه پایه، به ازای هر لول ۳۰ ثانیه کاهش (حداقل ۲ دقیقه)."""
+    reduction = max(0, (level - 1) * 30)
+    return max(120, BASE_WORK_COOLDOWN - reduction)
+
 
 TUITION_FEES = {
     0: 500,       # 0 -> 1: Diploma (per term)
@@ -106,14 +113,23 @@ async def execute_work(player: Player) -> dict[str, Any]:
             ),
         }
 
+    cd_seconds = get_work_cooldown(player.level)
     elapsed = now - player.last_work_time
-    if elapsed < WORK_COOLDOWN:
-        rem_sec = int(WORK_COOLDOWN - elapsed)
+    if elapsed < cd_seconds:
+        rem_sec = int(cd_seconds - elapsed)
+        rem_min = rem_sec // 60
+        sec_part = rem_sec % 60
+        time_parts = []
+        if rem_min > 0:
+            time_parts.append(f"{rem_min} دقیقه")
+        if sec_part > 0 or not time_parts:
+            time_parts.append(f"{sec_part} ثانیه")
+        time_str = " و ".join(time_parts)
         return {
             "success": False,
             "error": "cooldown",
             "message": (
-                f"⏳ کمی نفس بکش! شیفت کاری بعدی پس از <b>{rem_sec} ثانیه</b> دیگر آغاز می‌شود."
+                f"⏳ کمی نفس بکش! شیفت کاری بعدی پس از <b>{time_str}</b> دیگر آغاز می‌شود."
             ),
         }
 
@@ -849,8 +865,8 @@ async def attempt_affair(cheater: Player, partner: Player, victim_spouse: Player
         return {
             "success": True,
             "busted": False,
-            "message": f"🤫 <b>ملاقات مخفیانه بدون ردپا انجام شد!</b>\n\n"
-                       f"همسر متوجه هیچ سرنخی نشد.",
+            "message": "🤫 <b>ملاقات مخفیانه بدون ردپا انجام شد!</b>\n\n"
+                       "همسر متوجه هیچ سرنخی نشد.",
         }
 
 
@@ -920,7 +936,7 @@ async def update_facial_surgery(player: Player, eye_style: str, eye_color: str, 
     return {
         "success": True,
         "fee": SURGERY_FEES,
-        "message": f"💎 <b>عمل زیبایی با موفقیت در کلینیک زیبایی تیرامیکس انجام شد!</b>\nفرم چشم‌ها و لبخند شما ارتقا یافت.",
+        "message": "💎 <b>عمل زیبایی با موفقیت در کلینیک زیبایی تیرامیکس انجام شد!</b>\nفرم چشم‌ها و لبخند شما ارتقا یافت.",
     }
 
 

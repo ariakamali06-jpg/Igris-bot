@@ -1,13 +1,12 @@
 import json
 import time
+
 import pytest
 from aiogram.types import Chat, Message, User
 from pydantic import ConfigDict, PrivateAttr
 
-from config import settings
 from database.connection import db
 from handlers import duels
-from models.enums import ActivityKind
 from services import economy, game
 
 
