@@ -13,7 +13,16 @@
 PRAGMA foreign_keys = ON;
 
 -- -----------------------------------------------------------------------------
--- Players: identity + progression. One row per Telegram user (global, not
+-- Mandatory Channels: community sponsorship and join gates.
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS mandatory_channels (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    name        TEXT    NOT NULL,
+    username    TEXT    NOT NULL UNIQUE,
+    url         TEXT    NOT NULL,
+    is_active   INTEGER NOT NULL DEFAULT 1,
+    created_at  INTEGER NOT NULL DEFAULT 0
+);
 -- per-group, so a player keeps their character across chats).
 -- -----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS players (

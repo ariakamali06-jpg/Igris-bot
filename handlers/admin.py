@@ -40,6 +40,7 @@ _HELP_TEXT = (
     "🔹 <code>چیت مکس</code> — ماکزیمم کردن تمام آمارها برای تست سریع و قدرتمند!\n"
     "🔹 <code>چیت ریست</code> — بازنشانی ساخت کاراکتر برای تست مجدد از اول\n"
     "🔹 <code>چیت وضعیت</code> — مشاهده تمام آمارهای دیتابیسی بازیکن\n"
+    "🔹 <code>چیت کانال</code> — مدیریت کانال‌های عضویت اجباری (لیست/افزودن/حذف/روشن/خاموش)\n"
 )
 
 _EDU_LABELS = {
@@ -475,3 +476,93 @@ async def cmd_manual_backup(message: Message) -> None:
     except Exception as exc:
         logger.exception("Manual DB backup failed: %s", exc)
         await status_msg.edit_text(f"❌ خطا: <code>{esc(str(exc))}</code>")
+
+
+@router.message(
+    F.text.startswith("چیت کانال")
+    | F.text.startswith("کانال اجباری")
+    | F.text.startswith("/channel")
+)
+async def cmd_admin_channels(message: Message) -> None:
+    """مدیریت کانال‌های عضویت اجباری توسط مالک و ادمین‌های ربات."""
+    user = message.from_user
+    if user is None or not is_admin_or_owner(user.id):
+        return
+
+    from config import settings
+    from services import channels
+
+    raw = (message.text or "").strip()
+    parts = raw.split()
+    # Find action: skip command trigger (e.g. "چیت کانال", "/channel")
+    if parts and parts[0] in ("/channel", "/channels"):
+        sub_parts = parts[1:]
+    elif (
+        len(parts) >= 2
+        and (
+            (parts[0] == "چیت" and parts[1] == "کانال")
+            or (parts[0] == "کانال" and parts[1] == "اجباری")
+        )
+    ):
+        sub_parts = parts[2:]
+    else:
+        sub_parts = parts[1:]
+
+    action = sub_parts[0].lower() if sub_parts else "list"
+
+    if action in ("روشن", "on", "enable", "فعال"):
+        settings.force_channel_join = True
+        await message.reply("✅ <b>عضویت اجباری کانال‌ها با موفقیت فعال (روشن) شد!</b>")
+        return
+
+    if action in ("خاموش", "off", "disable", "غیرفعال"):
+        settings.force_channel_join = False
+        await message.reply("🛑 <b>عضویت اجباری کانال‌ها غیرفعال (خاموش) شد!</b>")
+        return
+
+    if action in ("افزودن", "add", "ثبت") and len(sub_parts) >= 2:
+        username = sub_parts[1]
+        name = " ".join(sub_parts[2:]).strip() if len(sub_parts) > 2 else username
+        res = await channels.add_mandatory_channel(name=name, username=username)
+        await message.reply(
+            f"✅ <b>کانال به عضویت اجباری اضافه شد:</b>\n\n"
+            f"📢 نام: <b>{res['name']}</b>\n"
+            f"🆔 یوزرنیم: <code>{res['username']}</code>\n"
+            f"🔗 لینک: {res['url']}\n\n"
+            "⚠️ <i>توجه: ربات باید در کانال ادمین باشد تا عضویت را استعلام کند!</i>"
+        )
+        return
+
+    if action in ("حذف", "del", "remove") and len(sub_parts) >= 2:
+        username = sub_parts[1]
+        ok = await channels.remove_mandatory_channel(username)
+        if ok:
+            await message.reply(f"🗑 کانال <code>{username}</code> از لیست عضویت اجباری حذف شد.")
+        else:
+            await message.reply(f"⚠️ کانال <code>{username}</code> در دیتابیس یافت نشد.")
+        return
+
+    # Default / list view
+    cur_channels = await channels.get_active_channels()
+    status_str = "🟢 روشن (فعال)" if settings.force_channel_join else "🔴 خاموش (غیرفعال)"
+    lines = [
+        "📢 <b>مدیریت کانال‌های عضویت اجباری (Sponsorship & Join Gate)</b>",
+        "━━━━━━━━━━━━━━━━━━━━",
+        f"⚙️ <b>وضعیت سیستم:</b> {status_str}",
+        f"📊 <b>تعداد کانال‌ها:</b> {len(cur_channels)} کانال فعال\n",
+        "📋 <b>لیست کانال‌های ثبت‌شده:</b>",
+    ]
+    for idx, ch in enumerate(cur_channels, 1):
+        lines.append(
+            f"{idx}. <b>{ch.get('name', 'بدون نام')}</b> ({ch.get('username', '')})\n"
+            f"   🔗 {ch.get('url', '')}"
+        )
+
+    lines.append("\n📌 <b>دستورات مدیریت:</b>")
+    lines.append("• <code>چیت کانال روشن</code> — فعال‌سازی قفل عضویت اجباری")
+    lines.append("• <code>چیت کانال خاموش</code> — غیرفعال‌سازی موقت")
+    lines.append("• <code>چیت کانال افزودن @username [نام]</code> — اضافه کردن کانال جدید")
+    lines.append("• <code>چیت کانال حذف @username</code> — حذف کانال")
+    lines.append("\n⚠️ <b>نکته:</b> ربات حتماً باید در کانال‌ها <b>ادمین (Admin)</b> باشد.")
+
+    await message.reply("\n".join(lines))

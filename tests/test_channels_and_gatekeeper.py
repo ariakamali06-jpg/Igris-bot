@@ -264,3 +264,21 @@ async def test_onboarding_channel_verification_flow(monkeypatch):
     call.answer.assert_called_once()
     assert "تأیید شد" in call.answer.call_args[0][0]
 
+
+@pytest.mark.asyncio
+async def test_dynamic_mandatory_channels_crud_and_admin():
+    # 1. Add channel to DB
+    res = await channels.add_mandatory_channel("کانال تست", "@test_chan", "https://t.me/test_chan")
+    assert res["success"] is True
+    assert res["username"] == "@test_chan"
+
+    # 2. Get active channels includes the new channel
+    active = await channels.get_active_channels()
+    assert any(c["username"] == "@test_chan" for c in active)
+
+    # 3. Remove channel
+    ok = await channels.remove_mandatory_channel("@test_chan")
+    assert ok is True
+    active_after = await channels.get_active_channels()
+    assert not any(c["username"] == "@test_chan" for c in active_after)
+
