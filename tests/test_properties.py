@@ -51,7 +51,7 @@ async def _set_last_collect(user_id: int, when: int) -> None:
 
 
 async def test_buy_debits_wallet_and_inserts_row() -> None:
-    player = await _player(1, credits=5_000)
+    player = await _player(1, credits=30_000)
     start, _ = await economy.balances(player.user_id)
 
     res = await properties.buy_asset(
@@ -60,7 +60,7 @@ async def test_buy_debits_wallet_and_inserts_row() -> None:
     assert res["success"] is True
 
     end, _ = await economy.balances(player.user_id)
-    assert end == start - 1_200
+    assert end == start - 18_000
 
     row = await db.fetchone(
         "SELECT kind, level, last_collect FROM properties "
@@ -74,7 +74,7 @@ async def test_buy_debits_wallet_and_inserts_row() -> None:
 
 
 async def test_duplicate_purchase_rejected() -> None:
-    player = await _player(2, credits=5_000)
+    player = await _player(2, credits=30_000)
     await properties.buy_asset(player, properties.KIND_PROPERTY, "کارگاه زیرزمینی")
     start, _ = await economy.balances(player.user_id)
 
@@ -99,7 +99,7 @@ async def test_insufficient_funds_rolls_back() -> None:
 
 
 async def test_pending_income_accrues_and_collects() -> None:
-    player = await _player(4, credits=5_000)
+    player = await _player(4, credits=30_000)
     await properties.buy_asset(player, properties.KIND_PROPERTY, "کارگاه زیرزمینی")
     start, _ = await economy.balances(player.user_id)
 
@@ -107,7 +107,7 @@ async def test_pending_income_accrues_and_collects() -> None:
     now = int(time.time())
     await _set_last_collect(player.user_id, now - 2 * settings.property_income_interval)
 
-    expected = 2 * properties.income_per_tick(20, 1)  # کارگاه: income 20, level 1
+    expected = 2 * properties.income_per_tick(320, 1)  # کارگاه: income 320, level 1
 
     # Nothing collected yet — pending shows up in the listing.
     view = await properties.list_estate(player, properties.KIND_PROPERTY)
@@ -127,7 +127,7 @@ async def test_pending_income_accrues_and_collects() -> None:
 
 
 async def test_pending_income_capped_after_long_absence() -> None:
-    player = await _player(5, credits=5_000)
+    player = await _player(5, credits=30_000)
     await properties.buy_asset(player, properties.KIND_PROPERTY, "کارگاه زیرزمینی")
 
     now = int(time.time())
@@ -137,7 +137,7 @@ async def test_pending_income_capped_after_long_absence() -> None:
     )
 
     res = await properties.collect(player)
-    cap = settings.property_max_pending_ticks * properties.income_per_tick(20, 1)
+    cap = settings.property_max_pending_ticks * properties.income_per_tick(320, 1)
     assert res["earned"] == cap
 
 
@@ -146,11 +146,11 @@ async def test_upgrade_raises_income_and_respects_max_level() -> None:
     await properties.buy_asset(player, properties.KIND_PROPERTY, "کارگاه زیرزمینی")
     start, _ = await economy.balances(player.user_id)
 
-    before = properties.income_per_tick(20, 1)
+    before = properties.income_per_tick(320, 1)
     res = await properties.upgrade_property(player, "کارگاه زیرزمینی")
     assert res["success"] is True
     assert res["level"] == 2
-    after = properties.income_per_tick(20, 2)
+    after = properties.income_per_tick(320, 2)
     assert after > before
 
     cost = properties.upgrade_cost(1)
@@ -172,7 +172,7 @@ async def test_upgrade_requires_ownership() -> None:
 
 
 async def test_worker_purchase_and_shared_collect() -> None:
-    player = await _player(8, credits=10_000)
+    player = await _player(8, credits=30_000)
     res = await properties.buy_asset(player, properties.KIND_WORKER, "نگهبان شب")
     assert res["success"] is True
 
@@ -189,7 +189,7 @@ async def test_worker_purchase_and_shared_collect() -> None:
     )
     collect = await properties.collect(player)
     assert collect["success"] is True
-    assert collect["earned"] == properties.income_per_tick(40, 1)
+    assert collect["earned"] == properties.income_per_tick(380, 1)
 
 
 async def test_find_entry_partial_match_and_unknown() -> None:

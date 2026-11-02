@@ -51,11 +51,29 @@ async def test_work_and_cooldown():
 
 @pytest.mark.asyncio
 async def test_study_and_tuition():
-    p = Player(user_id=1001, display_name="PlayerOne", education_level=0)
-    res = await tiramix.execute_study(p)
-    assert res["success"] is True
-    assert res["new_level"] == 1
-    assert "دیپلم" in res["new_title"]
+    p = Player(user_id=1001, display_name="PlayerOne", education_level=0, education_step=0)
+    # Term 1 of 3
+    res1 = await tiramix.execute_study(p)
+    assert res1["success"] is True
+    assert res1["new_level"] == 0
+    assert res1["new_step"] == 1
+
+    # Term 2 of 3
+    p.education_step = 1
+    p.last_study_time = 0
+    res2 = await tiramix.execute_study(p)
+    assert res2["success"] is True
+    assert res2["new_level"] == 0
+    assert res2["new_step"] == 2
+
+    # Term 3 of 3 (Graduation to Diploma!)
+    p.education_step = 2
+    p.last_study_time = 0
+    res3 = await tiramix.execute_study(p)
+    assert res3["success"] is True
+    assert res3["new_level"] == 1
+    assert res3["new_step"] == 0
+    assert "دیپلم" in res3["new_title"]
 
 
 @pytest.mark.asyncio

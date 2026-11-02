@@ -758,7 +758,10 @@ def _help_markup() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="💼 کار کردن", callback_data="act:work"),
             ],
             [
+                InlineKeyboardButton(text="🍔 رستوران و سفارش غذا", callback_data="food:menu"),
                 InlineKeyboardButton(text="👤 شناسنامه من", callback_data="act:me"),
+            ],
+            [
                 InlineKeyboardButton(text="🚪 بستن", callback_data="btq:close"),
             ],
         ]
@@ -800,6 +803,7 @@ _HELP_CMDS_TEXT = (
     "• <code>بانک</code> / <code>/bank</code> — واریز، برداشت، تسهیلات و کارت به کارت\n"
     "• <code>انتقال [مبلغ]</code> (ریپلای/آیدی) — کارت به کارت بین شهروندان\n"
     "• <code>روزانه</code> / <code>/daily</code> — پاداش وفاداری ۲۴ ساعته\n"
+    "• <code>غذا</code> / <code>/food</code> — رستوران و شارژ فوری انرژی با خوراکی\n"
     "• <code>املاک</code> / <code>/property</code> — خرید و درآمد منفعل املاک\n"
     "• <code>بورس</code> / <code>/exchange</code> — بازار ارز دیجیتال و سهام\n"
     "• <code>قرارداد</code> / <code>/contract</code> — ماموریت‌های روزانه با جایزه\n"

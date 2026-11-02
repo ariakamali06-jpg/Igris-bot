@@ -26,13 +26,13 @@ from services.avatar import (
 
 logger = logging.getLogger(__name__)
 
-# Service Fees (Credits)
-SKIN_CHANGE_FEE = 500   # سولاریوم و تغییر رنگ پوست (پولی)
-HAIR_CHANGE_FEE = 350   # پیرایش، مدل و رنگ مو
-EYES_CHANGE_FEE = 300   # لنز رنگی، فرم چشم و خط چشم
-NOSE_CHANGE_FEE = 250   # پیرسینگ و فرم بینی
-EARS_CHANGE_FEE = 250   # گوشواره و پیرسینگ گوش
-LIPS_CHANGE_FEE = 250   # رژ لب و فرم لب
+# Service Fees (Rexars)
+SKIN_CHANGE_FEE = 2000   # سولاریوم و تغییر رنگ پوست
+HAIR_CHANGE_FEE = 1500   # پیرایش، مدل و اصلاح مو
+EYES_CHANGE_FEE = 1000   # لنز رنگی، فرم چشم و خط چشم
+NOSE_CHANGE_FEE = 800    # پیرسینگ و فرم بینی
+EARS_CHANGE_FEE = 800    # گوشواره و پیرسینگ گوش
+LIPS_CHANGE_FEE = 600    # رژ لب و میکاپ لب (بانوان)
 
 # Skin Tones catalog (Standard slim: -1 to -6, mapped to players.skin_tone)
 SKIN_TONES: list[dict[str, Any]] = [
@@ -124,34 +124,34 @@ HAIR_CATALOG: dict[str, dict[str, Any]] = {
         "var_ids": [118303],
         "fee": HAIR_CHANGE_FEE,
     },
-    # Backward compatible keys
+    # Backward compatible keys for female
     "hair1": {
-        "name": "🎀 کژوال بلند موج‌دار / فید",
-        "gender": "unisex",
+        "name": "🎀 کژوال بلند موج‌دار",
+        "gender": "female",
         "var_ids": [3159, 3146],
         "fee": HAIR_CHANGE_FEE,
     },
     "hair2": {
-        "name": "🌸 لایه‌ای مدرن کره‌ای / ولف‌کات",
-        "gender": "unisex",
+        "name": "🌸 لایه‌ای مدرن کره‌ای",
+        "gender": "female",
         "var_ids": [2509],
         "fee": HAIR_CHANGE_FEE,
     },
     "hair3": {
-        "name": "⚡️ دم‌اسبی پرانرژی / فرق بغل",
-        "gender": "unisex",
+        "name": "⚡️ دم‌اسبی پرانرژی",
+        "gender": "female",
         "var_ids": [321585, 321626],
         "fee": HAIR_CHANGE_FEE,
     },
     "hair4": {
-        "name": "💇‍♀️ باب کوتاه شهری / بلند رها",
-        "gender": "unisex",
+        "name": "💇‍♀️ باب کوتاه زنانه",
+        "gender": "female",
         "var_ids": [118303],
         "fee": HAIR_CHANGE_FEE,
     },
     "hair5": {
-        "name": "✨ شینیون ابریشمی / هاله اکلیل",
-        "gender": "unisex",
+        "name": "✨ شینیون ابریشمی",
+        "gender": "female",
         "var_ids": [103748],
         "fee": HAIR_CHANGE_FEE,
     },

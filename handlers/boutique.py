@@ -258,7 +258,7 @@ async def _build_boutique_catalog(
         "🛍 <b>بوتیک خیابانی مد و لباس ایگریس (تک‌آیتم‌ها)</b>",
         "━━━━━━━━━━━━━━━━━━━━",
         f"👤 <b>خریدار:</b> {player.display_name} ({gender_badge})",
-        f"💰 <b>موجودی شما:</b> <code>{credits_bal:,}</code> سکه",
+        f"💰 <b>موجودی شما:</b> <code>{credits_bal:,}</code> رکسار",
         gender_notice,
         "━━━━━━━━━━━━━━━━━━━━",
         f"📂 <b>دسته‌بندی:</b> {cat_title}",
@@ -280,7 +280,7 @@ async def _build_boutique_catalog(
         icon = digits[idx] if idx < len(digits) else f"[{idx+1}]"
 
         lines.append(f"{icon} <b>{it_name}</b>{owned_badge}")
-        lines.append(f"   🏷 استایل: {it_gen} • 💰 <b>{price:,}</b> سکه ({price_label})\n")
+        lines.append(f"   🏷 استایل: {it_gen} • 💰 <b>{price:,}</b> رکسار ({price_label})\n")
 
         item_row_btns.append(
             InlineKeyboardButton(
@@ -296,7 +296,15 @@ async def _build_boutique_catalog(
     lines.append("💡 <i>برای دیدن مشخصات، پرو روی کاراکتر یا خرید، روی دکمه هر آیتم بزنید.</i>")
 
     # Keyboard layout
-    keyboard: list[list[InlineKeyboardButton]] = []
+    custom_url = await avatar.get_customizer_url(user_id)
+    keyboard: list[list[InlineKeyboardButton]] = [
+        [
+            InlineKeyboardButton(
+                text="📱 ورود به مینی‌اپ کاتالوگ و پرو زنده",
+                web_app=WebAppInfo(url=custom_url),
+            )
+        ]
+    ]
     if item_row_btns:
         keyboard.append(item_row_btns)
 

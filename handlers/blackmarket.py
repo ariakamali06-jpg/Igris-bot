@@ -16,13 +16,13 @@ from services.game import GameError
 logger = logging.getLogger(__name__)
 router = Router(name="blackmarket")
 
-BLACKMARKET_WORDS = {"کاسب"}
+BLACKMARKET_WORDS = {"کاسب", "بازار سیاه", "بازارسیاه", "blackmarket"}
 
 _BUY_ACTIONS = {"خرید", "buy", "purchase"}
 
 _USAGE = (
-    "🕳 <b>کاسب زیر پل</b>\n"
-    "• <code>کاسب</code> — فهرست بساط امروز\n"
+    "🕳 <b>کاسب زیر پل (بازار سیاه)</b>\n"
+    "• <code>کاسب</code> / <code>بازار سیاه</code> — فهرست بساط امروز\n"
     "• <code>کاسب خرید [نام]</code> — خرید از بازار سیاه"
 )
 

@@ -31,29 +31,29 @@ async def test_gender_based_dynamic_pricing():
     # 1. Female player perspective
     p_girl = "دختر"
     price_f_on_f, lbl_f_on_f = avatar.calculate_item_price("female", p_girl)
-    assert price_f_on_f == 300
+    assert price_f_on_f == 1200
     assert "تخفیف دخترانه" in lbl_f_on_f
 
     price_m_on_f, lbl_m_on_f = avatar.calculate_item_price("male", p_girl)
-    assert price_m_on_f == 1200
+    assert price_m_on_f == 4800
     assert "لوکس پسرانه" in lbl_m_on_f
 
     price_u_on_f, lbl_u_on_f = avatar.calculate_item_price("unisex", p_girl)
-    assert price_u_on_f == 500
+    assert price_u_on_f == 2000
     assert "استاندارد" in lbl_u_on_f
 
     # 2. Male player perspective
     p_boy = "پسر"
     price_m_on_m, lbl_m_on_m = avatar.calculate_item_price("male", p_boy)
-    assert price_m_on_m == 300
+    assert price_m_on_m == 1200
     assert "تخفیف پسرانه" in lbl_m_on_m
 
     price_f_on_m, lbl_f_on_m = avatar.calculate_item_price("female", p_boy)
-    assert price_f_on_m == 1200
+    assert price_f_on_m == 4800
     assert "لوکس دخترانه" in lbl_f_on_m
 
     price_u_on_m, lbl_u_on_m = avatar.calculate_item_price("unisex", p_boy)
-    assert price_u_on_m == 500
+    assert price_u_on_m == 2000
 
 
 async def test_single_item_purchase_and_equip_lifecycle():

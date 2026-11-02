@@ -61,7 +61,9 @@ CREATE TABLE IF NOT EXISTS players (
     mouth_style        TEXT    NOT NULL DEFAULT 'mouth1_1',
     hair_style         TEXT    NOT NULL DEFAULT 'hair1',
     clan_id            INTEGER DEFAULT NULL,
-    clan_role          TEXT    DEFAULT NULL
+    clan_role          TEXT    DEFAULT NULL,
+    education_step     INTEGER NOT NULL DEFAULT 0,
+    work_count         INTEGER NOT NULL DEFAULT 0
 );
 
 -- -----------------------------------------------------------------------------

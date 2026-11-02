@@ -30,7 +30,7 @@ from services.game import GameError
 logger = logging.getLogger(__name__)
 router = Router(name="pets")
 
-PET_WORDS = {"حیوان"}
+PET_WORDS = {"حیوان", "پت", "حیوان خانگی", "pet"}
 
 _BUY_ACTIONS = {"خرید", "buy"}
 _UPGRADE_ACTIONS = {"ارتقا", "ارتقاء", "upgrade"}

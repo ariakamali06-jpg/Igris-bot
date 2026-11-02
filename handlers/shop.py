@@ -140,14 +140,51 @@ async def _owned_ids(user_id: int) -> list[str]:
 
 @router.message(CommandOrText(["shop", "store", "market"], SHOP_COMMANDS))
 async def cmd_shop(message: Message) -> None:
-    """
-    هدایت هوشمند دستورات فروشگاه، شاپ و خرید به بوتیک مدرن و دیداری تیرامیکس.
+    """هدایت هوشمند و منوی دسترسی دوگانه به مینی‌اپ فروشگاه و بوتیک متنی تلگرام."""
+    user = message.from_user
+    if user is None:
+        return
+    try:
+        from aiogram.types import WebAppInfo
 
-    به جای نمایش دکمه‌های پرشمار و گیج‌کننده قدیمی، کاربر مستقیماً به سیستم
-    کاروسل تصویری ست‌های لباس و مینی‌اپ کاتالوگ هدایت می‌شود.
-    """
-    from handlers.boutique import handle_boutique_command
-    await handle_boutique_command(message)
+        from services import avatar
+
+        player = await hydrate(user.id, user.full_name, user.username)
+        custom_url = await avatar.get_customizer_url(user.id)
+        text = (
+            "🛍 <b>مرکز خرید و بوتیک مد تیرامیکس (Igris Fashion & Shop)</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            f"👤 شهروند: {player.display_name}\n"
+            "برای ورود به بخش خرید و پرو لباس‌ها، روش مورد نظر خود را انتخاب کنید:\n\n"
+            "۱. 📱 <b>مینی‌اپ دیداری و گرافیکی (پیشنهادی):</b>\n"
+            "مشاهده زنده لباس‌ها روی مانکن، پرو همزمان و لایه‌بندی مستقیم در مینی‌اپ لمسی.\n\n"
+            "۲. 💬 <b>ویترین متنی داخل تلگرام:</b>\n"
+            "مرور سریع کاتالوگ روزانه بر اساس دسته‌بندی (بالاتنه، پایین‌تنه، کفش) بدون مصرف نت."
+        )
+        markup = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="📱 باز کردن مینی‌اپ تصویری فروشگاه",
+                        web_app=WebAppInfo(url=custom_url),
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="👗 مشاهده ویترین متنی تلگرام", callback_data="btq:open"
+                    ),
+                    InlineKeyboardButton(
+                        text="🎒 کمد لباس‌های من", callback_data="wdr:view:0"
+                    ),
+                ],
+                [
+                    InlineKeyboardButton(text="🚪 بستن", callback_data="btq:close"),
+                ],
+            ]
+        )
+        await message.reply(text, reply_markup=markup)
+    except Exception as exc:  # noqa: BLE001
+        await answer_error(exc, message=message)
 
 
 @router.callback_query(F.data.startswith("shop:"))

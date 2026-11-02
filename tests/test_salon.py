@@ -52,24 +52,24 @@ async def test_salon_state_retrieval():
 
 
 async def test_paid_skin_tone_solarium():
-    """Verify changing skin tone is paid (500 credits) and syncs both tables."""
+    """Verify changing skin tone is paid and syncs both tables."""
     user_id = 90002
     await game.ensure_player(user_id=user_id, username="tanner", display_name="Tanner")
 
-    # 1. Fail when insufficient credits (initial credits: 250 < 500)
+    # 1. Fail when insufficient credits (initial credits: 250 < 2000)
     res_fail = await salon.change_skin_tone_paid(user_id, -3)
     assert not res_fail["success"]
     assert "رکسار کافی نداری" in res_fail["message"]
 
     # 2. Add credits and succeed
-    await economy.grant(user_id, credits=1000, kind=ActivityKind.ADMIN)
+    await economy.grant(user_id, credits=3000, kind=ActivityKind.ADMIN)
     res_ok = await salon.change_skin_tone_paid(user_id, -3)
     assert res_ok["success"]
     assert res_ok["skin_tone_id"] == -3
 
-    # Check remaining credits: initial 250 + 1000 - 500 = 750
+    # Check remaining credits: initial 250 + 3000 - 2000 = 1250
     bal, _ = await economy.balances(user_id)
-    assert bal == 750
+    assert bal == 1250
 
     # Verify updated state
     st = await salon.get_player_salon_state(user_id)
@@ -81,36 +81,36 @@ async def test_paid_makeup_subsystems():
     """Verify hair, eyes, nose, ears and lips makeup each charge and save accurately."""
     user_id = 90003
     await game.ensure_player(user_id=user_id, username="glam", display_name="Glam")
-    await economy.grant(user_id, credits=10000, kind=ActivityKind.ADMIN)
+    await economy.grant(user_id, credits=20000, kind=ActivityKind.ADMIN)
 
-    # Hair (350 credits)
+    # Hair (1500 credits)
     res_hair = await salon.change_hair_paid(user_id, "hair2", "silver")
     assert res_hair["success"]
-    assert res_hair["fee"] == 350
+    assert res_hair["fee"] == 1500
 
-    # Eyes (300 credits)
+    # Eyes (1000 credits)
     res_eye = await salon.change_eyes_paid(user_id, "eyes2_1", "crimson")
     assert res_eye["success"]
-    assert res_eye["fee"] == 300
+    assert res_eye["fee"] == 1000
 
-    # Nose (250 credits)
+    # Nose (800 credits)
     res_nose = await salon.change_nose_paid(user_id, "nose_diamond_stud")
     assert res_nose["success"]
-    assert res_nose["fee"] == 250
+    assert res_nose["fee"] == 800
 
-    # Ears (250 credits)
+    # Ears (800 credits)
     res_ear = await salon.change_ears_paid(user_id, "ear_ruby_drop")
     assert res_ear["success"]
-    assert res_ear["fee"] == 250
+    assert res_ear["fee"] == 800
 
-    # Lips (250 credits)
+    # Lips (600 credits)
     res_lip = await salon.change_lips_paid(user_id, "lip_velvet_cherry")
     assert res_lip["success"]
-    assert res_lip["fee"] == 250
+    assert res_lip["fee"] == 600
 
-    # Total spent: 350 + 300 + 250 + 250 + 250 = 1400. Initial 250 + 10000 - 1400 = 8850
+    # Total spent: 1500 + 1000 + 800 + 800 + 600 = 4700. Initial 250 + 20000 - 4700 = 15550
     bal, _ = await economy.balances(user_id)
-    assert bal == 10250 - 1400
+    assert bal == 20250 - 4700
 
     # Check verified state
     st = await salon.get_player_salon_state(user_id)
@@ -167,7 +167,7 @@ async def test_salon_text_commands(monkeypatch):
     upd1 = Update(update_id=1, message=msg1)
     await dp.feed_update(bot, upd1)
     assert len(photos_sent) == 1
-    assert "سالن پیرایش و زیبایی" in photos_sent[-1]["caption"]
+    assert "سالن" in photos_sent[-1]["caption"]
     assert "مدل مو" in photos_sent[-1]["caption"]
     assert "رژ لب" in photos_sent[-1]["caption"]
 

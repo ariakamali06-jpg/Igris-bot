@@ -246,6 +246,8 @@ async def _load_conn(
         hair_style=row["hair_style"] if "hair_style" in keys else "hair1",
         clan_id=row["clan_id"] if "clan_id" in keys else None,
         clan_role=row["clan_role"] if "clan_role" in keys else None,
+        education_step=row["education_step"] if "education_step" in keys else 0,
+        work_count=row["work_count"] if "work_count" in keys else 0,
     )
 
 

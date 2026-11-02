@@ -98,6 +98,8 @@ class Player:
     hair_style: str = "hair1"
     clan_id: int | None = None
     clan_role: str | None = None
+    education_step: int = 0
+    work_count: int = 0
 
     # Aggregates, filled in by services.game.load_player().
     gear: StatBlock = field(default_factory=StatBlock)
@@ -145,6 +147,24 @@ class Player:
             5: "پروفسور و نابغه شهری",
         }
         return titles.get(self.education_level, "نامشخص")
+
+    @property
+    def education_progress_text(self) -> str:
+        degree_target_steps = {0: 3, 1: 4, 2: 4, 3: 5, 4: 5}
+        target_names = {
+            0: "دیپلم متوسطه 📜",
+            1: "کارشناسی (لیسانس) 🎓",
+            2: "کارشناسی ارشد (فوق لیسانس) 🏛",
+            3: "دکترا (PhD) 🔬",
+            4: "پروفسور و نابغه شهری 👑",
+        }
+        if self.education_level >= 5:
+            return "بالاترین درجه علمی شهر (فارغ‌التحصیل ممتاز) 🎓"
+        max_steps = degree_target_steps.get(self.education_level, 3)
+        nxt_deg = target_names.get(self.education_level, "مدرک بعدی")
+        if self.education_step <= 0:
+            return f"آماده ثبت‌نام در ترم جدید برای {nxt_deg}"
+        return f"در حال تحصیل: ترم {self.education_step} از {max_steps} برای {nxt_deg}"
 
     def is_in_jail(self, now: int) -> bool:
         return self.is_jailed_until > now

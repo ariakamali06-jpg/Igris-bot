@@ -8,7 +8,9 @@ Telegram never shows the loading spinner.
 
 from __future__ import annotations
 
+import contextlib
 import logging
+from typing import Any
 
 from aiogram import F, Router
 from aiogram.types import (
@@ -61,25 +63,50 @@ INVENTORY_COMMANDS = {
 }
 
 
-async def _profile_markup(player: Player) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[])
+async def _profile_markup(
+    player_or_tab: Any = "main", active_tab: str = "main"
+) -> InlineKeyboardMarkup:
+    """چیدمان دکمه‌های شیشه‌ای دسته‌بندی شناسنامه شهروندی."""
+    tab = (
+        active_tab
+        if active_tab != "main"
+        else (player_or_tab if isinstance(player_or_tab, str) else "main")
+    )
+    b_main = "• 👤 شناسنامه •" if tab == "main" else "👤 شناسنامه"
+    b_stats = "• 📊 مشخصات •" if tab == "stats" else "📊 مشخصات"
+    b_job = "• 💼 شغل و تحصیل •" if tab == "job" else "💼 شغل و تحصیل"
+    b_assets = "• 🏠 املاک و دارایی •" if tab == "assets" else "🏠 املاک و دارایی"
+    b_social = "• 💍 زندگی و کلن •" if tab == "social" else "💍 زندگی و کلن"
+
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text=b_main, callback_data="prof:tab:main"),
+                InlineKeyboardButton(text=b_stats, callback_data="prof:tab:stats"),
+            ],
+            [
+                InlineKeyboardButton(text=b_job, callback_data="prof:tab:job"),
+                InlineKeyboardButton(text=b_assets, callback_data="prof:tab:assets"),
+            ],
+            [
+                InlineKeyboardButton(text=b_social, callback_data="prof:tab:social"),
+                InlineKeyboardButton(text="🎒 کمد من", callback_data="wdr:view:0"),
+            ],
+            [
+                InlineKeyboardButton(text="🍔 سفارش غذا", callback_data="food:menu"),
+                InlineKeyboardButton(text="🔄 به‌روزرسانی", callback_data=f"prof:tab:{tab}"),
+            ],
+        ]
+    )
 
 
-# تابع avatar_png_to_card_jpeg از ماژول مشترک handlers.common تامین می‌شود.
-
-
-async def _profile_panel(player: Player) -> tuple[str, bytes]:
+async def _profile_panel(player: Player, active_tab: str = "main") -> tuple[str, bytes]:
     """
-    تولید متن شناسنامه شهروندی و دریافت تصویر زنده آواتار کاراکتر.
-
-    این تابع ابتدا تصویر شفاف و باکیفیت ۴ برابری (HD 884x1360) آواتار اوراسکایز بازیکن
-    را بر اساس آخرین لباس‌ها و استایل ذخیره‌شده دریافت کرده و روی پس‌زمینه دارک کامپوزیت می‌کند.
-    در صورت قطعی شبکه یا عدم دسترسی به سرور CDN، به‌صورت خودکار به سیستم رندر محلی (Fallback)
-    برمی‌گردد تا کاربر هیچ‌وقت با خطای خالی بودن تصویر مواجه نشود.
+    تولید متن دسته‌بندی‌شده شناسنامه شهروندی و دریافت تصویر زنده آواتار کاراکتر.
     """
     import time
 
-    from services import tiramix
+    from services import properties, tiramix
 
     # ۱. دریافت تصویر آواتار اوراسکایز با کیفیت ۴ برابری و پس‌زمینه شفاف
     photo: bytes | None = None
@@ -100,7 +127,7 @@ async def _profile_panel(player: Player) -> tuple[str, bytes]:
     if not photo:
         photo = await card_bytes(player)
 
-    credits, shards = await economy.balances(player.user_id)
+    credits, _ = await economy.balances(player.user_id)
     now = int(time.time())
 
     jail_rem = int((player.is_jailed_until - now) // 60)
@@ -126,39 +153,109 @@ async def _profile_panel(player: Player) -> tuple[str, bytes]:
     )
 
     children_str = f"👶 <b>فرزندان:</b> {player.children_count} {pregnancy_status}".strip()
-    lines = [
-        "🍁 <b>شناسنامه شهروندی شهر تیرامیکس</b>",
-        "",
-        f"👤 <b>نام:</b> {esc(player.username or player.display_name)} (لول <b>{player.level}</b>)",
-        f"🎂 <b>سن:</b> {player.age} سال | ⚧ <b>جنسیت:</b> {player.gender}",
-        f"🎓 <b>سطح سواد:</b> {player.education_title}",
-        f"💼 <b>شغل:</b> {player.job}",
-        f"💍 <b>وضعیت تأهل:</b> {marital_status} | {children_str}",
-        (
-            f"💰 <b>کیف پول:</b> <b>{credits:,}</b> سکه | "
-            f"🏦 <b>بانک:</b> <b>{player.bank_balance:,}</b> سکه"
-        ),
-        f"🛡 <b>کلن:</b> {clan_name} | ⚖️ <b>وضعیت قضایی:</b> {jail_status}",
-        (
-            f"⚔️ قدرت: <b>{player.atk}</b> · 🛡 دفاع: <b>{player.defense}</b>"
-            f" · 💎 استایل: <b>{player.drip}</b>"
-        ),
-        f"🐺 <b>حیوان:</b> {pet_status} | 🤫 <b>خیانت مخفی:</b> {player.affair_count}",
-        f"🛡 <b>سپر ضدسرقت:</b> {shield_status}",
-    ]
+
+    job_info = tiramix.JOBS_CATALOG.get(player.job)
+    job_wage = job_info["wage"] if job_info else 120
+
+    p_name = esc(player.username or player.display_name)
+    if active_tab == "stats":
+        lines = [
+            "📊 <b>آمار مبارزه، مشخصات فیزیکی و توانمندی‌ها</b>",
+            "━━━━━━━━━━━━━━━━━━━━",
+            f"👤 <b>شهروند:</b> {p_name} (لول <b>{player.level}</b>)",
+            f"⚔️ <b>قدرت تهاجمی (ATK):</b> <b>{player.atk}</b>",
+            f"🛡 <b>دفاع و استقامت (DEF):</b> <b>{player.defense}</b>",
+            f"💎 <b>امتیاز استایل شهری (DRIP):</b> <b>{player.drip}</b>",
+            f"⚡️ <b>انرژی فعلی:</b> <b>{player.energy}/100</b>",
+            f"🐺 <b>حیوان دست‌آموز (پت):</b> {pet_status}",
+            f"🛡 <b>سپر ضدسرقت:</b> {shield_status}",
+            f"⚖️ <b>وضعیت قضایی:</b> {jail_status}",
+            "━━━━━━━━━━━━━━━━━━━━",
+            "💡 <i>برای دیدن سایر اطلاعات، از دکمه‌های زیر استفاده کنید.</i>",
+        ]
+    elif active_tab == "job":
+        lines = [
+            "💼 <b>وضعیت شغلی و پیشرفت تحصیلی</b>",
+            "━━━━━━━━━━━━━━━━━━━━",
+            f"👤 <b>شهروند:</b> {p_name}",
+            f"💼 <b>عنوان شغل:</b> <b>{player.job}</b>",
+            f"💵 <b>دستمزد پایه:</b> <b>{job_wage:,}</b> رکسار در ساعت",
+            f"🔨 <b>شیفت‌های کاری انجام‌شده:</b> <b>{player.work_count}</b> بار",
+            f"🎓 <b>مدرک تحصیلی:</b> <b>{player.education_title}</b>",
+            f"📚 <b>وضعیت دوره:</b> {player.education_progress_text}",
+            "━━━━━━━━━━━━━━━━━━━━",
+            "💡 <i>جهت کار: <code>کار</code> · ارتقای مدرک: <code>تحصیل</code></i>",
+        ]
+    elif active_tab == "assets":
+        owned_props = await properties.owned_rows(player.user_id, properties.KIND_PROPERTY)
+        owned_workers = await properties.owned_rows(player.user_id, properties.KIND_WORKER)
+        accrued = 0
+        for r in owned_props:
+            entry = properties._entry_or_default(properties.KIND_PROPERTY, r["name"])
+            accrued += properties.pending_income(
+                entry["income"], r["level"], r["last_collect"], now
+            )
+        for r in owned_workers:
+            entry = properties._entry_or_default(properties.KIND_WORKER, r["name"])
+            accrued += properties.pending_income(
+                entry["income"], r["level"], r["last_collect"], now
+            )
+
+        prop_names = "، ".join(r["name"] for r in owned_props) if owned_props else "ندارد"
+        worker_names = "، ".join(r["name"] for r in owned_workers) if owned_workers else "ندارد"
+
+        lines = [
+            "🏠 <b>املاک، دارایی‌ها و نیروهای تحت امر</b>",
+            "━━━━━━━━━━━━━━━━━━━━",
+            f"🏢 <b>املاک شخصی ({len(owned_props)} ملک):</b> {prop_names}",
+            f"👥 <b>نیروها و نوچه‌ها ({len(owned_workers)} نفر):</b> {worker_names}",
+            f"💰 <b>درآمد منفعل انباشته:</b> <b>{accrued:,}</b> رکسار",
+            f"🏦 <b>سپرده گاوصندوق بانک:</b> <b>{player.bank_balance:,}</b> رکسار",
+            f"💵 <b>پول نقد کیف پول:</b> <b>{credits:,}</b> رکسار",
+            "━━━━━━━━━━━━━━━━━━━━",
+            "💡 <i>جهت خرید: دستور <code>املاک</code> یا <code>نوچه</code></i>",
+        ]
+    elif active_tab == "social":
+        lines = [
+            "💍 <b>زندگی اجتماعی، خانواده و سندیکا</b>",
+            "━━━━━━━━━━━━━━━━━━━━",
+            f"👤 <b>شهروند:</b> {p_name}",
+            f"💍 <b>وضعیت تأهل:</b> {marital_status}",
+            f"{children_str}",
+            f"🛡 <b>کلن و سندیکا:</b> {clan_name}",
+            f"🤫 <b>سوابق خیانت مخفی:</b> {player.affair_count} بار",
+            f"⚖️ <b>وضعیت آزادی:</b> {jail_status}",
+            "━━━━━━━━━━━━━━━━━━━━",
+            "💡 <i>دستورات ازدواج، طلاق و کلن در راهنما در دسترس است.</i>",
+        ]
+    else:  # main summary tab
+        lines = [
+            "🍁 <b>شناسنامه شهروندی شهر تیرامیکس</b>",
+            "━━━━━━━━━━━━━━━━━━━━",
+            f"👤 <b>نام:</b> {p_name} (لول <b>{player.level}</b>)",
+            f"🎂 <b>سن:</b> {player.age} سال | ⚧ <b>جنسیت:</b> {player.gender}",
+            f"⚡️ <b>سطح انرژی:</b> <b>{player.energy}/100</b>",
+            f"💼 <b>شغل:</b> {player.job} | 🎓 <b>مدرک:</b> {player.education_title}",
+            (
+                f"💰 <b>کیف پول:</b> <b>{credits:,}</b> رکسار | "
+                f"🏦 <b>بانک:</b> <b>{player.bank_balance:,}</b> رکسار"
+            ),
+            "━━━━━━━━━━━━━━━━━━━━",
+            "👇 <i>برای مشاهده جزئیات بیشتر، بخش مورد نظر را لمس کنید:</i>",
+        ]
 
     return "\n".join(lines), photo
 
 
 async def _send_profile(target: Message, player: Player) -> None:
-    """ارسال کارت شناسنامه شهروندی به صورت عکس شفاف با کپشن کامل به کاربر."""
-    caption, photo = await _profile_panel(player)
-    # ترجیح کاربر: عدم نمایش دکمه‌های شلوغ و غیرضروری زیر عکس کارت
+    """ارسال کارت شناسنامه شهروندی به صورت عکس شفاف با کپشن دسته‌بندی‌شده و دکمه‌های شیشه‌ای."""
+    caption, photo = await _profile_panel(player, active_tab="main")
+    markup = await _profile_markup(active_tab="main")
     try:
         await target.reply_photo(
             photo=BufferedInputFile(photo, filename="character.png"),
             caption=caption,
-            reply_markup=None,
+            reply_markup=markup,
         )
     except Exception:
         if getattr(target, "bot", None):
@@ -166,7 +263,7 @@ async def _send_profile(target: Message, player: Player) -> None:
                 chat_id=target.chat.id,
                 photo=BufferedInputFile(photo, filename="character.png"),
                 caption=caption,
-                reply_markup=None,
+                reply_markup=markup,
             )
 
 
@@ -174,12 +271,13 @@ async def _show_profile(message: Message | None, player: Player) -> None:
     """Render the card into an existing panel (photo-aware, never dead)."""
     if message is None:
         return
-    caption, photo = await _profile_panel(player)
+    caption, photo = await _profile_panel(player, active_tab="main")
+    markup = await _profile_markup(active_tab="main")
     await render_panel(
         message,
         text=caption,
         photo=photo,
-        reply_markup=None,
+        reply_markup=markup,
         force_media=True,
     )
 
@@ -237,6 +335,35 @@ async def cb_profile(call: CallbackQuery) -> None:
     try:
         player = await hydrate(user.id, user.full_name, user.username)
         await _show_profile(message, player)
+    except Exception as exc:  # noqa: BLE001
+        await answer_error(exc, callback=call)
+
+
+@router.callback_query(F.data.startswith("prof:tab:"))
+async def cb_profile_tab(call: CallbackQuery) -> None:
+    """تغییر دسته‌بندی و تب اطلاعات شناسنامه شهروندی با دکمه‌های شیشه‌ای."""
+    user = call.from_user
+    if user is None:
+        return
+    parts = (call.data or "").split(":")
+    tab = parts[2] if len(parts) > 2 else "main"
+
+    try:
+        player = await hydrate(user.id, user.full_name, user.username)
+        caption, _ = await _profile_panel(player, active_tab=tab)
+        markup = await _profile_markup(active_tab=tab)
+
+        msg = editable_message(call)
+        if msg:
+            if msg.photo or msg.caption:
+                with contextlib.suppress(Exception):
+                    await msg.edit_caption(
+                        caption=caption, reply_markup=markup, parse_mode="HTML"
+                    )
+            else:
+                with contextlib.suppress(Exception):
+                    await msg.edit_text(text=caption, reply_markup=markup, parse_mode="HTML")
+        await call.answer()
     except Exception as exc:  # noqa: BLE001
         await answer_error(exc, callback=call)
 

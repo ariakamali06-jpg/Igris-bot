@@ -20,8 +20,8 @@ from services import economy, game
 # Constants & Rules
 # ---------------------------------------------------------------------------
 
-WORK_COOLDOWN = 7200        # 2 hours
-STUDY_COOLDOWN = 14400      # 4 hours
+WORK_COOLDOWN = 30         # 30 seconds (energy is primary throttle)
+STUDY_COOLDOWN = 60        # 1 minute per term
 STEAL_COOLDOWN = 21600      # 6 hours
 DUEL_COOLDOWN = 10800       # 3 hours
 INTIMACY_COOLDOWN = 28800   # 8 hours
@@ -30,37 +30,62 @@ JAIL_DURATION = 1800        # 30 minutes
 PREGNANCY_DURATION = 86400  # 24 hours
 
 TUITION_FEES = {
-    0: 500,       # 0 -> 1: Diploma
-    1: 2500,      # 1 -> 2: Bachelor
-    2: 8000,      # 2 -> 3: Master
-    3: 25000,     # 3 -> 4: PhD
-    4: 70000,     # 4 -> 5: Professor/Genius
+    0: 500,       # 0 -> 1: Diploma (per term)
+    1: 1500,      # 1 -> 2: Bachelor (per term)
+    2: 4000,      # 2 -> 3: Master (per term)
+    3: 10000,     # 3 -> 4: PhD (per term)
+    4: 25000,     # 4 -> 5: Professor/Genius (per term)
 }
+
+DEGREE_TARGET_STEPS = {0: 3, 1: 4, 2: 4, 3: 5, 4: 5}
+DEGREE_TITLES = {
+    1: "دیپلم متوسطه 📜",
+    2: "کارشناسی (لیسانس) 🎓",
+    3: "کارشناسی ارشد (فوق لیسانس) 🏛",
+    4: "دکترا (PhD) 🔬",
+    5: "پروفسور و نابغه شهری 👑",
+}
+
+
+def level_for_work_count(work_count: int) -> int:
+    """محاسبه لول کاراکتر بر اساس مجموع شیفت‌های کاری."""
+    if work_count >= 300:
+        return 6
+    if work_count >= 150:
+        return 5
+    if work_count >= 80:
+        return 4
+    if work_count >= 35:
+        return 3
+    if work_count >= 10:
+        return 2
+    return 1
+
 
 JOBS_CATALOG: dict[str, dict[str, Any]] = {
-    "کارگر ساختمانی": {"level": 0, "wage": 80, "desc": "کار در پروژه‌های عمرانی تیرامیکس"},
-    "نظافتچی شهری": {"level": 0, "wage": 70, "desc": "پاکسازی پارک‌ها و پیاده‌روها"},
-    "پیک موتوری": {"level": 0, "wage": 90, "desc": "تحویل سریع بسته‌های پستی"},
-    "صندوقدار هایپرمارکت": {"level": 1, "wage": 160, "desc": "مدیریت صندوق فروشگاه مرکزی"},
-    "راننده تاکسی": {"level": 1, "wage": 190, "desc": "جابجایی مسافران در خطوط شهری"},
-    "نگهبان برج": {"level": 1, "wage": 170, "desc": "حفاظت از برج‌های مدرن تیرامیکس"},
-    "حسابدار شرکت": {"level": 2, "wage": 380, "desc": "تنظیم دفاتر مالی و ترازنامه"},
-    "برنامه‌نویس جونیور": {"level": 2, "wage": 450, "desc": "توسعه نرم‌افزار و رفع باگ"},
-    "معلم دبیرستان": {"level": 2, "wage": 350, "desc": "تدریس دروس پایه به نوجوانان"},
-    "مدیر پروژه": {"level": 3, "wage": 800, "desc": "هدایت تیم‌های چندمنظوره"},
-    "تحلیلگر ارشد بورس": {"level": 3, "wage": 950, "desc": "پیش‌بینی روندهای بازار مالی"},
-    "معمار ارشد": {"level": 3, "wage": 880, "desc": "طراحی آسمان‌خراش‌های تیرامیکس"},
-    "جراح کلینیک": {"level": 4, "wage": 1700, "desc": "انجام عمل‌های پیچیده و نجات جان بیماران"},
-    "استاد دانشگاه": {"level": 4, "wage": 1600, "desc": "تحقیقات علمی و آموزش دانشگاهی"},
-    "وکیل ارشد دادگستری": {"level": 4, "wage": 1900, "desc": "وکالت در پرونده‌های کلان و دعاوی"},
-    "رئیس بانک مرکزی": {"level": 5, "wage": 3800, "desc": "تنظیم سیاست‌های پولی شهر"},
-    "سرمایه‌گذار کلان": {"level": 5, "wage": 5500, "desc": "مدیریت صندوق‌های خطرپذیر و سهام"},
+    "کارگر ساختمانی": {"level": 0, "wage": 120, "desc": "کار در پروژه‌های عمرانی تیرامیکس"},
+    "نظافتچی شهری": {"level": 0, "wage": 100, "desc": "پاکسازی پارک‌ها و پیاده‌روها"},
+    "پیک موتوری": {"level": 0, "wage": 140, "desc": "تحویل سریع بسته‌های پستی"},
+    "صندوقدار هایپرمارکت": {"level": 1, "wage": 260, "desc": "مدیریت صندوق فروشگاه مرکزی"},
+    "راننده تاکسی": {"level": 1, "wage": 300, "desc": "جابجایی مسافران در خطوط شهری"},
+    "نگهبان برج": {"level": 1, "wage": 280, "desc": "حفاظت از برج‌های مدرن تیرامیکس"},
+    "حسابدار شرکت": {"level": 2, "wage": 600, "desc": "تنظیم دفاتر مالی و ترازنامه"},
+    "برنامه‌نویس جونیور": {"level": 2, "wage": 750, "desc": "توسعه نرم‌افزار و رفع باگ"},
+    "معلم دبیرستان": {"level": 2, "wage": 550, "desc": "تدریس دروس پایه به نوجوانان"},
+    "مدیر پروژه": {"level": 3, "wage": 1300, "desc": "هدایت تیم‌های چندمنظوره"},
+    "تحلیلگر ارشد بورس": {"level": 3, "wage": 1500, "desc": "پیش‌بینی روندهای بازار مالی"},
+    "معمار ارشد": {"level": 3, "wage": 1400, "desc": "طراحی آسمان‌خراش‌های تیرامیکس"},
+    "جراح کلینیک": {"level": 4, "wage": 2600, "desc": "انجام عمل‌های پیچیده و نجات جان بیماران"},
+    "استاد دانشگاه": {"level": 4, "wage": 2400, "desc": "تحقیقات علمی و آموزش دانشگاهی"},
+    "وکیل ارشد دادگستری": {"level": 4, "wage": 2900, "desc": "وکالت در پرونده‌های کلان و دعاوی"},
+    "رئیس بانک مرکزی": {"level": 5, "wage": 5500, "desc": "تنظیم سیاست‌های پولی شهر"},
+    "سرمایه‌گذار کلان": {"level": 5, "wage": 8000, "desc": "مدیریت صندوق‌های خطرپذیر و سهام"},
 }
 
-HAIRSTYLE_FEES = 350
-SURGERY_FEES = 850
-CLINIC_HEAL_FEE = 400
-DELIVERY_FEE = 1200
+HAIRSTYLE_FEES = 1500
+SURGERY_FEES = 2500
+CLINIC_HEAL_FEE = 600
+DELIVERY_FEE = 2000
 
 
 # ---------------------------------------------------------------------------
@@ -75,32 +100,83 @@ async def execute_work(player: Player) -> dict[str, Any]:
         return {
             "success": False,
             "error": "jail",
-            "message": f"🚨 <b>وَخَه بینُم خلافکار!</b> تو در زندان تیرامیکس حبس شدی و تا {remaining} دقیقه دیگه حق کار کردن نداری!",
+            "message": (
+                f"🚨 <b>وَخَه بینُم خلافکار!</b> تو در زندان تیرامیکس حبس شدی "
+                f"و تا {remaining} دقیقه دیگه حق کار کردن نداری!"
+            ),
         }
 
     elapsed = now - player.last_work_time
     if elapsed < WORK_COOLDOWN:
-        rem_min = int((WORK_COOLDOWN - elapsed) // 60)
-        rem_sec = int((WORK_COOLDOWN - elapsed) % 60)
+        rem_sec = int(WORK_COOLDOWN - elapsed)
         return {
             "success": False,
             "error": "cooldown",
-            "message": f"⏳ شما به تازگی شیفت کاری خود را به پایان رسانده‌اید.\nاستراحت لازم: <b>{rem_min} دقیقه و {rem_sec} ثانیه</b> دیگر.",
+            "message": (
+                f"⏳ کمی نفس بکش! شیفت کاری بعدی پس از <b>{rem_sec} ثانیه</b> دیگر آغاز می‌شود."
+            ),
         }
 
+    # بررسی و کسر ۲۵ واحد انرژی
+    async with db.read() as conn:
+        cursor = await conn.execute(
+            "SELECT energy, energy_updated_at FROM players WHERE user_id = ?",
+            (player.user_id,),
+        )
+        row = await cursor.fetchone()
+        await cursor.close()
+
+    from services.game import _regen_window
+
+    cur_energy, _ = (
+        _regen_window(row["energy"], row["energy_updated_at"], now)
+        if row
+        else (player.energy, now)
+    )
+
+    work_energy_cost = 25
+    if cur_energy < work_energy_cost:
+        return {
+            "success": False,
+            "error": "energy",
+            "message": (
+                f"⚡️ <b>انرژی شما برای کار تمام شده است!</b> ({cur_energy}/100)\n"
+                "کمرت خم شده و خسته‌ای! برای تجدید قوا و ادامه کار، با دستور <code>غذا</code> "
+                "یا دکمه زیر به رستوران سر بزنید و غذا یا نوشیدنی میل کنید!"
+            ),
+        }
+
+    new_energy = cur_energy - work_energy_cost
+    new_work_count = player.work_count + 1
+    new_level = max(player.level, level_for_work_count(new_work_count))
+    level_up = new_level > player.level
+
     job_info = JOBS_CATALOG.get(player.job)
-    base_wage = job_info["wage"] if job_info else 50
-    # Bonus based on education and level
-    bonus = int(player.level * 8 + player.education_level * 25)
+    base_wage = job_info["wage"] if job_info else 120
+    bonus = int(new_level * 15 + player.education_level * 40)
     total_earned = base_wage + bonus
 
     async with db.write() as conn:
         await conn.execute(
-            "UPDATE players SET last_work_time = ? WHERE user_id = ?",
-            (now, player.user_id),
+            """
+            UPDATE players
+            SET last_work_time = ?,
+                work_count = ?,
+                level = ?,
+                energy = ?,
+                energy_updated_at = ?
+            WHERE user_id = ?
+            """,
+            (now, new_work_count, new_level, new_energy, now, player.user_id),
         )
 
     await economy.grant(player.user_id, credits=total_earned, kind=ActivityKind.WORK)
+
+    lvl_up_line = (
+        f"\n\n🌟 <b>تبریک! لول شما با تلاش مداوم به {new_level} ارتقا یافت!</b> 🎉"
+        if level_up
+        else ""
+    )
 
     return {
         "success": True,
@@ -108,23 +184,34 @@ async def execute_work(player: Player) -> dict[str, Any]:
         "base_wage": base_wage,
         "bonus": bonus,
         "total_earned": total_earned,
-        "message": f"💼 <b>پایان شیفت کاری موفقیت‌آمیز!</b>\n\n"
-                   f"📌 شغل: <b>{player.job}</b>\n"
-                   f"💵 دستمزد پایه: <b>{base_wage:,}</b> سکه\n"
-                   f"✨ پاداش تخصص و لول: <b>{bonus:,}</b> سکه\n"
-                   f"💰 مجموع واریزی به کیف پول: <b>+{total_earned:,}</b> رکسار تیرامیکس",
+        "new_energy": new_energy,
+        "work_count": new_work_count,
+        "new_level": new_level,
+        "level_up": level_up,
+        "message": (
+            f"💼 <b>پایان شیفت کاری موفقیت‌آمیز!</b>\n\n"
+            f"📌 شغل: <b>{player.job}</b>\n"
+            f"💵 دستمزد پایه: <b>{base_wage:,}</b> رکسار\n"
+            f"✨ پاداش سابقه و لول: <b>{bonus:,}</b> رکسار\n"
+            f"💰 دریافتی به کیف پول: <b>+{total_earned:,}</b> رکسار\n"
+            f"⚡️ انرژی باقی‌مانده: <b>{new_energy}/100</b> (شیفت کاری شماره {new_work_count})"
+            f"{lvl_up_line}"
+        ),
     }
 
 
 async def execute_study(player: Player) -> dict[str, Any]:
-    """Enroll in school / university to increase education level."""
+    """Enroll in school / university to increase education level with step progression."""
     now = int(time.time())
     if player.is_in_jail(now):
         remaining = int((player.is_jailed_until - now) // 60)
         return {
             "success": False,
             "error": "jail",
-            "message": f"🚨 <b>وَخَه بینُم خلافکار!</b> پشت میله‌های زندان دانشگاه وجود ندارد! تا {remaining} دقیقه دیگر آزاد می‌شوی.",
+            "message": (
+                f"🚨 <b>وَخَه بینُم خلافکار!</b> پشت میله‌های زندان دانشگاه وجود ندارد! "
+                f"تا {remaining} دقیقه دیگر آزاد می‌شوی."
+            ),
         }
 
     current_edu = player.education_level
@@ -135,7 +222,9 @@ async def execute_study(player: Player) -> dict[str, Any]:
             "message": "🎓 شما به بالاترین درجه علمی تیرامیکس (پروفسور و نابغه شهری) دست یافته‌اید!",
         }
 
-    tuition = TUITION_FEES[current_edu]
+    max_steps = DEGREE_TARGET_STEPS.get(current_edu, 3)
+    target_deg_name = DEGREE_TITLES.get(current_edu + 1, "مدرک عالی")
+    tuition = TUITION_FEES.get(current_edu, 1000)
     wallet_creds, _ = await economy.balances(player.user_id)
     if wallet_creds < tuition:
         return {
@@ -143,47 +232,71 @@ async def execute_study(player: Player) -> dict[str, Any]:
             "error": "funds",
             "message": (
                 f"❌ موجودی کیف پول شما کافی نیست!\n"
-                f"شهریه ترم جدید: <b>{tuition:,}</b> رکسار (موجودی شما: <b>{wallet_creds:,}</b> رکسار)"
+                f"شهریه ترم جدید: <b>{tuition:,}</b> رکسار "
+                f"(موجودی شما: <b>{wallet_creds:,}</b> رکسار)"
             ),
         }
 
     elapsed = now - player.last_study_time
     if elapsed < STUDY_COOLDOWN:
-        rem_min = int((STUDY_COOLDOWN - elapsed) // 60)
+        rem_sec = int(STUDY_COOLDOWN - elapsed)
         return {
             "success": False,
             "error": "cooldown",
-            "message": f"⏳ مغز شما نیاز به استراحت دارد! کلاس بعدی پس از <b>{rem_min} دقیقه</b> دیگر آغاز می‌شود.",
+            "message": (
+                f"⏳ مغز شما نیاز به استراحت دارد! "
+                f"کلاس بعدی پس از <b>{rem_sec} ثانیه</b> دیگر آغاز می‌شود."
+            ),
         }
 
     await economy.spend(player.user_id, credits=tuition, kind=ActivityKind.STUDY)
 
-    new_edu = current_edu + 1
-    async with db.write() as conn:
-        await conn.execute(
-            "UPDATE players SET education_level = ?, last_study_time = ? WHERE user_id = ?",
-            (new_edu, now, player.user_id),
+    cur_step = player.education_step + 1
+    if cur_step >= max_steps:
+        # Graduation!
+        new_edu = current_edu + 1
+        new_step = 0
+        new_title = DEGREE_TITLES.get(new_edu, "مدرک جدید")
+        msg = (
+            f"🎉 <b>فارغ‌التحصیلی و ارتقای سطح سواد!</b>\n\n"
+            f"شهریه پرداختی این ترم: <b>{tuition:,}</b> رکسار\n"
+            f"📜 شما تمام <b>{max_steps} ترم تحصیلی</b> را گذراندید و "
+            f"مدرک رسمی <b>{new_title}</b> دریافت کردید!\n\n"
+            "اکنون با دستور <code>شغل</code> به فرصت‌های با درآمد بالاتر دسترسی دارید!"
+        )
+    else:
+        new_edu = current_edu
+        new_step = cur_step
+        new_title = player.education_title
+        rem_t = max_steps - new_step
+        msg = (
+            f"📚 <b>قبولی در آزمون پایان ترم!</b>\n\n"
+            f"شهریه پرداختی این ترم: <b>{tuition:,}</b> رکسار\n"
+            f"🎓 شما <b>ترم {new_step} از {max_steps}</b> دوره {target_deg_name} را گذراندید.\n"
+            f"برای دریافت مدرک، <b>{rem_t} ترم دیگر</b> باقی مانده است."
         )
 
-    titles = {
-        1: "دیپلم متوسطه 📜",
-        2: "کارشناسی (لیسانس) 🎓",
-        3: "کارشناسی ارشد (فوق لیسانس) 🏛",
-        4: "دکترا (PhD) 🔬",
-        5: "پروفسور و نابغه شهری 👑",
-    }
-    new_title = titles.get(new_edu, "نامشخص")
+    async with db.write() as conn:
+        await conn.execute(
+            """
+            UPDATE players
+            SET education_level = ?,
+                education_step = ?,
+                last_study_time = ?
+            WHERE user_id = ?
+            """,
+            (new_edu, new_step, now, player.user_id),
+        )
 
     return {
         "success": True,
         "old_level": current_edu,
         "new_level": new_edu,
+        "new_step": new_step,
+        "max_steps": max_steps,
         "new_title": new_title,
         "tuition": tuition,
-        "message": f"🎉 <b>فارغ‌التحصیلی و ارتقای سطح سواد!</b>\n\n"
-                   f"شهریه پرداختی: <b>{tuition:,}</b> رکسار\n"
-                   f"مدرک جدید شما: <b>{new_title}</b>\n\n"
-                   f"اکنون می‌توانید با دستور <code>شغل</code> به فرصت‌های شغلی با درآمد بالاتر دسترسی پیدا کنید!",
+        "message": msg,
     }
 
 

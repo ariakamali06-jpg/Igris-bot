@@ -16,17 +16,17 @@ from services.game import GameError
 logger = logging.getLogger(__name__)
 router = Router(name="cup")
 
-CUP_WORDS = {"جام"}
+CUP_WORDS = {"جام", "کاپ", "تورنمنت", "مسابقه", "cup"}
 
-_JOIN_ACTIONS = {"ثبت", "join", "شرکت"}
-_RESULTS_ACTIONS = {"نتایج", "نتیجه", "results", "result"}
+_JOIN_ACTIONS = {"ثبت", "join", "شرکت", "ورود"}
+_RESULTS_ACTIONS = {"نتایج", "نتیجه", "results", "result", "پایان"}
 
 _USAGE = (
-    "🏆 <b>جام فوتبال خیابان</b>\n"
-    "• <code>جام</code> — وضعیت دور جاری (بعد از پایان، تسویه خودکار)\n"
-    "• <code>جام ثبت</code> — شرکت با ورودیه "
+    "🏆 <b>جام و کاپ فوتبال خیابانی تیرامیکس</b>\n"
+    "• <code>کاپ</code> / <code>جام</code> — مشاهده وضعیت دور جاری\n"
+    "• <code>کاپ ثبت</code> / <code>جام ثبت</code> — شرکت با ورودیه "
     f"{settings.cup_entry_fee:,} رکسار\n"
-    "• <code>جام نتایج</code> — تسویه و نتایج دور پایان‌یافته"
+    "• <code>کاپ نتایج</code> — تسویه و نتایج دور پایان‌یافته"
 )
 
 

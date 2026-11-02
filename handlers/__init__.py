@@ -20,6 +20,7 @@ from handlers import (
     cup,
     duels,
     economy,
+    food,
     lottery,
     market,
     onboarding,
@@ -70,6 +71,7 @@ def register_routers(dp: Dispatcher) -> None:
     dp.include_router(underworld.extort_router)
     dp.include_router(pets.router)
     dp.include_router(cup.router)
+    dp.include_router(food.router)
 
     # Gatekeeper: intercept all commands/callbacks when user has not yet created a character
     dp.message.outer_middleware(OnboardingGateMiddleware())

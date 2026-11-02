@@ -48,30 +48,63 @@ def _nav_btn(text: str, cb: str) -> InlineKeyboardButton:
 async def _build_salon_menu(user_id: int) -> tuple[str, str, InlineKeyboardMarkup]:
     """Generate main salon overview with current style and navigation buttons."""
     st = await salon.get_player_salon_state(user_id)
-    caption = (
-        f"✂️ <b>سالن پیرایش و زیبایی تیرامیکس</b> 💄\n"
-        f"💰 موجودی شما: <b>{st['credits']:,}</b> سکه\n\n"
-        f"👤 <b>وضعیت چهره و استایل شما:</b>\n"
-        f"• ✂️ مدل مو: <b>{st['hair_label']}</b>\n"
-        f"• 👄 رژ لب: <b>{st['lip_label']}</b>\n\n"
-        f"👇 بخش مورد نظرت رو برای تغییر انتخاب کن:"
-    )
+    p_gen = (st.get("gender") or "").lower()
+    is_male = any(k in p_gen for k in ("مرد", "پسر", "boy", "male"))
 
-    buttons = [
-        [
-            _nav_btn(f"✂️ سالن پیرایش و مدل مو ({salon.HAIR_CHANGE_FEE:,} رکسار)", "sal:mu:hair"),
-        ],
-        [
-            _nav_btn(f"👄 سالن رژ و میکاپ لب ({salon.LIPS_CHANGE_FEE:,} رکسار)", "sal:mu:lips"),
-        ],
-        [
-            _nav_btn("👕 کمد لباس من", "wdr:view:0"),
-            _nav_btn("🛍 بوتیک لباس", "btq:open"),
-        ],
-        [
-            _nav_btn("❌ خروج از آرایشگاه", "sal:close"),
-        ],
-    ]
+    credits_bal = st["credits"]
+    if is_male:
+        caption = (
+            "✂️ <b>پیرایشگاه آقایان شهر تیرامیکس</b> 💈\n"
+            f"💰 موجودی شما: <b>{credits_bal:,}</b> رکسار\n\n"
+            "👤 <b>وضعیت استایل شما:</b>\n"
+            f"• ✂️ مدل مو: <b>{st['hair_label']}</b>\n\n"
+            "👇 بخش مورد نظرت رو برای تغییر انتخاب کن:"
+        )
+        buttons = [
+            [
+                _nav_btn(
+                    f"✂️ پیرایش و استایل موی آقایان ({salon.HAIR_CHANGE_FEE:,} رکسار)",
+                    "sal:mu:hair",
+                ),
+            ],
+            [
+                _nav_btn("👕 کمد لباس من", "wdr:view:0"),
+                _nav_btn("🛍 بوتیک لباس", "btq:open"),
+            ],
+            [
+                _nav_btn("❌ خروج از پیرایشگاه", "sal:close"),
+            ],
+        ]
+    else:
+        caption = (
+            "✂️ <b>سالن زیبایی و آرایش بانوان تیرامیکس</b> 💄\n"
+            f"💰 موجودی شما: <b>{credits_bal:,}</b> رکسار\n\n"
+            "👤 <b>وضعیت چهره و استایل شما:</b>\n"
+            f"• ✂️ مدل مو: <b>{st['hair_label']}</b>\n"
+            f"• 👄 رژ لب: <b>{st['lip_label']}</b>\n\n"
+            "👇 بخش مورد نظرت رو برای تغییر انتخاب کن:"
+        )
+        buttons = [
+            [
+                _nav_btn(
+                    f"✂️ سالن پیرایش و مدل مو ({salon.HAIR_CHANGE_FEE:,} رکسار)",
+                    "sal:mu:hair",
+                ),
+            ],
+            [
+                _nav_btn(
+                    f"👄 سالن رژ و میکاپ لب ({salon.LIPS_CHANGE_FEE:,} رکسار)",
+                    "sal:mu:lips",
+                ),
+            ],
+            [
+                _nav_btn("👕 کمد لباس من", "wdr:view:0"),
+                _nav_btn("🛍 بوتیک لباس", "btq:open"),
+            ],
+            [
+                _nav_btn("❌ خروج از آرایشگاه", "sal:close"),
+            ],
+        ]
     return st["render_url"], caption, InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
@@ -137,19 +170,19 @@ async def _build_hair_menu(user_id: int) -> tuple[str, str, InlineKeyboardMarkup
 
     caption = (
         f"✂️ <b>پیرایش و سالن تخصصی مو تیرامیکس</b>\n"
-        f"💵 هزینه هر مدل مو: <b>{salon.HAIR_CHANGE_FEE:,}</b> سکه\n"
-        f"💰 موجودی شما: <b>{st['credits']:,}</b> سکه\n"
+        f"💵 هزینه هر مدل مو: <b>{salon.HAIR_CHANGE_FEE:,}</b> رکسار\n"
+        f"💰 موجودی شما: <b>{st['credits']:,}</b> رکسار\n"
         f"👤 مدل فعلی: <b>{st['hair_label']}</b>\n\n"
         f"مدل موی مورد نظرت رو لمس کن تا در لحظه بر سر کاراکتر بنشیند:"
     )
 
     buttons: list[list[InlineKeyboardButton]] = []
-    # Filter catalog by player gender
+    # Filter catalog strictly by player gender
     target_gender = "male" if is_male else "female"
     curated_hairs = [
         (k, defn["name"])
         for k, defn in salon.HAIR_CATALOG.items()
-        if defn["gender"] in (target_gender, "unisex")
+        if defn["gender"] == target_gender
     ]
 
     for k, name in curated_hairs:
@@ -375,6 +408,13 @@ async def cb_salon_actions(call: CallbackQuery) -> None:
             if sub == "hair":
                 render_url, caption, markup = await _build_hair_menu(user.id)
             elif sub == "lips":
+                st = await salon.get_player_salon_state(user.id)
+                p_gen = (st.get("gender") or "").lower()
+                if any(k in p_gen for k in ("مرد", "پسر", "boy", "male")):
+                    await call.answer(
+                        "⚠️ سالن رژ و میکاپ لب مختص بانوان است.", show_alert=True
+                    )
+                    return
                 render_url, caption, markup = await _build_lips_menu(user.id)
             else:
                 render_url, caption, markup = await _build_salon_menu(user.id)
@@ -396,6 +436,13 @@ async def cb_salon_actions(call: CallbackQuery) -> None:
             return
 
         if action == "set_lip":
+            st = await salon.get_player_salon_state(user.id)
+            p_gen = (st.get("gender") or "").lower()
+            if any(k in p_gen for k in ("مرد", "پسر", "boy", "male")):
+                await call.answer(
+                    "⚠️ سالن رژ و میکاپ لب مختص بانوان است.", show_alert=True
+                )
+                return
             lip_key = parts[2]
             res = await salon.change_lips_paid(user.id, lip_key)
             if not res["success"]:

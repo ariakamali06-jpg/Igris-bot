@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 router = Router(name="security")
 
 SHIELD_WORDS = {"سپر"}
-ROBBERY_WORDS = {"دستبرد"}
+ROBBERY_WORDS = {"دستبرد", "سرقت بانک", "دزدی بانک", "دستبرد بانک", "bankraid", "robbery"}
 
 _BUY_ACTIONS = {"خرید", "buy", "فعال"}
 

@@ -164,9 +164,9 @@ async def list_estate(player: Player, kind: str) -> dict[str, Any]:
             lines.append(
                 f"• <b>{row['name']}</b> — لول <b>{row['level']}</b> · "
                 f"درآمد هر تیک {income_per_tick(entry['income'], row['level']):,} · "
-                f"انباشته: <b>{pending:,}</b> سکه"
+                f"انباشته: <b>{pending:,}</b> رکسار"
             )
-        lines.append(f"💰 جمع انباشته: <b>{total_pending:,}</b> سکه")
+        lines.append(f"💰 جمع انباشته: <b>{total_pending:,}</b> رکسار")
         lines.append("برای برداشت: <code>املاک وصول</code>")
     else:
         lines.append(f"هنوز {label}‌ای نداری! برای شروع: <code>املاک خرید [نام]</code>")

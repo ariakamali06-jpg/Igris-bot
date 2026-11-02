@@ -1070,7 +1070,7 @@ async def _show_starter_set_step(call: CallbackQuery, state: FSMContext) -> None
     buttons = [
         [
             InlineKeyboardButton(
-                text="🎨 تنظیم دستی و شخصی‌سازی در مینی‌اپ",
+                text="📱 طراحی و شخصی‌سازی در مینی‌اپ",
                 web_app=WebAppInfo(url=custom_url),
             )
         ]
@@ -1087,7 +1087,7 @@ async def _show_starter_set_step(call: CallbackQuery, state: FSMContext) -> None
         "━━━━━━━━━━━━━━━━━━━━\n"
         "یکی از ست‌های آماده زیر رو انتخاب کن تا شناسنامه کاراکترت صادر بشه:\n"
         "<i>(این ست به صورت ۱۰۰٪ رایگان به کمد لباس و تن کاراکترت اضافه می‌شه)</i>\n\n"
-        "💡 <i>برای تنظیم دستی چهره و لباس‌ها، دکمه بالا (مینی‌اپ) را لمس کنید!</i>"
+        "💡 <i>همچنین می‌توانید با دکمه بالا وارد مینی‌اپ شوید و استایل دلخواهتان را طراحی کنید!</i>"
     )
     msg = editable_message(call)
     if msg:

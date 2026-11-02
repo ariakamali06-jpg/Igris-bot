@@ -984,17 +984,21 @@ def calculate_item_price(item_gender: str, player_gender: str) -> tuple[int, str
     it_gen = (item_gender or "unisex").lower()
 
     if it_gen == "unisex":
-        return 500, "⚧ استاندارد (۵۰۰ رکسار)"
+        return 2000, "⚧ استاندارد (۲,۰۰۰ رکسار)"
     elif it_gen == p_gen:
         label = (
-            "✨ ۴۰٪ تخفیف دخترانه (۳۰۰ رکسار)"
+            "✨ ۴۰٪ تخفیف دخترانه (۱,۲۰۰ رکسار)"
             if p_gen == "female"
-            else "✨ ۴۰٪ تخفیف پسرانه (۳۰۰ رکسار)"
+            else "✨ ۴۰٪ تخفیف پسرانه (۱,۲۰۰ رکسار)"
         )
-        return 300, label
-    else:
-        label = "🔥 لوکس پسرانه (۱,۲۰۰ رکسار)" if it_gen == "male" else "🔥 لوکس دخترانه (۱,۲۰۰ رکسار)"
         return 1200, label
+    else:
+        label = (
+            "🔥 لوکس پسرانه (۴,۸۰۰ رکسار)"
+            if it_gen == "male"
+            else "🔥 لوکس دخترانه (۴,۸۰۰ رکسار)"
+        )
+        return 4800, label
 
 
 async def owns_item(user_id: int, var_id: int) -> bool:

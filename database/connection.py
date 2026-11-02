@@ -132,6 +132,8 @@ class Database:
             ("hair_style", "TEXT", "'hair1'"),
             ("clan_id", "INTEGER", "NULL"),
             ("clan_role", "TEXT", "NULL"),
+            ("education_step", "INTEGER", "0"),
+            ("work_count", "INTEGER", "0"),
         ]:
             if col not in cols:
                 await self._write_conn.execute(
