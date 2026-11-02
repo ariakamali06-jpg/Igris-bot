@@ -203,23 +203,22 @@ async def test_boutique_and_wardrobe_text_commands(monkeypatch):
     user = User(id=777, is_bot=False, first_name="Aria", username="aria")
     now = datetime.now(UTC)
 
-    # 1. Trigger "بوتیک"
+    # 1. Trigger "بوتیک" - now opens shop mini-app gateway
     msg_btq = Message(message_id=1, date=now, chat=chat, from_user=user, text="بوتیک")
     await dp.feed_update(bot=bot, update=Update(update_id=1, message=msg_btq))
-    assert len(photos_sent) == 1
-    assert "بوتیک" in photos_sent[-1]["caption"]
-    assert isinstance(photos_sent[-1]["photo"], (BufferedInputFile, str))
+    assert len(replies) == 1
+    assert "بوتیک مد" in replies[-1] or "فروشگاه" in replies[-1]
 
     # 2. Trigger "کمد"
     msg_wdr = Message(message_id=2, date=now, chat=chat, from_user=user, text="کمد")
     await dp.feed_update(bot=bot, update=Update(update_id=2, message=msg_wdr))
-    assert len(photos_sent) == 2
+    assert len(photos_sent) == 1  # Only wardrobe sends photo now
     assert "کمد لباس" in photos_sent[-1]["caption"]
 
     # 3. Trigger "آواتار"
     msg_av = Message(message_id=3, date=now, chat=chat, from_user=user, text="آواتار")
     await dp.feed_update(bot=bot, update=Update(update_id=3, message=msg_av))
-    assert len(photos_sent) == 3
+    assert len(photos_sent) == 2  # Avatar also sends photo
     assert "پوست" in photos_sent[-1]["caption"]
 
     # Cleanup
