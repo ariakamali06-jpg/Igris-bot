@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import shutil
 import sqlite3
 import tempfile
 from datetime import UTC, datetime
@@ -33,9 +34,10 @@ async def create_backup_file() -> Path | None:
         logger.warning("Database path %s does not exist; cannot backup", db_path)
         return None
 
-    # ۱. فلاش کردن تغییرات لاگ تراکنش‌ها (WAL) به دیسک اصلی
+    # ۱. فلاش کردن تغییرات لاگ تراکنش‌ها (WAL) به دیسک اصلی (خارج از ترنزکشن)
     try:
-        async with db.write() as conn:
+        async with db._write_lock:
+            conn = db._require_write()
             await conn.execute("PRAGMA wal_checkpoint(PASSIVE)")
     except Exception as exc:
         logger.warning("WAL checkpoint before backup encountered an issue: %s", exc)
@@ -117,3 +119,70 @@ async def _hourly_backup_loop(bot: Bot) -> None:
 def start_backup_scheduler(bot: Bot) -> asyncio.Task:
     """اجرای جاب پس‌زمینه برای بکاپ‌گیری ساعتی."""
     return asyncio.create_task(_hourly_backup_loop(bot), name="hourly-db-backup")
+
+
+async def restore_database_from_file(backup_path: Path) -> tuple[bool, str]:
+    """بازیابی ایمن و اتمیک دیتابیس از فایل پشتیبان با بررسی صحت فایل SQLite."""
+    # ۱. بررسی وجود و یکپارچگی فایل SQLite در ترد مجزا
+    def _verify_integrity() -> tuple[bool, str, int]:
+        if not backup_path.exists() or backup_path.stat().st_size == 0:
+            return False, "فایل ارسالی خالی است یا یافت نشد.", 0
+        try:
+            conn = sqlite3.connect(backup_path)
+            cur = conn.cursor()
+            cur.execute("PRAGMA integrity_check")
+            row = cur.fetchone()
+            if not row or row[0].lower() != "ok":
+                conn.close()
+                return False, f"فایل پشتیبان خراب است ({row[0] if row else 'ناشناخته'})", 0
+
+            # بررسی وجود جدول‌های حیاتی
+            cur.execute("SELECT name FROM sqlite_master WHERE type='table'")
+            tables = {r[0] for r in cur.fetchall()}
+            if "players" not in tables:
+                conn.close()
+                return False, "فایل مربوط به بازی تیرامیکس نیست (جدول بازیکنان وجود ندارد).", 0
+
+            cur.execute("SELECT COUNT(*) FROM players")
+            p_count = int(cur.fetchone()[0])
+            conn.close()
+            return True, "ok", p_count
+        except Exception as exc:
+            return False, f"خطا در خواندن فایل دیتابیس: {exc}", 0
+
+    ok, reason, player_count = await asyncio.to_thread(_verify_integrity)
+    if not ok:
+        return False, reason
+
+    target_path = getattr(db, "_path", settings.db_path)
+
+    # ۲. فلاش نهایی لاگ‌ها و بستن اتصالات فعال دیتابیس
+    with contextlib.suppress(Exception):
+        async with db._write_lock:
+            conn = db._require_write()
+            await conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+
+    await db.close()
+    await asyncio.sleep(0.05)
+
+    # ۳. جایگزینی فایل اصلی و پاک‌سازی WAL/SHM قبلی
+    def _swap_files() -> None:
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(backup_path, target_path)
+        wal_path = Path(f"{target_path}-wal")
+        shm_path = Path(f"{target_path}-shm")
+        if wal_path.exists():
+            wal_path.unlink()
+        if shm_path.exists():
+            shm_path.unlink()
+
+    await asyncio.to_thread(_swap_files)
+
+    # ۴. اتصال مجدد دیتابیس و اجرای چک‌پوینت و مایگریشن
+    await db.connect()
+
+    # ۵. پاک‌سازی کش آواتار
+    from services import avatar
+    avatar.invalidate_avatar_cache()
+
+    return True, f"دیتابیس با موفقیت بازیابی شد! اطلاعات {player_count} بازیکن لود شد."

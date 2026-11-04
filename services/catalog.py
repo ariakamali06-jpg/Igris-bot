@@ -23,10 +23,12 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from config import settings
+
 logger = logging.getLogger(__name__)
 
-DB_PATH = Path(__file__).resolve().parent.parent / "data" / "game.db"
-BOT_CATALOG_PATH = Path(__file__).resolve().parent.parent / "data" / "bot_catalog.db"
+DB_PATH = settings.db_path
+BOT_CATALOG_PATH = settings.catalog_db_path
 EXPLORER_HTML_PATH = Path(__file__).resolve().parent.parent / "tools" / "catalog_explorer.html"
 
 BOUTIQUE_CATEGORY_MAP: dict[str, str] = {
