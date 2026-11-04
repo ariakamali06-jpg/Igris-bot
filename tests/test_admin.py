@@ -181,3 +181,42 @@ async def test_backup_service_and_command():
     call_kwargs = mock_bot.send_document.call_args[1]
     assert call_kwargs["chat_id"] == 5765828495
     assert "پشتیبان خودکار دیتابیس" in call_kwargs["caption"]
+
+
+@pytest.mark.asyncio
+async def test_creator_global_airdrop():
+    owner = User(id=5765828495, is_bot=False, first_name="Rex Lapis", username="rexlapis")
+
+    await game.ensure_player(1111, "Player 1", "p1")
+    await game.ensure_player(2222, "Player 2", "p2")
+
+    # Give initial funds
+    async with db.write() as conn:
+        await conn.execute("INSERT OR REPLACE INTO wallets (user_id, credits) VALUES (1111, 1000)")
+        await conn.execute("INSERT OR REPLACE INTO wallets (user_id, credits) VALUES (2222, 2000)")
+
+    # 1. Execute via cheat command "چیت پاداش 50k"
+    msg_airdrop = MutableMessage(text="چیت پاداش 50k", user=owner)
+    await admin.cmd_cheat(msg_airdrop)
+
+    assert len(msg_airdrop.replies) == 1
+    reply_txt = msg_airdrop.replies[0]["text"]
+    assert "پاداش همگانی" in reply_txt
+    assert "50,000" in reply_txt
+
+    bal1, _ = await economy.balances(1111)
+    bal2, _ = await economy.balances(2222)
+    assert bal1 == 51000
+    assert bal2 == 52000
+
+    # 2. Execute via direct command "/airdrop 10000"
+    msg_direct = MutableMessage(text="/airdrop 10000", user=owner)
+    await admin.cmd_direct_airdrop(msg_direct)
+
+    assert len(msg_direct.replies) == 1
+    assert "10,000" in msg_direct.replies[0]["text"]
+
+    bal1_after, _ = await economy.balances(1111)
+    bal2_after, _ = await economy.balances(2222)
+    assert bal1_after == 61000
+    assert bal2_after == 62000

@@ -78,7 +78,9 @@ class Settings(BaseSettings):
     catalog_db_path: Path = Field(
         default=ROOT_DIR / "data" / "bot_catalog.db", alias="CATALOG_DB_PATH"
     )
-    backup_chat_id: int | str | None = Field(default=None, alias="BACKUP_CHAT_ID")
+    backup_chat_id: int | str | None = Field(
+        default=-1004329206054, alias="BACKUP_CHAT_ID"
+    )
     assets_dir: Path = Field(
         default=ROOT_DIR / "assets" / "layers", alias="ASSETS_DIR"
     )

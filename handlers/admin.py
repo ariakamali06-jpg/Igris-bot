@@ -19,6 +19,7 @@ from aiogram.types import Message
 
 from database.connection import db
 from handlers.common import CommandOrText, esc, hydrate, is_admin_or_owner
+from models.enums import ActivityKind
 from services import economy, game
 
 logger = logging.getLogger(__name__)
@@ -45,6 +46,7 @@ _HELP_TEXT = (
     "🔹 <code>چیت ریست</code> — بازنشانی ساخت کاراکتر برای تست مجدد از اول\n"
     "🔹 <code>چیت وضعیت</code> — مشاهده تمام آمارهای دیتابیسی بازیکن\n"
     "🔹 <code>چیت کانال</code> — مدیریت کانال‌های عضویت اجباری\n"
+    "🔹 <code>چیت پاداش [مبلغ]</code> (یا <code>/airdrop</code>) — واریز رکسار به همه\n"
     "🔹 <code>چیت بکاپ</code> (یا <code>/backup</code>) — دریافت فایل دیتابیس در پیوی\n"
     "🔹 <code>چیت بازیابی</code> (یا <code>/restore</code>) — بازیابی دیتابیس از فایل .db\n"
 )
@@ -57,6 +59,86 @@ _EDU_LABELS = {
     4: "۴ (کارشناسی ارشد / فوق‌لیسانس)",
     5: "۵ (دکتری / پروفسور)",
 }
+
+
+def _parse_amount(raw: str) -> int | None:
+    """پارس مبالغ با پشتیبانی از کاما، پسوندهای k و m و علائم فارسی."""
+    cleaned = (
+        raw.replace(",", "")
+        .replace("_", "")
+        .replace("،", "")
+        .strip()
+        .lower()
+    )
+    mult = 1
+    if cleaned.endswith("k"):
+        mult = 1_000
+        cleaned = cleaned[:-1]
+    elif cleaned.endswith("m"):
+        mult = 1_000_000
+        cleaned = cleaned[:-1]
+    elif cleaned.endswith("b"):
+        mult = 1_000_000_000
+        cleaned = cleaned[:-1]
+
+    if cleaned.isdigit():
+        val = int(cleaned) * mult
+        return val if val > 0 else None
+    return None
+
+
+async def _execute_global_airdrop(message: Message, amount: int) -> None:
+    """واریز اتمیک رکسار همگانی به کیف پول تمام بازیکنان بازی توسط سازنده."""
+    now_ts = int(time.time())
+    async with db.write() as conn:
+        # ۱. اطمینان از وجود سطر کیف پول برای تمام بازیکنان
+        await conn.execute(
+            """
+            INSERT INTO wallets (user_id, credits)
+            SELECT user_id, 0 FROM players
+            WHERE user_id NOT IN (SELECT user_id FROM wallets)
+            """
+        )
+        # ۲. افزایش اعتبار تمام بازیکنان
+        cur = await conn.execute(
+            """
+            UPDATE wallets SET credits = credits + ?
+            WHERE user_id IN (SELECT user_id FROM players)
+            """,
+            (amount,),
+        )
+        player_count = cur.rowcount
+        if player_count == 0:
+            await message.reply("⚠️ هیچ بازیکنی در دیتابیس بازی یافت نشد.")
+            return
+
+        # ۳. ثبت در دفتر کل حسابداری (ledger)
+        await conn.execute(
+            """
+            INSERT INTO ledger (
+                user_id, kind, credits_delta, shards_delta,
+                balance_after_credits, balance_after_shards,
+                ref, created_at
+            )
+            SELECT
+                w.user_id, ?, ?, 0,
+                w.credits, w.soul_shards,
+                'admin:global_airdrop', ?
+            FROM wallets w
+            WHERE w.user_id IN (SELECT user_id FROM players)
+            """,
+            (ActivityKind.ADMIN.value, amount, now_ts),
+        )
+
+    total_injected = amount * player_count
+    await message.reply(
+        f"👑 <b>پاداش همگانی سازنده با موفقیت واریز شد!</b> 🎉\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"💰 مبلغ به ازای هر بازیکن: <b>{amount:,}</b> رکسار\n"
+        f"👥 تعداد دریافت‌کنندگان: <b>{player_count:,}</b> نفر\n"
+        f"💎 مجموع رکسار تزریق‌شده: <b>{total_injected:,}</b> رکسار\n\n"
+        f"✨ <i>مبلغ به طور مستقیم به کیف پول تمام شهروندان تیرامیکس اضافه شد.</i>"
+    )
 
 
 async def _resolve_target(
@@ -125,6 +207,24 @@ async def cmd_cheat(message: Message, command: CommandObject | None = None) -> N
     if parts and parts[0].lower().startswith(cmd_prefixes):
         parts = parts[1:]
 
+    # بررسی دستورات سراسری و همگانی (پاداش همگانی به تمام بازیکنان)
+    if parts:
+        first_act = parts[0].lower()
+        if first_act in (
+            "پاداش", "عیدی", "ایردراپ", "airdrop", "giveall",
+            "پاداش_همگانی", "پاداش‌همگانی", "جایزه_همگانی", "همگانی"
+        ):
+            val_str = parts[1] if len(parts) > 1 else ""
+            parsed = _parse_amount(val_str)
+            if not parsed:
+                await message.reply(
+                    "⚠️ لطفاً مبلغ پاداش همگانی را مشخص کنید.\n"
+                    "مثال: <code>چیت پاداش 50000</code> یا <code>چیت عیدی 100k</code>"
+                )
+                return
+            await _execute_global_airdrop(message, parsed)
+            return
+
     target_id, tokens = await _resolve_target(message, parts, user.id)
     target_player = await game.load_player(target_id)
     if target_player is None:
@@ -183,12 +283,13 @@ async def cmd_cheat(message: Message, command: CommandObject | None = None) -> N
 
         # ۳. تنظیم موجودی نقد کیف پول (Credits)
         if action in ("پول", "سکه", "نقد", "money", "cash", "credits", "coin", "coins"):
-            if not val_str.isdigit():
+            parsed = _parse_amount(val_str)
+            if not parsed and val_str != "0":
                 await message.reply(
                     "⚠️ لطفاً مبلغ رکسار را مشخص کنید. مثال: <code>چیت پول 100000</code>"
                 )
                 return
-            new_val = int(val_str)
+            new_val = parsed if parsed is not None else 0
             async with db.write() as conn:
                 await conn.execute(
                     "UPDATE wallets SET credits = ? WHERE user_id = ?",
@@ -197,18 +298,19 @@ async def cmd_cheat(message: Message, command: CommandObject | None = None) -> N
             await message.reply(
                 f"⚡ <b>کد تقلب با موفقیت اجرا شد!</b> 🛠\n\n"
                 f"👤 <b>هدف:</b> {esc(target_player.display_tag)} (<code>{target_id}</code>)\n"
-                f"💰 <b>تغییر:</b> موجودی کیف پول به <b>{new_val:,}</b> سکه تنظیم شد."
+                f"💰 <b>تغییر:</b> موجودی کیف پول به <b>{new_val:,}</b> رکسار تنظیم شد."
             )
             return
 
         # ۴. تنظیم سپرده بانکی (Bank Balance)
         if action in ("بانک", "سپرده", "bank"):
-            if not val_str.isdigit():
+            parsed = _parse_amount(val_str)
+            if not parsed and val_str != "0":
                 await message.reply(
                     "⚠️ لطفاً مبلغ بانک را مشخص کنید. مثال: <code>چیت بانک 500000</code>"
                 )
                 return
-            new_val = int(val_str)
+            new_val = parsed if parsed is not None else 0
             async with db.write() as conn:
                 await conn.execute(
                     "UPDATE players SET bank_balance = ? WHERE user_id = ?",
@@ -217,7 +319,7 @@ async def cmd_cheat(message: Message, command: CommandObject | None = None) -> N
             await message.reply(
                 f"⚡ <b>کد تقلب با موفقیت اجرا شد!</b> 🛠\n\n"
                 f"👤 <b>هدف:</b> {esc(target_player.display_tag)} (<code>{target_id}</code>)\n"
-                f"🏛 <b>تغییر:</b> موجودی حساب بانکی به <b>{new_val:,}</b> سکه تنظیم شد."
+                f"🏛 <b>تغییر:</b> موجودی حساب بانکی به <b>{new_val:,}</b> رکسار تنظیم شد."
             )
             return
 
@@ -626,3 +728,37 @@ async def cmd_admin_channels(message: Message) -> None:
     lines.append("\n⚠️ <b>نکته:</b> ربات حتماً باید در کانال‌ها <b>ادمین (Admin)</b> باشد.")
 
     await message.reply("\n".join(lines))
+
+
+@router.message(Command("airdrop", "giveall"))
+@router.message(
+    F.text.startswith("ایردراپ")
+    | F.text.startswith("پاداش همگانی")
+    | F.text.startswith("عیدی همگانی")
+)
+async def cmd_direct_airdrop(message: Message, command: CommandObject | None = None) -> None:
+    """دستور مستقیم و سریع واریز رکسار همگانی به تمام بازیکنان توسط سازنده/ادمین."""
+    user = message.from_user
+    if user is None or not is_admin_or_owner(user.id):
+        return
+
+    raw_args = ""
+    if command and command.args:
+        raw_args = command.args.strip()
+    elif message.text:
+        parts = message.text.strip().split()
+        if len(parts) >= 2:
+            raw_args = parts[1]
+
+    parsed = _parse_amount(raw_args) if raw_args else None
+    if not parsed:
+        await message.reply(
+            "🎁 <b>دستور پاداش همگانی سازنده (Global Airdrop):</b>\n\n"
+            "برای واریز رکسار به حساب تمام بازیکنان بازی، مبلغ را مشخص کنید:\n"
+            "• <code>/airdrop 50000</code>\n"
+            "• <code>ایردراپ 100k</code>\n"
+            "• <code>پاداش همگانی 250000</code>"
+        )
+        return
+
+    await _execute_global_airdrop(message, parsed)
