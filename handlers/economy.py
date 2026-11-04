@@ -759,11 +759,20 @@ async def cmd_stats(message: Message) -> None:
     try:
         player = await hydrate(user.id, user.full_name, user.username)
         stats = player.stats
+        if player.energy > 100:
+            energy_text = f"<b>{player.energy}⚡️</b> (سوپرشارژ 🔥)"
+            regen_tag = "(تکمیل)"
+        elif player.energy == 100:
+            energy_text = "<b>100/100</b>"
+            regen_tag = "(تکمیل)"
+        else:
+            energy_text = f"<b>{player.energy}/100</b>"
+            regen_tag = "(+۱⚡ هر ۷.۲ دقیقه)"
+
         await message.reply(
             f"📊 <b>مشخصات {esc(player.display_tag)}</b> — لول <b>{player.level}</b>\n"
             f"⚡ {energy_bar(player.energy, stats.max_energy)} "
-            f"{player.energy}/{stats.max_energy} "
-            f"(+{settings.energy_regen_per_minute:g}/دقیقه)\n"
+            f"{energy_text} {regen_tag}\n"
             f"⚔️ قدرت: <b>{player.atk}</b> · 🛡 دفاع: <b>{player.defense}</b> · "
             f"💎 استایل: <b>{player.drip}</b>\n"
             f"✨ پیشرفت: <b>{player.exp}/{exp_to_next(player.level)}</b> EXP تا لول بعدی"

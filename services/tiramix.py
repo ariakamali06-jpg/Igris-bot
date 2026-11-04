@@ -210,7 +210,13 @@ async def execute_work(player: Player) -> dict[str, Any]:
             f"💵 دستمزد پایه: <b>{base_wage:,}</b> رکسار\n"
             f"✨ پاداش سابقه و لول: <b>{bonus:,}</b> رکسار\n"
             f"💰 دریافتی به کیف پول: <b>+{total_earned:,}</b> رکسار\n"
-            f"⚡️ انرژی باقی‌مانده: <b>{new_energy}/100</b> (شیفت کاری شماره {new_work_count})"
+            f"⚡️ انرژی باقی‌مانده: "
+            f"<b>{new_energy}/100</b> "
+            f"(شیفت کاری شماره {new_work_count})"
+            if new_energy <= 100
+            else f"⚡️ انرژی باقی‌مانده: "
+            f"<b>{new_energy}⚡️</b> "
+            f"(شیفت کاری شماره {new_work_count})"
             f"{lvl_up_line}"
         ),
     }

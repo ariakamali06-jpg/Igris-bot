@@ -96,9 +96,11 @@ class Settings(BaseSettings):
 
     # --- Progression --------------------------------------------------------
     base_energy: int = 100
-    max_energy: int = 200
-    energy_regen_per_minute: float = 2.0
-    energy_regen_interval_seconds: float = 60.0
+    max_energy: int = 100
+    energy_regen_per_minute: float = 100.0 / 720.0  # 1 energy per 7.2 minutes
+    # 432s = 7.2m (100 energy in 12h, 2 full 0->100 refills in 24h)
+    energy_regen_interval_seconds: float = 432.0
+    energy_regen_amount: int = 1
 
     base_atk: int = 10
     base_def: int = 8

@@ -243,5 +243,6 @@ async def message_error(exc: Exception, message: Message) -> None:
 
 def energy_bar(energy: int, max_energy: int, width: int = 10) -> str:
     """رسم گرافیکی نوار انرژی کاراکتر با کاراکترهای بصری."""
-    filled = round(width * energy / max(1, max_energy))
+    ratio = min(1.0, max(0.0, energy / max(1, max_energy)))
+    filled = round(width * ratio)
     return "▮" * filled + "▯" * (width - filled)

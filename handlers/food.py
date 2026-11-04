@@ -74,12 +74,17 @@ def _food_markup(items: list[dict[str, Any]] | None = None) -> InlineKeyboardMar
 async def _render_food_view(player: Player) -> tuple[str, InlineKeyboardMarkup]:
     credits_bal, _ = await economy.balances(player.user_id)
     bar = energy_bar(player.energy, 100)
+    energy_label = (
+        f"<b>{player.energy}/100</b> {bar}"
+        if player.energy <= 100
+        else f"<b>{player.energy}⚡️ (سوپرشارژ 🔥)</b> {bar}"
+    )
     daily_items = food.get_daily_food_menu()
     lines = [
         "🍽 <b>رستوران و کافه مرکزی شهر تیرامیکس</b>",
         "━━━━━━━━━━━━━━━━━━━━",
         f"👤 <b>شهروند:</b> {player.display_name}",
-        f"⚡️ <b>سطح انرژی شما:</b> <b>{player.energy}/100</b> {bar}",
+        f"⚡️ <b>سطح انرژی شما:</b> {energy_label}",
         f"💰 <b>موجودی کیف پول:</b> <b>{credits_bal:,}</b> رکسار",
         "",
         "📋 <b>منوی سرآشپز امروز تیرامیکس (گردش روزانه):</b>",

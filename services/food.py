@@ -75,24 +75,24 @@ async def buy_and_eat_food(player: Player, food_id_or_name: str) -> dict[str, An
         return {"success": False, "message": "❌ اطلاعات کاراکتر یافت نشد."}
 
     current_energy, _ = _regen_window(row["energy"], row["energy_updated_at"], now_ts)
-    if current_energy >= 100:
-        return {
-            "success": False,
-            "message": "⚡️ <b>شکمت کاملاً سیره و پر از انرژی هستی!</b> (انرژی: ۱۰۰/۱۰۰)\n"
-                       "نیازی به غذا خوردن نداری؛ برو سراغ شیفت کاری با دستور <code>کار</code>!",
-        }
 
     # کسر هزینه غذا
     await economy.spend(player.user_id, credits=price, kind=ActivityKind.SHOP_BUY)
 
     gained = food["energy"]
-    new_energy = min(100, current_energy + gained)
+    new_energy = current_energy + gained
 
     async with db.write() as conn:
         await conn.execute(
             "UPDATE players SET energy = ?, energy_updated_at = ? WHERE user_id = ?",
             (new_energy, now_ts, player.user_id),
         )
+
+    energy_status = (
+        f"<b>{new_energy}/100</b>"
+        if new_energy <= 100
+        else f"<b>{new_energy}⚡️</b> (سوپرشارژ 🔥 فراتر از سقف عادی ۱۰۰)"
+    )
 
     return {
         "success": True,
@@ -102,7 +102,7 @@ async def buy_and_eat_food(player: Player, food_id_or_name: str) -> dict[str, An
         "message": (
             f"😋 <b>نوش جان!</b> شما <b>{food['name']}</b> میل کردید.\n\n"
             f"⚡️ انرژی دریافتی: <b>+{gained}</b>\n"
-            f"🔋 سطح انرژی فعلی: <b>{new_energy}/100</b>\n"
+            f"🔋 سطح انرژی فعلی: {energy_status}\n"
             f"💵 مبلغ پرداختی: <b>{price:,}</b> رکسار\n\n"
             "اکنون با انرژی کامل می‌توانید با دستور <code>کار</code> به شیفت بعدی بروید!"
         ),

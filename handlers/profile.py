@@ -159,6 +159,11 @@ async def _profile_panel(player: Player, active_tab: str = "main") -> tuple[str,
 
     p_name = esc(player.username or player.display_name)
     if active_tab == "stats":
+        energy_str = (
+            f"<b>{player.energy}/100</b>"
+            if player.energy <= 100
+            else f"<b>{player.energy}⚡️ (سوپرشارژ 🔥)</b>"
+        )
         lines = [
             "📊 <b>آمار مبارزه، مشخصات فیزیکی و توانمندی‌ها</b>",
             "━━━━━━━━━━━━━━━━━━━━",
@@ -166,7 +171,7 @@ async def _profile_panel(player: Player, active_tab: str = "main") -> tuple[str,
             f"⚔️ <b>قدرت تهاجمی (ATK):</b> <b>{player.atk}</b>",
             f"🛡 <b>دفاع و استقامت (DEF):</b> <b>{player.defense}</b>",
             f"💎 <b>امتیاز استایل شهری (DRIP):</b> <b>{player.drip}</b>",
-            f"⚡️ <b>انرژی فعلی:</b> <b>{player.energy}/100</b>",
+            f"⚡️ <b>انرژی فعلی:</b> {energy_str}",
             f"🐺 <b>حیوان دست‌آموز (پت):</b> {pet_status}",
             f"🛡 <b>سپر ضدسرقت:</b> {shield_status}",
             f"⚖️ <b>وضعیت قضایی:</b> {jail_status}",
@@ -229,12 +234,17 @@ async def _profile_panel(player: Player, active_tab: str = "main") -> tuple[str,
             "💡 <i>دستورات ازدواج، طلاق و کلن در راهنما در دسترس است.</i>",
         ]
     else:  # main summary tab
+        main_energy_str = (
+            f"<b>{player.energy}/100</b>"
+            if player.energy <= 100
+            else f"<b>{player.energy}⚡️ (سوپرشارژ 🔥)</b>"
+        )
         lines = [
             "🍁 <b>شناسنامه شهروندی شهر تیرامیکس</b>",
             "━━━━━━━━━━━━━━━━━━━━",
             f"👤 <b>نام:</b> {p_name} (لول <b>{player.level}</b>)",
             f"🎂 <b>سن:</b> {player.age} سال | ⚧ <b>جنسیت:</b> {player.gender}",
-            f"⚡️ <b>سطح انرژی:</b> <b>{player.energy}/100</b>",
+            f"⚡️ <b>سطح انرژی:</b> {main_energy_str}",
             f"💼 <b>شغل:</b> {player.job} | 🎓 <b>مدرک:</b> {player.education_title}",
             (
                 f"💰 <b>کیف پول:</b> <b>{credits:,}</b> رکسار | "

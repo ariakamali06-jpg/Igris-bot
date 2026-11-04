@@ -252,11 +252,12 @@ async def test_restaurant_menu_and_eating():
     res_eat = await food.buy_and_eat_food(p, "burger")
     assert res_eat["success"] is True
     assert res_eat["energy_gained"] == 75
-    assert res_eat["new_energy"] == 100
+    assert res_eat["new_energy"] == 105
 
-    # Eating when already 100 energy is refused
+    # Eating when already >= 100 energy is allowed and stacks up further (uncapped via food)
     p = await game.load_player(p_init.user_id)
     assert p is not None
-    res_full = await food.buy_and_eat_food(p, "espresso")
-    assert res_full["success"] is False
-    assert "سیره" in res_full["message"]
+    res_boost = await food.buy_and_eat_food(p, "espresso")
+    assert res_boost["success"] is True
+    assert res_boost["energy_gained"] == 25
+    assert res_boost["new_energy"] == 130

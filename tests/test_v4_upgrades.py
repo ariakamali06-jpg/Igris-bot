@@ -227,3 +227,73 @@ async def test_bazaar_wardrobe_item_listing_cancel():
 
     # Item must be back in seller's wardrobe!
     assert await avatar.owns_item(seller_id, 33817) is True
+
+
+@pytest.mark.asyncio
+async def test_energy_regen_calibration_and_food_overcharge():
+    """Verify 2 refills/24h (432s per energy), 100 cap for passive regen, and food supercharging."""
+    from handlers.common import energy_bar
+    from services.game import _regen_window
+
+    # 1. Test auto-regen rate from 0
+    t0 = 1_000_000
+    # Less than 1 interval (400s < 432s): 0 gained
+    en, upd = _regen_window(0, t0, t0 + 400)
+    assert en == 0
+    assert upd == t0
+
+    # Exactly 1 interval (432s): 1 gained
+    en, upd = _regen_window(0, t0, t0 + 432)
+    assert en == 1
+    assert upd == t0 + 432
+
+    # Exactly 12 hours (43,200s): 100 gained (0 -> 100)
+    en, _ = _regen_window(0, t0, t0 + 43_200)
+    assert en == 100
+
+    # Exactly 24 hours (86,400s): capped at 100 (never pushes past 100)
+    en, _ = _regen_window(0, t0, t0 + 86_400)
+    assert en == 100
+
+    # 2. If already >= 100, passive regen never adds more and never lowers it
+    en, _ = _regen_window(100, t0, t0 + 86_400)
+    assert en == 100
+
+    en_boosted, _ = _regen_window(175, t0, t0 + 86_400)
+    assert en_boosted == 175
+
+    en_super, _ = _regen_window(1000, t0, t0 + 86_400)
+    assert en_super == 1000
+
+    # 3. Energy bar formatting never overflows with supercharged energy
+    bar = energy_bar(250, 100, width=10)
+    assert len(bar) == 10
+    assert bar == "▮" * 10
+
+    # 4. Food allows stacking energy past 100 indefinitely
+    from models.enums import ActivityKind
+    from services import economy, food, game
+    user_id = 998811
+    await game.ensure_player(user_id, "EnergyHero", "energyhero")
+    await economy.grant(user_id, credits=50000, kind=ActivityKind.ADMIN)
+    async with db.write() as conn:
+        await conn.execute("UPDATE players SET energy = 100 WHERE user_id = ?", (user_id,))
+
+    p = await game.load_player(user_id)
+    assert p is not None
+    assert p.energy == 100
+
+    # Eat burger (+75) while at 100 -> reaches 175!
+    res1 = await food.buy_and_eat_food(p, "burger")
+    assert res1["success"] is True
+    assert res1["energy_gained"] == 75
+    assert res1["new_energy"] == 175
+    assert "سوپرشارژ" in res1["message"]
+
+    # Eat pizza (+85) while at 175 -> reaches 260!
+    p2 = await game.load_player(user_id)
+    assert p2 is not None
+    res2 = await food.buy_and_eat_food(p2, "pizza")
+    assert res2["success"] is True
+    assert res2["energy_gained"] == 85
+    assert res2["new_energy"] == 260

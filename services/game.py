@@ -67,19 +67,25 @@ def exp_to_next(level: int) -> int:
 def _regen_window(energy: int, updated_at: int, current: int) -> tuple[int, int]:
     """Apply passive regen up to ``current``; returns (energy, updated_at).
 
-    Fractional regen is banked by advancing the timestamp only by whole
-    intervals, so no regen is lost across restarts.
+    Passive regen rules:
+    - Natural ceiling is settings.max_energy (100).
+    - If energy >= 100 (whether full or boosted via food up to 1000+),
+      passive regen adds 0 and boosted energy is preserved. Timestamp is
+      kept current so regen begins when energy drops below 100.
+    - If energy < 100, passive regen restores 1 energy per interval (432s / 7.2m),
+      yielding exactly 2 full 0->100 refills per 24 hours.
     """
-    if energy >= settings.max_energy:
-        return settings.max_energy, current
+    natural_cap = settings.max_energy
+    if energy >= natural_cap:
+        return energy, current
     elapsed = current - updated_at
     if elapsed < settings.energy_regen_interval_seconds:
         return energy, updated_at
     intervals = int(elapsed // settings.energy_regen_interval_seconds)
-    gained = int(intervals * settings.energy_regen_per_minute)
+    gained = int(intervals * settings.energy_regen_amount)
     if gained <= 0:
         return energy, updated_at
-    new_energy = min(settings.max_energy, energy + gained)
+    new_energy = min(natural_cap, energy + gained)
     consumed = int(intervals * settings.energy_regen_interval_seconds)
     return new_energy, updated_at + consumed
 
