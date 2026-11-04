@@ -186,29 +186,54 @@ EYES_CATALOG: dict[str, dict[str, Any]] = {
 }
 
 LIPS_CATALOG: dict[str, dict[str, Any]] = {
-    "lip_natural_nude": {
-        "name": "💄 رژ نود طبیعی مات",
-        "var_ids": [1388],
+    "lip_clean_natural": {
+        "name": "👄 لب طبیعی (بدون رژ)",
+        "var_ids": [],
         "fee": LIPS_CHANGE_FEE,
     },
-    "lip_velvet_cherry": {
-        "name": "🍒 رژ بنفش مخملی (Purple Lipstick)",
-        "var_ids": [103752],
+    "lip_natural_nude": {
+        "name": "💄 رژ نود مات و طبیعی",
+        "var_ids": [108831],
+        "fee": LIPS_CHANGE_FEE,
+    },
+    "lip_red_classic": {
+        "name": "💋 رژ قرمز کلاسیک",
+        "var_ids": [14433],
         "fee": LIPS_CHANGE_FEE,
     },
     "lip_royal_wine": {
-        "name": "🍷 رژ شرابی اشرافی تیره",
-        "var_ids": [2295],
+        "name": "🍷 رژ شرابی تیره",
+        "var_ids": [49876],
+        "fee": LIPS_CHANGE_FEE,
+    },
+    "lip_velvet_cherry": {
+        "name": "🍒 رژ بنفش مخملی",
+        "var_ids": [103752],
         "fee": LIPS_CHANGE_FEE,
     },
     "lip_peach_gloss": {
-        "name": "🍑 رژ شاین هلویی براق",
-        "var_ids": [103754],
+        "name": "🍑 برق لب شاین و گلاس",
+        "var_ids": [2757],
         "fee": LIPS_CHANGE_FEE,
     },
-    "lip_clean_natural": {
-        "name": "💄 لب طبیعی بدون رژ",
-        "var_ids": [],
+    "lip_pink_tint": {
+        "name": "🌸 تینت صورتی ملایم",
+        "var_ids": [119976],
+        "fee": LIPS_CHANGE_FEE,
+    },
+    "lip_dark_gothic": {
+        "name": "🖤 رژ مشکی دارک گوتیک",
+        "var_ids": [5745],
+        "fee": LIPS_CHANGE_FEE,
+    },
+    "lip_soft_smile": {
+        "name": "😊 لبخند ملایم و دندان",
+        "var_ids": [8867],
+        "fee": LIPS_CHANGE_FEE,
+    },
+    "lip_vamp_fangs": {
+        "name": "🧛‍♀️ دندان نیش ومپایری",
+        "var_ids": [16270],
         "fee": LIPS_CHANGE_FEE,
     },
 }
@@ -281,11 +306,16 @@ EAR_STYLES: dict[str, str] = {
 
 # Lips & Lipstick catalog
 LIP_STYLES: dict[str, str] = {
-    "lip_natural_nude": "💄 رژ نود طبیعی مات",
-    "lip_velvet_cherry": "🍒 رژ مخملی قرمز گیلاسی",
-    "lip_royal_wine": "🍷 رژ شرابی اشرافی تیره",
-    "lip_peach_gloss": "🍑 رژ شاین هلویی براق",
+    "lip_clean_natural": "👄 لب طبیعی (بدون رژ)",
+    "lip_natural_nude": "💄 رژ نود مات و طبیعی",
+    "lip_red_classic": "💋 رژ قرمز کلاسیک",
+    "lip_royal_wine": "🍷 رژ شرابی تیره",
+    "lip_velvet_cherry": "🍒 رژ بنفش مخملی",
+    "lip_peach_gloss": "🍑 برق لب شاین و گلاس",
+    "lip_pink_tint": "🌸 تینت صورتی ملایم",
     "lip_dark_gothic": "🖤 رژ مشکی دارک گوتیک",
+    "lip_soft_smile": "😊 لبخند ملایم و دندان",
+    "lip_vamp_fangs": "🧛‍♀️ دندان نیش ومپایری",
 }
 
 
@@ -644,7 +674,13 @@ async def change_lips_paid(user_id: int, lip_style: str) -> dict[str, Any]:
         insert_idx = min(lip_pos, len(cleaned_vars))
         updated_vars = cleaned_vars[:insert_idx] + new_vids + cleaned_vars[insert_idx:]
     else:
-        insert_idx = max(0, len(cleaned_vars) - 1)
+        # Place lips near other facial features if present, otherwise near base body
+        face_pos = None
+        for idx, v in enumerate(cleaned_vars):
+            if v in ALL_SALON_EYES_VAR_IDS or v in ALL_SALON_FEATURE_VAR_IDS:
+                face_pos = idx + 1
+                break
+        insert_idx = face_pos if face_pos is not None else max(0, len(cleaned_vars) - 1)
         updated_vars = cleaned_vars[:insert_idx] + new_vids + cleaned_vars[insert_idx:]
 
     now_ts = int(time.time())
@@ -668,9 +704,9 @@ async def change_lips_paid(user_id: int, lip_style: str) -> dict[str, Any]:
         "success": True,
         "fee": LIPS_CHANGE_FEE,
         "message": (
-            f"👄 <b>رژ لب و میکاپ صورت با موفقیت اعمال شد!</b>\n"
+            f"👄 <b>استایل لب و دندان با موفقیت اعمال شد!</b>\n"
             f"استایل: <b>{lbl}</b>\n"
-            f"هزینه پرداختی: <b>{LIPS_CHANGE_FEE:,}</b> سکه"
+            f"هزینه پرداختی: <b>{LIPS_CHANGE_FEE:,}</b> رکسار"
         ),
     }
 

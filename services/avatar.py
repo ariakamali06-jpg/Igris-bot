@@ -634,10 +634,19 @@ ALL_EYES_VAR_IDS: set[int] = {
 }
 
 ALL_LIPS_VAR_IDS: set[int] = {
-    103752,  # Purple lipstick
-    1388,    # Black lip
-    2295,    # Lip tint
-    119976,  # Lip tint
+    108831,  # Nude matte lipstick (très en vogue)
+    14433,   # Red lipstick (Another retro dress)
+    49876,   # Wine Lips (Kool Kat)
+    103752,  # Purple lipstick (Daisies)
+    2757,    # Lipgloss (Flower Pants)
+    119976,  # Lip tint (Jamila)
+    5745,    # Black lipstick (Gothic Victorian)
+    8867,    # Soft smile with teeth (Pirate Set)
+    16270,   # Vamp fangs teeth (vamp chick)
+    3476,    # Teeth (Prettyplanetsb)
+    1388,    # Black lip (legacy)
+    2295,    # Legacy cleanup
+    103754,  # Legacy cleanup
 }
 
 ALL_MAKEUP_VAR_IDS: set[int] = {

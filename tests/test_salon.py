@@ -432,3 +432,34 @@ async def test_salon_changing_hair_preserves_exact_z_index_slot():
     assert av_after["equipped_var_ids"][0] == 28144, "Outer item at index 0 was displaced!"
     assert av_after["equipped_var_ids"][1] == 5546, "Outer item at index 1 was displaced!"
     assert av_after["equipped_var_ids"][2] == 1409, "New hair did not preserve exact index 2 slot!"
+
+
+async def test_salon_lips_and_teeth_options_are_pure():
+    """Verify that all lipstick, lips, and teeth options strictly reference face_lips items."""
+    from services.catalog import get_catalog_item_by_var_id
+
+    # Every item in LIPS_CATALOG must either have no var_ids (clean natural)
+    # or have valid var_ids strictly in category face_lips or subcategory lips/mouth_teeth
+    for key, entry in salon.LIPS_CATALOG.items():
+        vids = entry["var_ids"]
+        for vid in vids:
+            it = get_catalog_item_by_var_id(vid)
+            assert it is not None, f"Item {vid} for {key} not found in catalog!"
+            sub = it.get("subcategory", "")
+            cat = it.get("category", "")
+            assert (
+                sub in ("lips", "mouth_teeth") or cat == "face_lips"
+            ), f"Invalid non-lip item {vid} ({it['name']}) in {key}!"
+            # Ensure no shoes, clothes, phone or clips
+            name_lower = it["name"].lower()
+            forbidden_words = (
+                "shoe", "slipper", "boot", "pant", "sweater", "dress", "clip", "phone"
+            )
+            for forbidden in forbidden_words:
+                assert forbidden not in name_lower, (
+                    f"Forbidden word '{forbidden}' in lip item {it['name']}!"
+                )
+
+    # Verify key alignment between LIPS_CATALOG and LIP_STYLES
+    for k in salon.LIP_STYLES:
+        assert k in salon.LIPS_CATALOG, f"LIP_STYLES key '{k}' missing from LIPS_CATALOG!"

@@ -271,11 +271,11 @@ async def _build_lips_menu(user_id: int) -> tuple[str, str, InlineKeyboardMarkup
     """Generate lips and lipstick makeup selector."""
     st = await salon.get_player_salon_state(user_id)
     caption = (
-        f"👄 <b>لب، رژ لب و میکاپ لب</b>\n"
-        f"💵 هزینه: <b>{salon.LIPS_CHANGE_FEE:,}</b> سکه\n"
-        f"💰 موجودی: <b>{st['credits']:,}</b> سکه\n"
+        f"👄 <b>لب، رژ لب و دندان</b>\n"
+        f"💵 هزینه: <b>{salon.LIPS_CHANGE_FEE:,}</b> رکسار\n"
+        f"💰 موجودی: <b>{st['credits']:,}</b> رکسار\n"
         f"👤 استایل فعلی: <b>{st['lip_label']}</b>\n\n"
-        f"مدل رژ لب دلخواهتان را انتخاب کنید:"
+        f"مدل رژ لب، دندان یا لبخند دلخواهتان را انتخاب کنید:"
     )
 
     buttons: list[list[InlineKeyboardButton]] = []
@@ -449,7 +449,7 @@ async def cb_salon_actions(call: CallbackQuery) -> None:
                 await call.answer(res["message"], show_alert=True)
                 return
             fee_txt = f"{salon.LIPS_CHANGE_FEE:,} رکسار"
-            await call.answer(f"✅ رژ لب اعمال شد! ({fee_txt})", show_alert=True)
+            await call.answer(f"✅ استایل لب و دندان اعمال شد! ({fee_txt})", show_alert=True)
             render_url, caption, markup = await _build_lips_menu(user.id)
             await _update_view(call, render_url, caption, markup)
             return
