@@ -9,6 +9,8 @@ __pycache__/
 venv/
 
 # Project runtime output
+*.db
+!data/bot_catalog.db
 data/*
 !data/bot_catalog.db
 cache/
