@@ -119,9 +119,26 @@ async def test_gatekeeper_blocks_unonboarded_group_commands(monkeypatch):
     data = {"bot": mock_bot}
     result = await middleware(dummy_handler, msg, data)
 
-    # Handler must NOT have been called and no reply sent (silent drop)
+    # Handler must NOT have been called
     assert handler_called is False
     assert result is None
+    # A polite prompt with inline button must have been sent
+    assert len(replies) == 1
+    assert "پروفایل" in replies[0]["text"]
+    assert replies[0]["reply_markup"] is not None
+    assert "t.me/IgrisLifeBot" in replies[0]["reply_markup"].inline_keyboard[0][0].url
+
+    # Normal group conversation must NOT trigger prompt (prevents group spam)
+    replies.clear()
+    msg_chat = Message(
+        message_id=51,
+        date=datetime.now(UTC),
+        chat=group_chat,
+        from_user=user,
+        text="سلام دوستان چطورید",
+    )
+    result_chat = await middleware(dummy_handler, msg_chat, data)
+    assert result_chat is None
     assert len(replies) == 0
 
 
