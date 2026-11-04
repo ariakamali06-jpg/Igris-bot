@@ -108,6 +108,7 @@ async def _hourly_backup_loop(bot: Bot) -> None:
         try:
             await asyncio.sleep(3600)
             await send_backup_to_admins(bot)
+            await save_and_pin_backup(bot)
         except asyncio.CancelledError:
             logger.info("Hourly database backup scheduler cancelled.")
             break
@@ -119,6 +120,100 @@ async def _hourly_backup_loop(bot: Bot) -> None:
 def start_backup_scheduler(bot: Bot) -> asyncio.Task:
     """اجرای جاب پس‌زمینه برای بکاپ‌گیری ساعتی."""
     return asyncio.create_task(_hourly_backup_loop(bot), name="hourly-db-backup")
+
+
+async def save_and_pin_backup(bot: Bot) -> bool:
+    """ارسال و پین کردن آخرین نسخه دیتابیس در چت یا کانال پشتیبان برای بازیابی خودکار."""
+    backup_file = await create_backup_file()
+    if not backup_file or not backup_file.exists():
+        return False
+
+    chat_id = settings.backup_chat_id or PRIMARY_ADMIN_ID
+    now_str = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC")
+    file_size_kb = backup_file.stat().st_size / 1024
+    caption = (
+        f"📦 <b>پشتیبان کلود دیتابیس شهر تیرامیکس</b>\n\n"
+        f"📅 زمان ذخیره: <code>{now_str}</code>\n"
+        f"💾 حجم فایل: <b>{file_size_kb:,.1f} KB</b>\n"
+        f"📌 <i>این پیام پین شده تا در صورت دیپلوی مجدد و پاک شدن سرور، دیتابیس خودکار لود شود.</i>"
+    )
+
+    try:
+        doc = FSInputFile(backup_file, filename=backup_file.name)
+        msg = await bot.send_document(chat_id=chat_id, document=doc, caption=caption)
+        with contextlib.suppress(Exception):
+            await bot.pin_chat_message(
+                chat_id=chat_id, message_id=msg.message_id, disable_notification=True
+            )
+        logger.info("Latest database backup saved and pinned in chat %s", chat_id)
+        return True
+    except Exception as exc:
+        logger.warning("Could not send and pin backup to chat %s: %s", chat_id, exc)
+        return False
+    finally:
+        with contextlib.suppress(Exception):
+            backup_file.unlink()
+
+
+async def auto_restore_on_startup(bot: Bot) -> bool:
+    """در صورتی که دیتابیس لوکال کانتینر خالی باشد، آخرین بکاپ پین‌شده را لود می‌کند."""
+    try:
+        async with db.read() as conn:
+            cur = await conn.execute("SELECT COUNT(*) FROM players")
+            count = int((await cur.fetchone())[0])
+            if count > 0:
+                logger.info(
+                    "Local database already contains %d players; skipping auto-restore.", count
+                )
+                return False
+    except Exception as exc:
+        logger.warning("Error checking local player count: %s", exc)
+
+    chat_id = settings.backup_chat_id or PRIMARY_ADMIN_ID
+    logger.info(
+        "Local database is empty. Attempting auto-restore from pinned backup in chat %s...",
+        chat_id,
+    )
+
+    try:
+        chat = await bot.get_chat(chat_id)
+        pinned = chat.pinned_message
+        if not pinned or not pinned.document:
+            logger.info("No pinned database document found in chat %s.", chat_id)
+            return False
+
+        doc = pinned.document
+        if not (doc.file_name or "").endswith(".db"):
+            logger.info("Pinned document %s is not a .db file; skipping.", doc.file_name)
+            return False
+
+        temp_dir = tempfile.gettempdir()
+        temp_file = Path(temp_dir) / f"auto_restore_{int(datetime.now(UTC).timestamp())}.db"
+        await bot.download(doc, destination=temp_file)
+
+        ok, reason = await restore_database_from_file(temp_file)
+        with contextlib.suppress(Exception):
+            if temp_file.exists():
+                temp_file.unlink()
+
+        if ok:
+            logger.info("Auto-restore success: %s", reason)
+            with contextlib.suppress(Exception):
+                await bot.send_message(
+                    chat_id=PRIMARY_ADMIN_ID,
+                    text=(
+                        "🔄 <b>بازیابی خودکار دیتابیس پس از دیپلوی جدید!</b>\n\n"
+                        f"{reason}\n"
+                        "🛡 اطلاعات بازیکنان با موفقیت از تلگرام بارگذاری شد."
+                    ),
+                )
+            return True
+        else:
+            logger.warning("Auto-restore rejected file: %s", reason)
+            return False
+    except Exception as exc:
+        logger.warning("Auto-restore from Telegram encountered an issue: %s", exc)
+        return False
 
 
 async def restore_database_from_file(backup_path: Path) -> tuple[bool, str]:

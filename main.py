@@ -108,6 +108,11 @@ async def on_startup(bot: Bot) -> None:
     await seed_catalog()
     clear_cooldowns()
 
+    if not settings.dry_run:
+        with contextlib.suppress(Exception):
+            from services.backup import auto_restore_on_startup
+            await auto_restore_on_startup(bot)
+
     if settings.dry_run:
         logger.info("DRY_RUN=1 — boot checks passed, skipping get_me()")
         return
@@ -133,7 +138,12 @@ async def on_startup(bot: Bot) -> None:
         logger.warning("Could not reset chat menu button: %s", exc)
 
 
-async def on_shutdown() -> None:
+async def on_shutdown(bot: Bot | None = None) -> None:
+    if bot is not None:
+        with contextlib.suppress(Exception):
+            from services.backup import save_and_pin_backup
+            await save_and_pin_backup(bot)
+
     await db.close()
     # Blocks until pending composite disk writes land (bounded, small queue).
     await asyncio.to_thread(compositor.close)
@@ -230,7 +240,7 @@ async def run() -> None:
         if health_server is not None:
             health_server.close()
             await health_server.wait_closed()
-        await on_shutdown()
+        await on_shutdown(bot)
         await bot.session.close()
 
 
