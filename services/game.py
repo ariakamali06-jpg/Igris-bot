@@ -75,6 +75,9 @@ def _regen_window(energy: int, updated_at: int, current: int) -> tuple[int, int]
     - If energy < 100, passive regen restores 1 energy per interval (432s / 7.2m),
       yielding exactly 2 full 0->100 refills per 24 hours.
     """
+    energy = int(energy or 0)
+    updated_at = int(updated_at or 0)
+    current = int(current or 0)
     natural_cap = settings.max_energy
     if energy >= natural_cap:
         return energy, current
@@ -208,52 +211,68 @@ async def _load_conn(
         user_id=user_id,
         display_name=row["display_name"] if display_name is None else display_name,
         username=row["username"],
-        level=row["level"],
-        exp=row["exp"],
-        energy=energy,
-        energy_updated_at=updated_at,
-        base_atk=row["base_atk"],
-        base_def=row["base_def"],
-        base_drip=row["base_drip"],
-        last_daily=row["last_daily"],
-        created_at=row["created_at"],
-        last_seen=row["last_seen"],
+        level=int(row["level"] or 1),
+        exp=int(row["exp"] or 0),
+        energy=int(energy or 0),
+        energy_updated_at=int(updated_at or 0),
+        base_atk=int(row["base_atk"] or 10),
+        base_def=int(row["base_def"] or 8),
+        base_drip=int(row["base_drip"] or 5),
+        last_daily=int(row["last_daily"] or 0),
+        created_at=int(row["created_at"] or 0),
+        last_seen=int(row["last_seen"] or 0),
         gear=gear,
         loadout=loadout,
-        gender=row["gender"] if "gender" in keys else "نامشخص",
-        age=row["age"] if "age" in keys else 20,
-        skin_tone=row["skin_tone"] if "skin_tone" in keys else "fair",
-        eye_color=row["eye_color"] if "eye_color" in keys else "amber",
-        body_stance=row["body_stance"] if "body_stance" in keys else "base_street",
-        hair_color=row["hair_color"] if "hair_color" in keys else "black",
-        onboarding_completed=row["onboarding_completed"] if "onboarding_completed" in keys else 0,
-        education_level=row["education_level"] if "education_level" in keys else 0,
-        job=row["job"] if "job" in keys else "بیکار",
+        gender=str(row["gender"] or "نامشخص") if "gender" in keys else "نامشخص",
+        age=int(row["age"] or 20) if "age" in keys else 20,
+        skin_tone=str(row["skin_tone"] or "fair") if "skin_tone" in keys else "fair",
+        eye_color=str(row["eye_color"] or "amber") if "eye_color" in keys else "amber",
+        body_stance=(
+            str(row["body_stance"] or "base_street")
+            if "body_stance" in keys
+            else "base_street"
+        ),
+        hair_color=str(row["hair_color"] or "black") if "hair_color" in keys else "black",
+        onboarding_completed=(
+            int(row["onboarding_completed"] or 0)
+            if "onboarding_completed" in keys
+            else 0
+        ),
+        education_level=int(row["education_level"] or 0) if "education_level" in keys else 0,
+        job=str(row["job"] or "بیکار") if "job" in keys else "بیکار",
         spouse_id=row["spouse_id"] if "spouse_id" in keys else None,
-        marriage_date=row["marriage_date"] if "marriage_date" in keys else 0,
-        children_count=row["children_count"] if "children_count" in keys else 0,
-        is_pregnant_until=row["is_pregnant_until"] if "is_pregnant_until" in keys else 0,
-        is_jailed_until=row["is_jailed_until"] if "is_jailed_until" in keys else 0,
-        shield_until=row["shield_until"] if "shield_until" in keys else 0,
-        pet_level=row["pet_level"] if "pet_level" in keys else 0,
-        affair_count=row["affair_count"] if "affair_count" in keys else 0,
-        bank_balance=row["bank_balance"] if "bank_balance" in keys else 0,
-        loan_amount=row["loan_amount"] if "loan_amount" in keys else 0,
-        loan_due=row["loan_due"] if "loan_due" in keys else 0,
-        last_work_time=row["last_work_time"] if "last_work_time" in keys else 0,
-        last_study_time=row["last_study_time"] if "last_study_time" in keys else 0,
-        last_steal_time=row["last_steal_time"] if "last_steal_time" in keys else 0,
-        last_duel_time=row["last_duel_time"] if "last_duel_time" in keys else 0,
-        last_intimacy_time=row["last_intimacy_time"] if "last_intimacy_time" in keys else 0,
-        last_affair_time=row["last_affair_time"] if "last_affair_time" in keys else 0,
-        eye_style=row["eye_style"] if "eye_style" in keys else "eyes1_1",
-        nose_style=row["nose_style"] if "nose_style" in keys else "nose_natural",
-        mouth_style=row["mouth_style"] if "mouth_style" in keys else "mouth1_1",
-        hair_style=row["hair_style"] if "hair_style" in keys else "hair1",
+        marriage_date=int(row["marriage_date"] or 0) if "marriage_date" in keys else 0,
+        children_count=int(row["children_count"] or 0) if "children_count" in keys else 0,
+        is_pregnant_until=int(row["is_pregnant_until"] or 0) if "is_pregnant_until" in keys else 0,
+        is_jailed_until=int(row["is_jailed_until"] or 0) if "is_jailed_until" in keys else 0,
+        shield_until=int(row["shield_until"] or 0) if "shield_until" in keys else 0,
+        pet_level=int(row["pet_level"] or 0) if "pet_level" in keys else 0,
+        affair_count=int(row["affair_count"] or 0) if "affair_count" in keys else 0,
+        bank_balance=int(row["bank_balance"] or 0) if "bank_balance" in keys else 0,
+        loan_amount=int(row["loan_amount"] or 0) if "loan_amount" in keys else 0,
+        loan_due=int(row["loan_due"] or 0) if "loan_due" in keys else 0,
+        last_work_time=int(row["last_work_time"] or 0) if "last_work_time" in keys else 0,
+        last_study_time=int(row["last_study_time"] or 0) if "last_study_time" in keys else 0,
+        last_steal_time=int(row["last_steal_time"] or 0) if "last_steal_time" in keys else 0,
+        last_duel_time=int(row["last_duel_time"] or 0) if "last_duel_time" in keys else 0,
+        last_intimacy_time=(
+            int(row["last_intimacy_time"] or 0)
+            if "last_intimacy_time" in keys
+            else 0
+        ),
+        last_affair_time=int(row["last_affair_time"] or 0) if "last_affair_time" in keys else 0,
+        eye_style=str(row["eye_style"] or "eyes1_1") if "eye_style" in keys else "eyes1_1",
+        nose_style=(
+            str(row["nose_style"] or "nose_natural")
+            if "nose_style" in keys
+            else "nose_natural"
+        ),
+        mouth_style=str(row["mouth_style"] or "mouth1_1") if "mouth_style" in keys else "mouth1_1",
+        hair_style=str(row["hair_style"] or "hair1") if "hair_style" in keys else "hair1",
         clan_id=row["clan_id"] if "clan_id" in keys else None,
         clan_role=row["clan_role"] if "clan_role" in keys else None,
-        education_step=row["education_step"] if "education_step" in keys else 0,
-        work_count=row["work_count"] if "work_count" in keys else 0,
+        education_step=int(row["education_step"] or 0) if "education_step" in keys else 0,
+        work_count=int(row["work_count"] or 0) if "work_count" in keys else 0,
     )
 
 

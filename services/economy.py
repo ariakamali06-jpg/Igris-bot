@@ -91,8 +91,12 @@ async def _wallet_conn(
     row = await cursor.fetchone()
     await cursor.close()
     if row is None:
-        raise GameError(f"no wallet for player {user_id}")
-    return row["credits"], row["soul_shards"]
+        await conn.execute(
+            "INSERT OR IGNORE INTO wallets (user_id, credits, soul_shards) VALUES (?, ?, ?)",
+            (user_id, settings.starting_credits, settings.starting_soul_shards),
+        )
+        return settings.starting_credits, settings.starting_soul_shards
+    return int(row["credits"] or 0), int(row["soul_shards"] or 0)
 
 
 async def mutate(

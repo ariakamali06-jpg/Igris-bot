@@ -233,7 +233,8 @@ def _error_text(exc: Exception) -> str:
         return f"⏳ {exc.action} cools down in {clock}."
     if isinstance(exc, GameError):
         return f"⛔ {exc}"
-    return "⛔ Something went wrong. Try again."
+    logger.exception("Unhandled domain error: %s", exc)
+    return f"⛔ خطا در پردازش ({type(exc).__name__}): {exc}"
 
 
 async def message_error(exc: Exception, message: Message) -> None:

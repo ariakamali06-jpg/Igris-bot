@@ -140,6 +140,23 @@ class Database:
                     f"ALTER TABLE players ADD COLUMN {col} {col_type} DEFAULT {default_val}"
                 )
 
+        # پاک‌سازی و تضمین مقادیر غیر تهی (NOT NULL) برای سطرهای قدیمی
+        await self._write_conn.execute(
+            """
+            UPDATE players
+            SET bank_balance = COALESCE(bank_balance, 0),
+                education_step = COALESCE(education_step, 0),
+                work_count = COALESCE(work_count, 0),
+                education_level = COALESCE(education_level, 0),
+                energy = COALESCE(energy, 100),
+                energy_updated_at = CASE
+                    WHEN energy_updated_at IS NULL OR energy_updated_at = 0
+                    THEN strftime('%s', 'now')
+                    ELSE energy_updated_at
+                END
+            """
+        )
+
         await self._write_conn.execute(
             """
             CREATE TABLE IF NOT EXISTS clans (
