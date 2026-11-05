@@ -166,6 +166,10 @@ async def auto_restore_on_startup(bot: Bot) -> bool:
                     "Local database already contains %d players; skipping auto-restore.", count
                 )
                 return False
+    except RuntimeError:
+        # DB not connected yet — skip auto-restore, let normal startup handle it
+        logger.warning("DB not connected during auto_restore_on_startup; skipping.")
+        return False
     except Exception as exc:
         logger.warning("Error checking local player count: %s", exc)
 
@@ -252,15 +256,27 @@ async def restore_database_from_file(backup_path: Path) -> tuple[bool, str]:
     target_path = getattr(db, "_path", settings.db_path)
 
     # ۲. فلاش نهایی لاگ‌ها و بستن اتصالات فعال دیتابیس
-    with contextlib.suppress(Exception):
+    try:
         async with db._write_lock:
             conn = db._require_write()
             await conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    except RuntimeError:
+        # db was already closed or never connected — that's fine before a restore
+        pass
+    try:
+        await db.close()
+    except RuntimeError:
+        pass
 
-    await db.close()
     await asyncio.sleep(0.05)
 
-    # ۳. جایگزینی فایل اصلی و پاک‌سازی WAL/SHM قبلی
+    # ۳. پشتیبان‌گیری از فایل فعلی (برای جلوگیری از دست رفتن داده)
+    corrupt_backup = target_path.with_suffix(".db.corrupt_backup")
+    if target_path.exists():
+        with contextlib.suppress(OSError):
+            shutil.copy2(target_path, corrupt_backup)
+
+    # ۴. جایگزینی فایل اصلی و پاک‌سازی WAL/SHM قبلی
     def _swap_files() -> None:
         target_path.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(backup_path, target_path)
@@ -273,8 +289,15 @@ async def restore_database_from_file(backup_path: Path) -> tuple[bool, str]:
 
     await asyncio.to_thread(_swap_files)
 
-    # ۴. اتصال مجدد دیتابیس و اجرای چک‌پوینت و مایگریشن
-    await db.connect()
+    # ۵. اتصال مجدد دیتابیس و اجرای چک‌پوینت و مایگریشن
+    try:
+        await db.connect()
+    except Exception as exc:
+        # اگه فایل swap‌شده خرابه، برشگردونیم به قبل
+        if corrupt_backup.exists():
+            shutil.copy2(corrupt_backup, target_path)
+            corrupt_backup.unlink()
+        return False, f"فایل بکاپ خراب است و قابل بازیابی نیست: {exc}", None
 
     # ۵. پاک‌سازی کش آواتار
     from services import avatar
