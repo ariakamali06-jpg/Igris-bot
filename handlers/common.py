@@ -234,7 +234,7 @@ def _error_text(exc: Exception) -> str:
     if isinstance(exc, GameError):
         return f"⛔ {exc}"
     logger.exception("Unhandled domain error: %s", exc)
-    return f"⛔ خطا در پردازش ({type(exc).__name__}): {exc}"
+    return "⛔ Something went wrong. Try again."
 
 
 async def message_error(exc: Exception, message: Message) -> None:
