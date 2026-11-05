@@ -100,6 +100,24 @@ class Player:
     clan_role: str | None = None
     education_step: int = 0
     work_count: int = 0
+    hp: int = 100
+    max_hp: int = 100
+    sickness: str = "healthy"
+    reputation: int = 100
+    title: str = "شهروند عادی"
+    bio: str = ""
+    total_earned: int = 0
+    total_spent: int = 0
+    duels_won: int = 0
+    duels_lost: int = 0
+    thefts_success: int = 0
+    thefts_failed: int = 0
+    total_stolen: int = 0
+    jail_count: int = 0
+    meals_eaten: int = 0
+    hospital_visits: int = 0
+    divorce_count: int = 0
+    daily_streak: int = 0
 
     # Aggregates, filled in by services.game.load_player().
     gear: StatBlock = field(default_factory=StatBlock)

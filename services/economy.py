@@ -143,6 +143,16 @@ async def mutate(
             now(),
         ),
     )
+    if credits > 0 and kind not in (ActivityKind.SYSTEM, ActivityKind.ADMIN):
+        await conn.execute(
+            "UPDATE players SET total_earned = total_earned + ? WHERE user_id = ?",
+            (credits, user_id),
+        )
+    elif credits < 0:
+        await conn.execute(
+            "UPDATE players SET total_spent = total_spent + ? WHERE user_id = ?",
+            (-credits, user_id),
+        )
     return new_credits, new_shards
 
 

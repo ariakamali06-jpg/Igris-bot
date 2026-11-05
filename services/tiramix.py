@@ -618,6 +618,16 @@ async def attempt_theft(thief: Player, victim: Player) -> dict[str, Any]:
         # Success! Loot transferred
         await economy.spend(victim.user_id, credits=target_loot, kind=ActivityKind.THEFT)
         await economy.grant(thief.user_id, credits=target_loot, kind=ActivityKind.THEFT)
+        async with db.write() as conn:
+            await conn.execute(
+                """
+                UPDATE players
+                SET thefts_success = thefts_success + 1,
+                    total_stolen = total_stolen + ?
+                WHERE user_id = ?
+                """,
+                (target_loot, thief.user_id),
+            )
         return {
             "success": True,
             "stolen": target_loot,
@@ -638,6 +648,11 @@ async def attempt_theft(thief: Player, victim: Player) -> dict[str, Any]:
             # 50% of fine to victim compensation, 50% to city court
             compensation = fine_amount // 2
             await economy.grant(victim.user_id, credits=compensation, kind=ActivityKind.THEFT)
+            async with db.write() as conn:
+                await conn.execute(
+                    "UPDATE players SET thefts_failed = thefts_failed + 1 WHERE user_id = ?",
+                    (thief.user_id,),
+                )
 
             return {
                 "success": False,
@@ -654,7 +669,13 @@ async def attempt_theft(thief: Player, victim: Player) -> dict[str, Any]:
             jail_until = now + JAIL_DURATION
             async with db.write() as conn:
                 await conn.execute(
-                    "UPDATE players SET is_jailed_until = ? WHERE user_id = ?",
+                    """
+                    UPDATE players
+                    SET is_jailed_until = ?,
+                        thefts_failed = thefts_failed + 1,
+                        jail_count = jail_count + 1
+                    WHERE user_id = ?
+                    """,
                     (jail_until, thief.user_id),
                 )
             # Confiscate all remaining cash as bail
@@ -714,7 +735,13 @@ async def divorce_citizens(user1_id: int, user2_id: int) -> dict[str, Any]:
     """Execute legal divorce."""
     async with db.write() as conn:
         await conn.execute(
-            "UPDATE players SET spouse_id = NULL, marriage_date = 0 WHERE user_id IN (?, ?)",
+            """
+            UPDATE players
+            SET spouse_id = NULL,
+                marriage_date = 0,
+                divorce_count = divorce_count + 1
+            WHERE user_id IN (?, ?)
+            """,
             (user1_id, user2_id),
         )
 
@@ -792,7 +819,13 @@ async def clinic_service(player: Player) -> dict[str, Any]:
         await economy.spend(player.user_id, credits=DELIVERY_FEE, kind=ActivityKind.CLINIC)
         async with db.write() as conn:
             await conn.execute(
-                "UPDATE players SET is_pregnant_until = 0, children_count = children_count + 1 WHERE user_id = ?",
+                """
+                UPDATE players
+                SET is_pregnant_until = 0,
+                    children_count = children_count + 1,
+                    hospital_visits = hospital_visits + 1
+                WHERE user_id = ?
+                """,
                 (player.user_id,),
             )
             if player.spouse_id:

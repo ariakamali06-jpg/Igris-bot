@@ -84,7 +84,13 @@ async def buy_and_eat_food(player: Player, food_id_or_name: str) -> dict[str, An
 
     async with db.write() as conn:
         await conn.execute(
-            "UPDATE players SET energy = ?, energy_updated_at = ? WHERE user_id = ?",
+            """
+            UPDATE players
+            SET energy = ?,
+                energy_updated_at = ?,
+                meals_eaten = meals_eaten + 1
+            WHERE user_id = ?
+            """,
             (new_energy, now_ts, player.user_id),
         )
 

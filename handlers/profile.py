@@ -165,13 +165,20 @@ async def _profile_panel(player: Player, active_tab: str = "main") -> tuple[str,
             else f"<b>{player.energy}⚡️ (سوپرشارژ 🔥)</b>"
         )
         lines = [
-            "📊 <b>آمار مبارزه، مشخصات فیزیکی و توانمندی‌ها</b>",
+            "📊 <b>آمار مبارزه، مشخصات فیزیکی و سوابق شهری</b>",
             "━━━━━━━━━━━━━━━━━━━━",
             f"👤 <b>شهروند:</b> {p_name} (لول <b>{player.level}</b>)",
+            f"🎖 <b>عنوان شهروندی:</b> {player.title}",
+            f"❤️ <b>سلامت جسمانی:</b> <b>{player.hp}/{player.max_hp}</b>",
             f"⚔️ <b>قدرت تهاجمی (ATK):</b> <b>{player.atk}</b>",
             f"🛡 <b>دفاع و استقامت (DEF):</b> <b>{player.defense}</b>",
             f"💎 <b>امتیاز استایل شهری (DRIP):</b> <b>{player.drip}</b>",
             f"⚡️ <b>انرژی فعلی:</b> {energy_str}",
+            f"🏆 <b>سوابق دوئل:</b> {player.duels_won} برد / {player.duels_lost} باخت",
+            (
+                f"🥷 <b>سرقت‌های موفق:</b> {player.thefts_success} بار "
+                f"({player.total_stolen:,} رکسار)"
+            ),
             f"🐺 <b>حیوان دست‌آموز (پت):</b> {pet_status}",
             f"🛡 <b>سپر ضدسرقت:</b> {shield_status}",
             f"⚖️ <b>وضعیت قضایی:</b> {jail_status}",

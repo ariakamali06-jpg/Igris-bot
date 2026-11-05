@@ -72,7 +72,25 @@ CREATE TABLE IF NOT EXISTS players (
     clan_id            INTEGER DEFAULT NULL,
     clan_role          TEXT    DEFAULT NULL,
     education_step     INTEGER NOT NULL DEFAULT 0,
-    work_count         INTEGER NOT NULL DEFAULT 0
+    work_count         INTEGER NOT NULL DEFAULT 0,
+    hp                 INTEGER NOT NULL DEFAULT 100  CHECK (hp >= 0),
+    max_hp             INTEGER NOT NULL DEFAULT 100  CHECK (max_hp > 0),
+    sickness           TEXT    NOT NULL DEFAULT 'healthy',
+    reputation         INTEGER NOT NULL DEFAULT 100,
+    title              TEXT    NOT NULL DEFAULT 'شهروند عادی',
+    bio                TEXT    NOT NULL DEFAULT '',
+    total_earned       INTEGER NOT NULL DEFAULT 0,
+    total_spent        INTEGER NOT NULL DEFAULT 0,
+    duels_won          INTEGER NOT NULL DEFAULT 0,
+    duels_lost         INTEGER NOT NULL DEFAULT 0,
+    thefts_success     INTEGER NOT NULL DEFAULT 0,
+    thefts_failed      INTEGER NOT NULL DEFAULT 0,
+    total_stolen       INTEGER NOT NULL DEFAULT 0,
+    jail_count         INTEGER NOT NULL DEFAULT 0,
+    meals_eaten        INTEGER NOT NULL DEFAULT 0,
+    hospital_visits    INTEGER NOT NULL DEFAULT 0,
+    divorce_count      INTEGER NOT NULL DEFAULT 0,
+    daily_streak       INTEGER NOT NULL DEFAULT 0
 );
 
 -- -----------------------------------------------------------------------------
@@ -557,4 +575,29 @@ CREATE TABLE IF NOT EXISTS player_wardrobe (
 );
 
 CREATE INDEX IF NOT EXISTS idx_wardrobe_user ON player_wardrobe (user_id);
+
+-- -----------------------------------------------------------------------------
+-- Player Achievements & Badges
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS player_achievements (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     INTEGER NOT NULL REFERENCES players(user_id) ON DELETE CASCADE,
+    badge_key   TEXT    NOT NULL,
+    title       TEXT    NOT NULL,
+    unlocked_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+    UNIQUE (user_id, badge_key)
+);
+CREATE INDEX IF NOT EXISTS idx_player_achievements_user ON player_achievements (user_id);
+
+-- -----------------------------------------------------------------------------
+-- Player Personal Preferences & Notification Settings
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS player_settings (
+    user_id           INTEGER PRIMARY KEY REFERENCES players(user_id) ON DELETE CASCADE,
+    notify_work       INTEGER NOT NULL DEFAULT 1,
+    notify_energy     INTEGER NOT NULL DEFAULT 1,
+    notify_contracts  INTEGER NOT NULL DEFAULT 1,
+    compact_mode      INTEGER NOT NULL DEFAULT 0,
+    updated_at        INTEGER NOT NULL DEFAULT 0
+);
 

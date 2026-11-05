@@ -136,6 +136,24 @@ class Database:
             ("work_count", "INTEGER", "0"),
             ("energy", "INTEGER", "100"),
             ("energy_updated_at", "INTEGER", "0"),
+            ("hp", "INTEGER", "100"),
+            ("max_hp", "INTEGER", "100"),
+            ("sickness", "TEXT", "'healthy'"),
+            ("reputation", "INTEGER", "100"),
+            ("title", "TEXT", "'شهروند عادی'"),
+            ("bio", "TEXT", "''"),
+            ("total_earned", "INTEGER", "0"),
+            ("total_spent", "INTEGER", "0"),
+            ("duels_won", "INTEGER", "0"),
+            ("duels_lost", "INTEGER", "0"),
+            ("thefts_success", "INTEGER", "0"),
+            ("thefts_failed", "INTEGER", "0"),
+            ("total_stolen", "INTEGER", "0"),
+            ("jail_count", "INTEGER", "0"),
+            ("meals_eaten", "INTEGER", "0"),
+            ("hospital_visits", "INTEGER", "0"),
+            ("divorce_count", "INTEGER", "0"),
+            ("daily_streak", "INTEGER", "0"),
         ]:
             if col not in cols:
                 await self._write_conn.execute(
@@ -173,7 +191,83 @@ class Database:
                     WHEN energy_updated_at IS NULL OR energy_updated_at = 0
                     THEN strftime('%s', 'now')
                     ELSE energy_updated_at
-                END
+                END,
+                hp = COALESCE(hp, 100),
+                max_hp = COALESCE(max_hp, 100),
+                sickness = COALESCE(sickness, 'healthy'),
+                reputation = COALESCE(reputation, 100),
+                title = COALESCE(title, 'شهروند عادی'),
+                bio = COALESCE(bio, ''),
+                total_earned = COALESCE(total_earned, 0),
+                total_spent = COALESCE(total_spent, 0),
+                duels_won = COALESCE(duels_won, 0),
+                duels_lost = COALESCE(duels_lost, 0),
+                thefts_success = COALESCE(thefts_success, 0),
+                thefts_failed = COALESCE(thefts_failed, 0),
+                total_stolen = COALESCE(total_stolen, 0),
+                jail_count = COALESCE(jail_count, 0),
+                meals_eaten = COALESCE(meals_eaten, 0),
+                hospital_visits = COALESCE(hospital_visits, 0),
+                divorce_count = COALESCE(divorce_count, 0),
+                daily_streak = COALESCE(daily_streak, 0)
+            """
+        )
+
+        # بازیابی سوابق تاریخی از روی لجر و دوئل‌ها برای اکانت‌های موجود
+        await self._write_conn.execute(
+            """
+            UPDATE players
+            SET duels_won = (
+                SELECT COUNT(*) FROM duels WHERE winner_id = players.user_id AND status = 'resolved'
+            ),
+            total_earned = (
+                SELECT COALESCE(SUM(credits_delta), 0) FROM ledger
+                WHERE user_id = players.user_id AND credits_delta > 0
+            ),
+            total_spent = (
+                SELECT COALESCE(ABS(SUM(credits_delta)), 0) FROM ledger
+                WHERE user_id = players.user_id AND credits_delta < 0
+            ),
+            thefts_success = (
+                SELECT COUNT(*) FROM ledger
+                WHERE user_id = players.user_id AND kind = 'theft' AND credits_delta > 0
+            ),
+            total_stolen = (
+                SELECT COALESCE(SUM(credits_delta), 0) FROM ledger
+                WHERE user_id = players.user_id AND kind = 'theft' AND credits_delta > 0
+            )
+            WHERE total_earned = 0 AND duels_won = 0
+            """
+        )
+
+        await self._write_conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS player_achievements (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id     INTEGER NOT NULL REFERENCES players(user_id) ON DELETE CASCADE,
+                badge_key   TEXT    NOT NULL,
+                title       TEXT    NOT NULL,
+                unlocked_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+                UNIQUE (user_id, badge_key)
+            )
+            """
+        )
+        await self._write_conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_player_achievements_user ON player_achievements (user_id)
+            """
+        )
+
+        await self._write_conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS player_settings (
+                user_id           INTEGER PRIMARY KEY REFERENCES players(user_id) ON DELETE CASCADE,
+                notify_work       INTEGER NOT NULL DEFAULT 1,
+                notify_energy     INTEGER NOT NULL DEFAULT 1,
+                notify_contracts  INTEGER NOT NULL DEFAULT 1,
+                compact_mode      INTEGER NOT NULL DEFAULT 0,
+                updated_at        INTEGER NOT NULL DEFAULT 0
+            )
             """
         )
 

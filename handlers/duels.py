@@ -245,6 +245,14 @@ async def _settle(duel: dict, winner_id: int, log: dict) -> None:
             "resolved_at = ? WHERE id = ?",
             (winner_id, json.dumps(log), now(), duel["id"]),
         )
+        await conn.execute(
+            "UPDATE players SET duels_won = duels_won + 1 WHERE user_id = ?",
+            (winner_id,),
+        )
+        await conn.execute(
+            "UPDATE players SET duels_lost = duels_lost + 1 WHERE user_id = ?",
+            (loser_id,),
+        )
 
 
 async def _refund(duel: dict, kind: ActivityKind, status: str) -> None:
