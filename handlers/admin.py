@@ -331,10 +331,11 @@ async def cmd_cheat(message: Message, command: CommandObject | None = None) -> N
                 )
                 return
             new_val = max(0, int(val_str))
+            now_ts = int(time.time())
             async with db.write() as conn:
                 await conn.execute(
-                    "UPDATE players SET energy = ? WHERE user_id = ?",
-                    (new_val, target_id),
+                    "UPDATE players SET energy = ?, energy_updated_at = ? WHERE user_id = ?",
+                    (new_val, now_ts, target_id),
                 )
             await message.reply(
                 f"⚡ <b>کد تقلب با موفقیت اجرا شد!</b> 🛠\n\n"

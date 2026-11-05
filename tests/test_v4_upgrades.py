@@ -297,3 +297,48 @@ async def test_energy_regen_calibration_and_food_overcharge():
     assert res2["success"] is True
     assert res2["energy_gained"] == 85
     assert res2["new_energy"] == 260
+
+
+@pytest.mark.asyncio
+async def test_smart_player_hydration_and_profile_recovery():
+    """Verify that NULL/0 legacy fields recover accurately from profile context."""
+    from services import game
+
+    user_id = 998822
+    await game.ensure_player(user_id, "SmartHero", "smarthero")
+
+    # Manually simulate legacy database rows with 0 uninitialized values
+    async with db.write() as conn:
+        await conn.execute(
+            """
+            UPDATE players
+            SET level = 3,
+                job = 'برنامه‌نویس جونیور',
+                energy = 0,
+                energy_updated_at = 0,
+                work_count = 0,
+                education_level = 0
+            WHERE user_id = ?
+            """,
+            (user_id,),
+        )
+
+    # Hydrate player: must recover 100 energy, 35 work_count (lvl 3),
+    # and level 2 education (developer)
+    p = await game.load_player(user_id)
+    assert p is not None
+    assert p.energy == 100
+    assert p.work_count == 35
+    assert p.education_level == 2
+
+    # Verify that the restored values were persisted into SQLite
+    async with db.read() as conn:
+        cursor = await conn.execute(
+            "SELECT energy, work_count, education_level FROM players WHERE user_id = ?",
+            (user_id,),
+        )
+        row = await cursor.fetchone()
+        await cursor.close()
+        assert row["energy"] == 100
+        assert row["work_count"] == 35
+        assert row["education_level"] == 2

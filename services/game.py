@@ -64,21 +64,29 @@ def exp_to_next(level: int) -> int:
 # ---------------------------------------------------------------------------
 
 
-def _regen_window(energy: int, updated_at: int, current: int) -> tuple[int, int]:
+def _regen_window(energy: int | None, updated_at: int | None, current: int) -> tuple[int, int]:
     """Apply passive regen up to ``current``; returns (energy, updated_at).
 
     Passive regen rules:
     - Natural ceiling is settings.max_energy (100).
+    - If energy is None (NULL in DB) or uninitialized (0 with missing/invalid timestamp),
+      recover to full natural cap (100) immediately.
     - If energy >= 100 (whether full or boosted via food up to 1000+),
       passive regen adds 0 and boosted energy is preserved. Timestamp is
       kept current so regen begins when energy drops below 100.
     - If energy < 100, passive regen restores 1 energy per interval (432s / 7.2m),
       yielding exactly 2 full 0->100 refills per 24 hours.
     """
-    energy = int(energy or 0)
-    updated_at = int(updated_at or 0)
-    current = int(current or 0)
     natural_cap = settings.max_energy
+    current = int(current or 0)
+
+    # Missing or uninitialized legacy profile energy defaults to 100 (full)
+    if energy is None or (int(energy) == 0 and (updated_at is None or int(updated_at) <= 0)):
+        return natural_cap, current
+
+    energy = int(energy)
+    updated_at = current if (updated_at is None or int(updated_at) <= 0) else int(updated_at)
+
     if energy >= natural_cap:
         return energy, current
     elapsed = current - updated_at
@@ -185,11 +193,6 @@ async def _load_conn(
         raise GameError(f"player {user_id} vanished mid-transaction")
 
     energy, updated_at = _regen_window(row["energy"], row["energy_updated_at"], current)
-    if (energy, updated_at) != (row["energy"], row["energy_updated_at"]):
-        await conn.execute(
-            "UPDATE players SET energy = ?, energy_updated_at = ? WHERE user_id = ?",
-            (energy, updated_at, user_id),
-        )
 
     gear = StatBlock()
     loadout: dict[str, str | None] = {slot.value: None for slot in Slot}
@@ -207,11 +210,62 @@ async def _load_conn(
     await cursor.close()
 
     keys = row.keys()
+    level = int(row["level"] or 1)
+
+    # محاسبه و بازیابی حداقل سابقه کاری بر اساس لول کاراکتر
+    min_work = 0
+    if level >= 6:
+        min_work = 300
+    elif level == 5:
+        min_work = 150
+    elif level == 4:
+        min_work = 80
+    elif level == 3:
+        min_work = 35
+    elif level == 2:
+        min_work = 10
+
+    raw_work = row["work_count"] if "work_count" in keys else 0
+    work_count = (
+        int(raw_work)
+        if raw_work is not None and int(raw_work) > 0
+        else min_work
+    )
+
+    # محاسبه و بازیابی مدرک تحصیلی بر اساس شغل کاراکتر
+    job = str(row["job"] or "بیکار") if "job" in keys else "بیکار"
+    req_edu = 0
+    if job in ("مدیر پروژه", "تحلیلگر ارشد بورس", "معمار ارشد"):
+        req_edu = 3
+    elif job in ("حسابدار شرکت", "برنامه‌نویس جونیور", "معلم دبیرستان"):
+        req_edu = 2
+    elif job in ("صندوقدار هایپرمارکت", "راننده تاکسی", "نگهبان برج"):
+        req_edu = 1
+
+    raw_edu = row["education_level"] if "education_level" in keys else 0
+    education_level = max(int(raw_edu or 0), req_edu)
+
+    updates: dict[str, int | str] = {}
+    if (energy, updated_at) != (row["energy"], row["energy_updated_at"]):
+        updates["energy"] = energy
+        updates["energy_updated_at"] = updated_at
+    if "work_count" in keys and (row["work_count"] is None or row["work_count"] != work_count):
+        updates["work_count"] = work_count
+    if "education_level" in keys and (
+        row["education_level"] is None or row["education_level"] != education_level
+    ):
+        updates["education_level"] = education_level
+
+    if updates:
+        set_parts = [f"{k} = ?" for k in updates]
+        vals = list(updates.values()) + [user_id]
+        await conn.execute(f"UPDATE players SET {', '.join(set_parts)} WHERE user_id = ?", vals)
+
     return Player(
         user_id=user_id,
         display_name=row["display_name"] if display_name is None else display_name,
         username=row["username"],
-        level=int(row["level"] or 1),
+        level=level,
         exp=int(row["exp"] or 0),
         energy=int(energy or 0),
         energy_updated_at=int(updated_at or 0),
@@ -238,8 +292,8 @@ async def _load_conn(
             if "onboarding_completed" in keys
             else 0
         ),
-        education_level=int(row["education_level"] or 0) if "education_level" in keys else 0,
-        job=str(row["job"] or "بیکار") if "job" in keys else "بیکار",
+        education_level=education_level,
+        job=job,
         spouse_id=row["spouse_id"] if "spouse_id" in keys else None,
         marriage_date=int(row["marriage_date"] or 0) if "marriage_date" in keys else 0,
         children_count=int(row["children_count"] or 0) if "children_count" in keys else 0,
@@ -272,7 +326,7 @@ async def _load_conn(
         clan_id=row["clan_id"] if "clan_id" in keys else None,
         clan_role=row["clan_role"] if "clan_role" in keys else None,
         education_step=int(row["education_step"] or 0) if "education_step" in keys else 0,
-        work_count=int(row["work_count"] or 0) if "work_count" in keys else 0,
+        work_count=work_count,
     )
 
 

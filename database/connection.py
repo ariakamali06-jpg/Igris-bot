@@ -134,21 +134,41 @@ class Database:
             ("clan_role", "TEXT", "NULL"),
             ("education_step", "INTEGER", "0"),
             ("work_count", "INTEGER", "0"),
+            ("energy", "INTEGER", "100"),
+            ("energy_updated_at", "INTEGER", "0"),
         ]:
             if col not in cols:
                 await self._write_conn.execute(
                     f"ALTER TABLE players ADD COLUMN {col} {col_type} DEFAULT {default_val}"
                 )
 
-        # پاک‌سازی و تضمین مقادیر غیر تهی (NOT NULL) برای سطرهای قدیمی
+        # پاک‌سازی، هوشمندسازی و بازیابی مقادیر پروفایل‌های قدیمی
         await self._write_conn.execute(
             """
             UPDATE players
             SET bank_balance = COALESCE(bank_balance, 0),
                 education_step = COALESCE(education_step, 0),
-                work_count = COALESCE(work_count, 0),
-                education_level = COALESCE(education_level, 0),
-                energy = COALESCE(energy, 100),
+                work_count = CASE
+                    WHEN level >= 6 THEN MAX(COALESCE(work_count, 0), 300)
+                    WHEN level = 5 THEN MAX(COALESCE(work_count, 0), 150)
+                    WHEN level = 4 THEN MAX(COALESCE(work_count, 0), 80)
+                    WHEN level = 3 THEN MAX(COALESCE(work_count, 0), 35)
+                    WHEN level = 2 THEN MAX(COALESCE(work_count, 0), 10)
+                    ELSE COALESCE(work_count, 0)
+                END,
+                education_level = CASE
+                    WHEN job IN ('مدیر پروژه', 'تحلیلگر ارشد بورس', 'معمار ارشد')
+                        THEN MAX(COALESCE(education_level, 0), 3)
+                    WHEN job IN ('حسابدار شرکت', 'برنامه‌نویس جونیور', 'معلم دبیرستان')
+                        THEN MAX(COALESCE(education_level, 0), 2)
+                    WHEN job IN ('صندوقدار هایپرمارکت', 'راننده تاکسی', 'نگهبان برج')
+                        THEN MAX(COALESCE(education_level, 0), 1)
+                    ELSE COALESCE(education_level, 0)
+                END,
+                energy = CASE
+                    WHEN energy IS NULL OR energy = 0 THEN 100
+                    ELSE energy
+                END,
                 energy_updated_at = CASE
                     WHEN energy_updated_at IS NULL OR energy_updated_at = 0
                     THEN strftime('%s', 'now')
