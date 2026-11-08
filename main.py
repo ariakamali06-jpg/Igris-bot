@@ -14,7 +14,6 @@ connections, so a restart never leaves a half-written composite or WAL file.
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import logging
 import os
 import sys
@@ -108,11 +107,6 @@ async def on_startup(bot: Bot) -> None:
     await seed_catalog()
     clear_cooldowns()
 
-    if not settings.dry_run:
-        with contextlib.suppress(Exception):
-            from services.backup import auto_restore_on_startup
-            await auto_restore_on_startup(bot)
-
     if settings.dry_run:
         logger.info("DRY_RUN=1 — boot checks passed, skipping get_me()")
         return
@@ -139,11 +133,6 @@ async def on_startup(bot: Bot) -> None:
 
 
 async def on_shutdown(bot: Bot | None = None) -> None:
-    if bot is not None:
-        with contextlib.suppress(Exception):
-            from services.backup import save_and_pin_backup
-            await save_and_pin_backup(bot)
-
     await db.close()
     # Blocks until pending composite disk writes land (bounded, small queue).
     await asyncio.to_thread(compositor.close)
@@ -160,26 +149,10 @@ async def run() -> None:
         )
         sys.exit(2)
 
-    import socket
-
     from aiogram.client.session.aiohttp import AiohttpSession
 
-    if settings.telegram_api_server:
-        from aiogram.client.telegram import TelegramAPIServer
-
-        logger.info("Connecting via custom Telegram API server: %s", settings.telegram_api_server)
-        session = AiohttpSession(
-            api=TelegramAPIServer.from_base(settings.telegram_api_server.rstrip("/"))
-        )
-    elif settings.proxy_url:
-        logger.info("Connecting via proxy: %s", settings.proxy_url)
-        session = AiohttpSession(proxy=settings.proxy_url)
-    else:
-        logger.info("Connecting directly to official Telegram Bot API (api.telegram.org)")
-        session = AiohttpSession()
-
-    # Force IPv4 socket family to eliminate broken IPv6 timeouts & address errors
-    session._connector_init["family"] = socket.AF_INET
+    logger.info("Connecting to official Telegram Bot API (api.telegram.org)")
+    session = AiohttpSession()
 
     if settings.dry_run:
         # Boot everything except the network loop: useful for smoke tests.
@@ -211,12 +184,8 @@ async def run() -> None:
     dp.message.outer_middleware(GroupActivityMiddleware())
 
     health_server = await _start_health_server()
-    backup_task = None
     try:
         await on_startup(bot)
-        from services.backup import start_backup_scheduler
-
-        backup_task = start_backup_scheduler(bot)
         for attempt in range(1, 11):
             try:
                 await dp.start_polling(
@@ -233,10 +202,6 @@ async def run() -> None:
                 )
                 await asyncio.sleep(3)
     finally:
-        if backup_task is not None:
-            backup_task.cancel()
-            with contextlib.suppress(Exception):
-                await backup_task
         if health_server is not None:
             health_server.close()
             await health_server.wait_closed()

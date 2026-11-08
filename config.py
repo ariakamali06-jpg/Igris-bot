@@ -9,6 +9,7 @@ startup so services can read them without worrying about mutation.
 from __future__ import annotations
 
 import json
+import os
 from functools import lru_cache
 from pathlib import Path
 from typing import Annotated, Any
@@ -17,6 +18,14 @@ from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 ROOT_DIR = Path(__file__).resolve().parent
+
+# روی Railway یک volume پایدار به سرویس وصل میشود و مسیر mount را در این
+# متغیر محیطی میگذارد. ترتیب اولویت مسیر دیتابیس: DB_PATH صریح → volume → پوشه data/ ریپو.
+# اینطور فایل دیتابیس روی دیسک پایدار میماند و با هر redeploy از بین نمیرود.
+_VOLUME_MOUNT = os.environ.get("RAILWAY_VOLUME_MOUNT_PATH", "").strip()
+_DEFAULT_DB_PATH = (
+    Path(_VOLUME_MOUNT) / "game.db" if _VOLUME_MOUNT else ROOT_DIR / "data" / "game.db"
+)
 
 
 class Settings(BaseSettings):
@@ -46,9 +55,6 @@ class Settings(BaseSettings):
     # Telegram @username of this bot (without @) — used to build /start
     # deep links like t.me/<bot_username>?start=wear_... from the Mini App.
     bot_username: str = Field(default="", alias="BOT_USERNAME")
-    # Custom Telegram Bot API URL / Reverse Proxy (e.g. Cloudflare Worker or local Bot API)
-    telegram_api_server: str = Field(default="", alias="TELEGRAM_API_SERVER")
-    proxy_url: str = Field(default="", alias="PROXY_URL")
 
     # --- Channels & Sponsorship ---------------------------------------------
     force_channel_join: bool = Field(default=True, alias="FORCE_CHANNEL_JOIN")
@@ -74,12 +80,9 @@ class Settings(BaseSettings):
     )
 
     # Paths
-    db_path: Path = Field(default=ROOT_DIR / "data" / "game.db", alias="DB_PATH")
+    db_path: Path = Field(default=_DEFAULT_DB_PATH, alias="DB_PATH")
     catalog_db_path: Path = Field(
         default=ROOT_DIR / "data" / "bot_catalog.db", alias="CATALOG_DB_PATH"
-    )
-    backup_chat_id: int | str | None = Field(
-        default=-1004329206054, alias="BACKUP_CHAT_ID"
     )
     assets_dir: Path = Field(
         default=ROOT_DIR / "assets" / "layers", alias="ASSETS_DIR"

@@ -7,11 +7,8 @@
 
 from __future__ import annotations
 
-import contextlib
 import logging
-import tempfile
 import time
-from pathlib import Path
 
 from aiogram import F, Router
 from aiogram.filters import Command, CommandObject
@@ -47,8 +44,6 @@ _HELP_TEXT = (
     "🔹 <code>چیت وضعیت</code> — مشاهده تمام آمارهای دیتابیسی بازیکن\n"
     "🔹 <code>چیت کانال</code> — مدیریت کانال‌های عضویت اجباری\n"
     "🔹 <code>چیت پاداش [مبلغ]</code> (یا <code>/airdrop</code>) — واریز رکسار به همه\n"
-    "🔹 <code>چیت بکاپ</code> (یا <code>/backup</code>) — دریافت فایل دیتابیس در پیوی\n"
-    "🔹 <code>چیت بازیابی</code> (یا <code>/restore</code>) — بازیابی دیتابیس از فایل .db\n"
 )
 
 _EDU_LABELS = {
@@ -556,89 +551,6 @@ async def cmd_direct_reset(message: Message) -> None:
         "تمامی سوابق، کمد لباس و دارایی‌های کاراکتر صفر شد. "
         "با ارسال <code>/start</code> فرآیند ساخت مجدد کاراکتر آغاز می‌شود."
     )
-
-
-@router.message(Command("backup", "db_backup"))
-@router.message(F.text.lower().in_({"بکاپ", "بک‌آپ", "پشتیبان", "backup"}))
-async def cmd_manual_backup(message: Message) -> None:
-    """دستور ارسال فوری و دستی فایل بکاپ دیتابیس برای مالک و ادمین."""
-    user = message.from_user
-    if user is None or not is_admin_or_owner(user.id):
-        return
-
-    from services.backup import send_backup_to_admins
-
-    bot = message.bot
-    if not bot:
-        await message.reply("❌ دسترسی به ربات برای ارسال داکیومنت امکان‌پذیر نیست.")
-        return
-
-    status_msg = await message.reply("⏳ در حال تهیه نسخه پشتیبان از دیتابیس شهر...")
-    try:
-        count = await send_backup_to_admins(bot)
-        if count > 0:
-            await status_msg.edit_text(
-                "✅ <b>نسخه پشتیبان دیتابیس با موفقیت تهیه و به پیوی ارسال شد!</b>"
-            )
-        else:
-            await status_msg.edit_text("❌ خطا در تهیه یا ارسال فایل پشتیبان.")
-    except Exception as exc:
-        logger.exception("Manual DB backup failed: %s", exc)
-        await status_msg.edit_text(f"❌ خطا: <code>{esc(str(exc))}</code>")
-
-
-@router.message(Command("restore", "db_restore"))
-@router.message(F.text.lower().in_({"بازیابی", "ریستور", "restore", "چیت بازیابی"}))
-@router.message(
-    F.document
-    & (
-        (F.caption.lower().in_({"بازیابی", "ریستور", "restore", "چیت بازیابی"}))
-        | F.caption.startswith("/restore")
-    )
-)
-async def cmd_admin_restore(message: Message) -> None:
-    """بازیابی دیتابیس از فایل پشتیبان توسط مالک و ادمین."""
-    user = message.from_user
-    if user is None or not is_admin_or_owner(user.id):
-        return
-
-    bot = message.bot
-    if not bot:
-        return
-
-    doc = message.document
-    if doc is None and message.reply_to_message and message.reply_to_message.document:
-        doc = message.reply_to_message.document
-
-    if not doc:
-        await message.reply(
-            "⚠️ <b>راهنمای بازیابی دیتابیس شهر تیرامیکس:</b>\n\n"
-            "برای بازیابی اطلاعات ذخیره‌شده بازیکنان:\n"
-            "۱. روی فایل پشتیبان دیتابیس <b>ریپلای</b> کرده و بنویسید: <code>/restore</code>\n"
-            "۲. یا فایل دیتابیس را همراه با کپشن <code>/restore</code> ارسال کنید."
-        )
-        return
-
-    status_msg = await message.reply("⏳ در حال دریافت فایل پشتیبان و بررسی سلامت دیتابیس...")
-    temp_dir = tempfile.gettempdir()
-    temp_file = Path(temp_dir) / f"incoming_restore_{int(time.time())}.db"
-
-    try:
-        await bot.download(doc, destination=temp_file)
-        from services.backup import restore_database_from_file
-
-        success, note = await restore_database_from_file(temp_file)
-        if success:
-            await status_msg.edit_text(f"✅ <b>{note}</b>")
-        else:
-            await status_msg.edit_text(f"❌ <b>بازیابی ناموفق بود:</b>\n{note}")
-    except Exception as exc:
-        logger.exception("Restore failed: %s", exc)
-        await status_msg.edit_text(f"❌ خطا در فرآیند بازیابی: <code>{esc(str(exc))}</code>")
-    finally:
-        with contextlib.suppress(Exception):
-            if temp_file.exists():
-                temp_file.unlink()
 
 
 @router.message(

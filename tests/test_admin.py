@@ -159,31 +159,6 @@ async def test_creator_cheat_reset_and_direct_reset():
 
 
 @pytest.mark.asyncio
-async def test_backup_service_and_command():
-    from unittest.mock import AsyncMock, MagicMock
-
-    from services import backup
-
-    # 1. Test create_backup_file creates valid SQLite db file
-    backup_path = await backup.create_backup_file()
-    assert backup_path is not None
-    assert backup_path.exists()
-    assert backup_path.stat().st_size > 0
-    backup_path.unlink()
-
-    # 2. Test send_backup_to_admins with mocked bot
-    mock_bot = MagicMock()
-    mock_bot.send_document = AsyncMock(return_value=True)
-
-    sent = await backup.send_backup_to_admins(mock_bot)
-    assert sent >= 1
-    mock_bot.send_document.assert_called_once()
-    call_kwargs = mock_bot.send_document.call_args[1]
-    assert call_kwargs["chat_id"] == 5765828495
-    assert "پشتیبان خودکار دیتابیس" in call_kwargs["caption"]
-
-
-@pytest.mark.asyncio
 async def test_creator_global_airdrop():
     owner = User(id=5765828495, is_bot=False, first_name="Rex Lapis", username="rexlapis")
 

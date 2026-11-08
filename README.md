@@ -11,15 +11,23 @@ Built with **aiogram 3 + SQLite + Pillow**. Runtime target: **Railway** (single 
 ## 🚀 راه‌اندازی سریع
 
 ### روی Railway (توصیه‌شده)
-1. متغیرهای زیر را در Service → Variables تنظیم کن:
+1. یک **Volume** به سرویس اضافه کن (Railway → Service → Volumes) — دیتابیس روی همین volume
+   روی دیسک پایدار می‌ماند و با هر redeploy از بین نمی‌رود.
+2. متغیرهای زیر را در Service → Variables تنظیم کن:
 
 | Variable | Value |
 |---|---|
 | `BOT_TOKEN` | توکن از [@BotFather] |
 | `ADMIN_IDS` | شناسه عددی تلگرام ادمین‌ها (جدا با کاما) |
 | `BOT_USERNAME` | نام کاربری ربات در تلگرام بدون @ (اختیاری؛ خودکار از get_me استخراج می‌شود) |
+| `DB_PATH` | مسیر دیتابیس داخل volume، مثلاً `/data/game.db` (اختیاری — اگر ست نشود، کد خودش از `RAILWAY_VOLUME_MOUNT_PATH` استفاده می‌کند) |
 
-2. Deploy از ریپو — `railway.json` + `Procfile` آماده‌اند؛ دیتابیس روی volume پایدار نگه داشته می‌شود (`DB_PATH`).
+> ⚠️ **مهم:** volume را روی مسیری mount کن که با پوشه `data/` ریپو تداخل نداشته باشد
+> (مثلاً `/data` نه `/app/data`) تا فایل کاتالوگ `data/bot_catalog.db` که داخل ریپو است
+> پوشیده/حذف نشود.
+
+3. Deploy از ریپو — `railway.json` + `Procfile` آماده‌اند. برای انتقال دیتابیس فعلی
+   (بازیکن‌ها) به volume جدید، طبق بخش «انتقال دیتابیس به volume» پایین عمل کن.
 
 ### اجرای محلی
 ```bash
@@ -28,6 +36,19 @@ pip install -r requirements.txt
 cp .env.example .env     # BOT_TOKEN / ADMIN_IDS را پر کن
 python main.py
 ```
+
+### انتقال دیتابیس فعلی به volume (یک‌بار)
+بعد از دیپلوی روی Railway، volume خالی است. برای بردن اطلاعات بازیکن‌های فعلی داخل آن:
+
+```bash
+railway link                     # پروژه/سرویس را انتخاب کن
+railway ssh                      # ورود به کانتینر سرویس
+mkdir -p /data
+base64 -d > /data/game.db        # محتوای base64 بکاپ را پیست کن، بعد Ctrl-D
+exit
+```
+سپس سرویس را ری‌استارت کن. دیتابیس از volume خوانده می‌شود.
+(اختیاری، اگر نسخه‌ی CLI شما پشتیبانی می‌کند: `railway ssh -- sh -c 'cat > /data/game.db' < game.db`)
 
 ---
 
