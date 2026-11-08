@@ -633,7 +633,7 @@ async def test_set_builder_and_miniapp_layer_priority_script():
     from pathlib import Path
 
     def _read_file() -> str:
-        sb_path = Path("/tmp/Igris-bot/set_builder.html")
+        sb_path = ROOT_DIR / "set_builder.html"
         assert sb_path.exists()
         return sb_path.read_text(encoding="utf-8")
 
