@@ -215,6 +215,11 @@ async def cmd_start_wear(message: Message, state: FSMContext) -> None:
     if arg.startswith("wear_"):
         await _handle_wear_payload(message, arg[len("wear_"):], state=state)
         return
+    if arg == "customizer":
+        # Deep link from group → show customizer in DM
+        from handlers.boutique import handle_customizer_command
+        await handle_customizer_command(message)
+        return
     # Unknown payload → delegate to main start handler
     await cmd_start(message, state)
 
