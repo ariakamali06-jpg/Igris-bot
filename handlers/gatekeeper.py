@@ -40,10 +40,10 @@ _ONBOARDING_COMMANDS = {
 _GAME_COMMAND_KEYWORDS: set[str] = {
     # Economy & Stats
     "کار", "شغل", "استخدام", "بانک", "بورس", "سهام", "روزانه", "پاداش", "حقوق",
-    "موجودی", "حساب", "کیف", "کیف پول", "سکه", "رکسار", "آمار", "استاتس", "لول",
+    "موجودی", "حساب", "کیف", "کیف پول", "سکه", "رکسار", "استاتس", "لول",
     "وضعیت", "راهنما", "کمک", "آموزش", "دستورات", "انتقال", "کارت به کارت",
     # Profile & Wardrobe
-    "پروفایل", "من", "کارت", "کاراکتر", "مشخصات", "کمد", "لباس", "کمد لباس",
+    "پروفایل", "کارت", "کاراکتر", "مشخصات", "کمد", "لباس", "کمد لباس",
     "بوتیک", "ویترین", "شاپ", "فروشگاه", "خرید", "بازار", "بازارچه", "آواتار",
     "ظاهر", "پوست", "کاستومایز", "طراحی", "مینی اپ", "مینی‌اپ", "کوله‌پشتی", "کوله",
     # Salon & Food
@@ -56,7 +56,7 @@ _GAME_COMMAND_KEYWORDS: set[str] = {
     "ازدواج", "طلاق", "خواستگاری", "همسر", "بیمارستان", "کلینیک", "دوئل", "چالش", "کاپ",
     # English equivalents
     "work", "job", "bank", "stock", "daily", "bal", "balance", "wallet", "stats",
-    "level", "help", "transfer", "profile", "me", "card", "wardrobe", "closet",
+    "level", "help", "transfer", "profile", "card", "wardrobe", "closet",
     "boutique", "fashion", "shop", "store", "market", "bazaar", "avatar",
     "customizer", "inv", "inventory", "salon", "barber", "food", "eat",
     "xo", "shadow", "extort", "shield", "rob", "robbery", "risk", "dice",
