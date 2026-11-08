@@ -38,17 +38,18 @@ python main.py
 ```
 
 ### انتقال دیتابیس فعلی به volume (یک‌بار)
-بعد از دیپلوی روی Railway، volume خالی است. برای بردن اطلاعات بازیکن‌های فعلی داخل آن:
+بعد از اضافه‌کردن volume، قبل از اینکه بات شروع به کار کند این کار را بکن:
 
 ```bash
-railway link                     # پروژه/سرویس را انتخاب کن
-railway ssh                      # ورود به کانتینر سرویس
-mkdir -p /data
-base64 -d > /data/game.db        # محتوای base64 بکاپ را پیست کن، بعد Ctrl-D
-exit
+railway link                                   # پروژه/سرویس را انتخاب کن
+railway volume files --volume <نام-volume> upload ./igris_latest_backup.db /game.db
 ```
-سپس سرویس را ری‌استارت کن. دیتابیس از volume خوانده می‌شود.
-(اختیاری، اگر نسخه‌ی CLI شما پشتیبانی می‌کند: `railway ssh -- sh -c 'cat > /data/game.db' < game.db`)
+فایل با مسیر `/game.db` داخل volume آپلود می‌شود که روی کانتینر در `/<mount-path>/game.db`
+(مثلاً `/data/game.db`) دیده می‌شود. بعد سرویس را ری‌استارت کن — بات همان دیتابیس را می‌خواند.
+اگر بات قبلاً یک دیتابیس خالی ساخته بود، همین دستور فایل را جایگزین می‌کند و بعد ری‌استارت.
+
+> روش جایگزین بدون CLI برای فایل‌ها: `railway volume browse /` (مرورگر تعاملی) یا از داشبورد Railway.
+> روش دیگر: `railway ssh` و بعد `scp ./igris_latest_backup.db <service-domain>@ssh.railway.com:/data/game.db`.
 
 ---
 
