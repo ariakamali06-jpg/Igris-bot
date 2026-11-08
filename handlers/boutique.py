@@ -959,26 +959,50 @@ async def handle_customizer_command(message: Message) -> None:
     render_url = await avatar.get_player_render_url(user_id)
     photo_payload = await _render_photo_payload(render_url, "avatar.png")
 
-    caption = (
-        "👑 <b>مینی‌اپ شخصی‌سازی و تجهیز کاراکتر ایگریس</b>\n"
-        "━━━━━━━━━━━━━━━━━━━━\n"
-        "در این بخش می‌توانید آواتار خود را با بیش از ۹,۰۰۰ قطعه در ۵ ناحیه بدنه "
-        "(سر، بالاتنه، پایین‌تنه، کفش و اکسسوری) به صورت زنده طراحی و ست کنید.\n\n"
-        "✨ کلیه تغییرات بدون تاخیر روی ماکت اعمال شده و با زدن دکمه ذخیره، "
-        "آواتار شما در ربات ثبت می‌گردد."
-    )
-
-    buttons: list[list[InlineKeyboardButton]] = []
-    if settings.webapp_url:
-        custom_url = await avatar.get_customizer_url(user_id)
-        buttons.append(
-            [
-                InlineKeyboardButton(
-                    text="📱 باز کردن مینی‌اپ شخصی‌سازی",
-                    web_app=WebAppInfo(url=custom_url),
-                )
-            ]
+    is_group = message.chat.type in ("group", "supergroup")
+    
+    if is_group:
+        # In groups: use deep link to DM
+        caption = (
+            "👑 <b>مینی‌اپ شخصی‌سازی و تجهیز کاراکتر ایگریس</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            "⚠️ برای استفاده از مینی‌اپ کاستومایز، روی دکمه زیر کلیک کنید تا به فضای خصوصی ربات منتقل شوید.\n\n"
+            "در بخش شخصی می‌توانید آواتار خود را با بیش از ۹,۰۰۰ قطعه در ۵ ناحیه بدنه "
+            "(سر، بالاتنه، پایین‌تنه، کفش و اکسسوری) به صورت زنده طراحی و ست کنید."
         )
+        buttons: list[list[InlineKeyboardButton]] = []
+        if settings.bot_username:
+            deep_link = f"https://t.me/{settings.bot_username}?start=customizer"
+            buttons.append(
+                [
+                    InlineKeyboardButton(
+                        text="🎨 رفتن به کاستومایز (در DM بات)",
+                        url=deep_link,
+                    )
+                ]
+            )
+    else:
+        # In DM: show webapp button
+        caption = (
+            "👑 <b>مینی‌اپ شخصی‌سازی و تجهیز کاراکتر ایگریس</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            "در این بخش می‌توانید آواتار خود را با بیش از ۹,۰۰۰ قطعه در ۵ ناحیه بدنه "
+            "(سر، بالاتنه، پایین‌تنه، کفش و اکسسوری) به صورت زنده طراحی و ست کنید.\n\n"
+            "✨ کلیه تغییرات بدون تاخیر روی ماکت اعمال شده و با زدن دکمه ذخیره، "
+            "آواتار شما در ربات ثبت می‌گردد."
+        )
+        buttons: list[list[InlineKeyboardButton]] = []
+        if settings.webapp_url:
+            custom_url = await avatar.get_customizer_url(user_id)
+            buttons.append(
+                [
+                    InlineKeyboardButton(
+                        text="📱 باز کردن مینی‌اپ شخصی‌سازی",
+                        web_app=WebAppInfo(url=custom_url),
+                    )
+                ]
+            )
+    
     buttons.append(
         [
             InlineKeyboardButton(text="👕 کمد لباس من", callback_data="wdr:view:0"),
