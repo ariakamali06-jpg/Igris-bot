@@ -60,7 +60,7 @@ def _activity_card(result: economy.ActivityResult) -> str:
 DAILY_WORDS = {"روزانه", "جایزه", "پاداش", "حقوق", "daily", "claim"}
 WORK_WORDS = {"کار", "شیفت", "work", "shift"}
 BAL_WORDS = {"موجودی", "پول", "سکه", "کیف", "کیف پول", "حساب", "balance", "bal", "wallet", "money"}
-STATS_WORDS = {"آمار", "استاتس", "لول", "وضعیت", "stats", "level"}
+STATS_WORDS = {"استاتس", "لول", "وضعیت", "stats", "level"}
 HELP_WORDS = {"راهنما", "کمک", "آموزش", "اموزش", "دستورات", "help"}
 
 
@@ -114,7 +114,7 @@ async def cmd_work(message: Message) -> None:
 # ---------------------------------------------------------------------------
 
 
-@router.message(CommandOrText(["study", "edu"], {"تحصیل", "درس", "دانشگاه", "مدرک", "کلاس"}))
+@router.message(CommandOrText(["study", "edu"], {"تحصیل", "دانشگاه", "مدرک", "کلاس"}))
 async def cmd_study(message: Message) -> None:
     """حضور در کلاس‌های دانشگاه تیرامیکس جهت ارتقای مدرک تحصیلی و دسترسی به مشاغل عالی."""
     user = message.from_user
@@ -871,8 +871,8 @@ _HELP_CMDS_TEXT = (
     "📜 <b>فهرست کامل دستورات شهر تیرامیکس:</b>\n"
     "━━━━━━━━━━━━━━━━━━━━\n\n"
     "👤 <b>هویت و ظاهر:</b>\n"
-    "• <code>پروفایل</code> / <code>/me</code> — شناسنامه رسمی و کارت گرافیکی\n"
-    "• <code>آمار</code> / <code>/stats</code> — لول، انرژی، سلامت، اتک، دفاع و استایل\n"
+    "• <code>پروفایل</code> / <code>/profile</code> — شناسنامه رسمی و کارت گرافیکی\n"
+    "• <code>وضعیت</code> / <code>/stats</code> — لول، انرژی، سلامت، اتک، دفاع و استایل\n"
     "• <code>شاپ</code> / <code>/shop</code> — فروشگاه مد و لباس (مینی‌اپ)\n"
     "• <code>بوتیک</code> / <code>/boutique</code> — ویترین لباس با دکمه‌های شیشه‌ای\n"
     "• <code>کمد</code> / <code>/wardrobe</code> — مشاهده و پوشیدن لباس‌های خریداری‌شده\n"

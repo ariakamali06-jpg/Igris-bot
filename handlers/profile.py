@@ -51,7 +51,7 @@ _INVENTORY_PAGE_SIZE = 6
 # /me & /profile
 # ---------------------------------------------------------------------------
 
-PROFILE_COMMANDS = {"پروفایل", "من", "کارت", "کاراکتر", "مشخصات", "profile", "me", "card"}
+PROFILE_COMMANDS = {"پروفایل", "کارت", "کاراکتر", "مشخصات", "profile", "card"}
 INVENTORY_COMMANDS = {
     "کوله",
     "کوله پشتی",
@@ -299,7 +299,7 @@ async def _show_profile(message: Message | None, player: Player) -> None:
     )
 
 
-@router.message(CommandOrText(["me", "profile", "card"], PROFILE_COMMANDS))
+@router.message(CommandOrText(["profile", "card"], PROFILE_COMMANDS))
 async def cmd_profile(message: Message) -> None:
     user = message.from_user
     if user is None:
