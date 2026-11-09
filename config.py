@@ -89,6 +89,13 @@ class Settings(BaseSettings):
     )
     cache_dir: Path = Field(default=ROOT_DIR / "cache" / "composites", alias="CACHE_DIR")
 
+    # --- Clothing boutique price tiers (رکسار) ------------------------------
+    # تنها منبع حقیقت برای قیمت لباس. هم کارت متنی، هم خرید سرور و هم کاتالوگ
+    # مینی‌اپ از همین اعداد استفاده می‌کنند تا قیمت‌ها هیچ‌وقت ناهماهنگ نشوند.
+    clothing_price_unisex: int = 2_000       # لباس یونیسکس / اسپرت
+    clothing_price_same_gender: int = 1_200  # هم‌جنسیت (۳۰٪ ارزان‌تر از یونیسکس)
+    clothing_price_opposite: int = 4_800     # غیرهم‌جنسیت (لوکس)
+
     # --- Character card -----------------------------------------------------
     canvas_size: tuple[int, int] = (512, 512)
     hud_height: int = 96
@@ -174,6 +181,8 @@ class Settings(BaseSettings):
     heist_stake_min: int = 50
     heist_stake_max: int = 25_000
     heist_payout_multiplier: float = 1.8
+    # جریمه شانس با بزرگ شدن مبلغ هدف (از ۰ در حداقل تا این مقدار در حداکثر)
+    heist_size_penalty_max: float = 0.35
 
     # --- Ocean port phase 1: passive economy (املاک / نیرو) -----------------
     property_income_interval: int = 1800
@@ -367,6 +376,10 @@ class Settings(BaseSettings):
     cooldown_casino: int = 5
     cooldown_shop: int = 5
     cooldown_raid: int = 6
+    # «مدت زمان مشکوکی پلیس» بین دو سرقت خیابانی (۱۵ دقیقه)
+    theft_police_suspicion_seconds: int = 900
+    # مدت حبس در بازداشتگاه مرکزی هنگام دستگیری در سرقت
+    theft_jail_seconds: int = 1_800
 
     # --- Pacing -------------------------------------------------------------
     duel_animation_delay: float = 1.1
@@ -576,7 +589,7 @@ FOOD_CATALOG: tuple[dict[str, Any], ...] = (
     {
         "id": "energy_drink",
         "name": "⚡️ نوشابه انرژی‌زا بلک‌برن",
-        "price": 450,
+        "price": 370,
         "energy": 40,
         "tier": 2,
         "desc": "بمب کافئین و تائورین برای کار سریع و شیفت اضافه.",
@@ -584,7 +597,7 @@ FOOD_CATALOG: tuple[dict[str, Any], ...] = (
     {
         "id": "mojito",
         "name": "🧃 موهیتو نعنا لیمو طبیعی",
-        "price": 420,
+        "price": 365,
         "energy": 40,
         "tier": 2,
         "desc": "نوشیدنی خنک یخی با برگ‌های تازه نعنا و لیموترش.",
@@ -592,7 +605,7 @@ FOOD_CATALOG: tuple[dict[str, Any], ...] = (
     {
         "id": "iced_macchiato",
         "name": "🧋 آیس کارامل ماکیاتو",
-        "price": 480,
+        "price": 380,
         "energy": 40,
         "tier": 2,
         "desc": "اسپرسو سرد با سس کارامل غلیظ و شیر کف‌کرده.",
@@ -601,7 +614,7 @@ FOOD_CATALOG: tuple[dict[str, Any], ...] = (
     {
         "id": "sandwich",
         "name": "🥪 ساندویچ کلاب مرغ و پنیر",
-        "price": 700,
+        "price": 470,
         "energy": 55,
         "tier": 3,
         "desc": "میان‌وعده ترد و تازه برای تجدید قوای روزانه.",
@@ -609,7 +622,7 @@ FOOD_CATALOG: tuple[dict[str, Any], ...] = (
     {
         "id": "shawarma",
         "name": "🌯 شاورما مرغ و سس سیر",
-        "price": 720,
+        "price": 480,
         "energy": 55,
         "tier": 3,
         "desc": "لقمه عربی خوش‌عطر با فیله مرغ گریل و سس توم.",
@@ -617,7 +630,7 @@ FOOD_CATALOG: tuple[dict[str, Any], ...] = (
     {
         "id": "taco",
         "name": "🌮 تاکو ترد گوشت مکزیکی",
-        "price": 680,
+        "price": 460,
         "energy": 55,
         "tier": 3,
         "desc": "نان ترد ذرتی با گوشت چرخ‌کرده تند و پنیر چدار.",
@@ -626,7 +639,7 @@ FOOD_CATALOG: tuple[dict[str, Any], ...] = (
     {
         "id": "burger",
         "name": "🍔 برگر زغالی دوبل پنیر",
-        "price": 1_100,
+        "price": 575,
         "energy": 75,
         "tier": 4,
         "desc": "یک وعده پر و پیمان خیابانی که حسابی سیرت می‌کنه.",
@@ -634,7 +647,7 @@ FOOD_CATALOG: tuple[dict[str, Any], ...] = (
     {
         "id": "hotdog",
         "name": "🌭 هات‌داگ تنوری پرپنیر",
-        "price": 1_050,
+        "price": 560,
         "energy": 75,
         "tier": 4,
         "desc": "سوسیس فرانکفورتر گریل با قارچ، ذرت و پنیر مذاب.",
@@ -642,7 +655,7 @@ FOOD_CATALOG: tuple[dict[str, Any], ...] = (
     {
         "id": "roast_beef_sub",
         "name": "🥪 ژامبون تنوری مخصوص",
-        "price": 1_150,
+        "price": 585,
         "energy": 75,
         "tier": 4,
         "desc": "ساندویچ داغ ژامبون بره دودی با چیپس و سس قارچ.",
@@ -651,7 +664,7 @@ FOOD_CATALOG: tuple[dict[str, Any], ...] = (
     {
         "id": "pizza",
         "name": "🍕 پیتزا پپرونی مخصوص",
-        "price": 1_500,
+        "price": 600,
         "energy": 85,
         "tier": 5,
         "desc": "پیتزای داغ کش‌دار پرپنیر با طعم تند ایتالیایی.",
@@ -659,7 +672,7 @@ FOOD_CATALOG: tuple[dict[str, Any], ...] = (
     {
         "id": "pasta",
         "name": "🍝 پاستا پنه آلفردو",
-        "price": 1_550,
+        "price": 610,
         "energy": 85,
         "tier": 5,
         "desc": "پنه ریگاته با خامه اعلا، کره، قارچ و سینه مرغ گریل.",
@@ -667,7 +680,7 @@ FOOD_CATALOG: tuple[dict[str, Any], ...] = (
     {
         "id": "steak_pizza",
         "name": "🍕 پیتزا سیر و استیک",
-        "price": 1_650,
+        "price": 620,
         "energy": 85,
         "tier": 5,
         "desc": "برش‌های راسته گوساله روی پنیر موزارلا با روغن سیر.",
@@ -676,7 +689,7 @@ FOOD_CATALOG: tuple[dict[str, Any], ...] = (
     {
         "id": "chelokabab",
         "name": "🥩 چلوکباب کوبیده زعفرانی",
-        "price": 2_200,
+        "price": 650,
         "energy": 100,
         "tier": 6,
         "desc": "غذای اعلا و اصیل ایرانی؛ انرژی کاراکترت رو ۱۰۰٪ فول می‌کنه!",
@@ -684,7 +697,7 @@ FOOD_CATALOG: tuple[dict[str, Any], ...] = (
     {
         "id": "zereshk_polo",
         "name": "🥘 زرشک‌پلو با مرغ مجلسی",
-        "price": 2_100,
+        "price": 640,
         "energy": 100,
         "tier": 6,
         "desc": "ران مرغ زعفرانی سرخ‌شده همراه برنج معطر ایرانی و زرشک.",
@@ -692,7 +705,7 @@ FOOD_CATALOG: tuple[dict[str, Any], ...] = (
     {
         "id": "mahiche",
         "name": "🍖 چلو ماهیچه شاندیزی مخصوص",
-        "price": 2_500,
+        "price": 660,
         "energy": 100,
         "tier": 6,
         "desc": "ماهیچه گوسفندی نرم و لذیذ، پخته‌شده با زعفران و پیاز داغ.",

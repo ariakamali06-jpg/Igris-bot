@@ -22,7 +22,7 @@ from services import economy, game
 
 BASE_WORK_COOLDOWN = 480   # 8 minutes base cooldown
 STUDY_COOLDOWN = 60        # 1 minute per term
-STEAL_COOLDOWN = 21600      # 6 hours
+STEAL_COOLDOWN = settings.theft_police_suspicion_seconds  # 15 minutes
 DUEL_COOLDOWN = 10800       # 3 hours
 INTIMACY_COOLDOWN = 28800   # 8 hours
 AFFAIR_COOLDOWN = 43200     # 12 hours

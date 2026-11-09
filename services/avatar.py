@@ -386,6 +386,20 @@ async def save_custom_avatar(
     """Save player custom avatar composition from customizer / Mini App without clothes stacking."""
     cur_av = await get_player_avatar(user_id)  # ensure row exists
     now_ts = int(time.time())
+
+    # 🔒 قفل رنگ پوست: بعد از ساخته‌شدن کاراکتر، تغییر رنگ پوست از راه مینی‌اپ
+    # رایگان نیست و فقط سرویس پولی آرایشگاه مجاز است. اگر پیلود رنگ پوست دیگری
+    # فرستاد، رنگ ذخیره‌شده حفظ می‌شود.
+    try:
+        stored_skin = int(cur_av.get("skin_tone", skin_tone))
+        if int(skin_tone) != stored_skin:
+            from services import game as _game
+
+            _player = await _game.load_player(user_id)
+            if _player is not None and _player.onboarding_completed == 1:
+                skin_tone = stored_skin
+    except Exception:  # noqa: BLE001 - guard must never break a save
+        logger.warning("skin lock check failed for user %s", user_id)
     clean_vars = [int(v) for v in var_ids if int(v) > 0]
     cur_vars = cur_av.get("equipped_var_ids", [])
 
@@ -987,28 +1001,31 @@ async def buy_boutique_set(
 
 
 def calculate_item_price(item_gender: str, player_gender: str) -> tuple[int, str]:
-    """Calculate dynamic item price based on player gender vs item gender."""
+    """Calculate dynamic item price based on player gender vs item gender.
+
+    قیمت‌ها فقط از ``config.settings`` خوانده می‌شوند تا کارت متنی تلگرام و
+    مینی‌اپ همیشه عدد یکسانی نشان دهند.
+    """
     p_lower = (player_gender or "").lower()
     is_fem = any(k in p_lower for k in ("دختر", "female", "girl"))
     p_gen = "female" if is_fem else "male"
     it_gen = (item_gender or "unisex").lower()
 
     if it_gen == "unisex":
-        return 2000, "⚧ استاندارد (۲,۰۰۰ رکسار)"
+        price = settings.clothing_price_unisex
+        return price, f"⚧ استاندارد ({price:,} رکسار)"
     elif it_gen == p_gen:
+        price = settings.clothing_price_same_gender
         label = (
-            "✨ ۴۰٪ تخفیف دخترانه (۱,۲۰۰ رکسار)"
+            "✨ ۴۰٪ تخفیف دخترانه"
             if p_gen == "female"
-            else "✨ ۴۰٪ تخفیف پسرانه (۱,۲۰۰ رکسار)"
+            else "✨ ۴۰٪ تخفیف پسرانه"
         )
-        return 1200, label
+        return price, f"{label} ({price:,} رکسار)"
     else:
-        label = (
-            "🔥 لوکس پسرانه (۴,۸۰۰ رکسار)"
-            if it_gen == "male"
-            else "🔥 لوکس دخترانه (۴,۸۰۰ رکسار)"
-        )
-        return 4800, label
+        price = settings.clothing_price_opposite
+        label = "🔥 لوکس پسرانه" if it_gen == "male" else "🔥 لوکس دخترانه"
+        return price, f"{label} ({price:,} رکسار)"
 
 
 async def owns_item(user_id: int, var_id: int) -> bool:
@@ -1551,6 +1568,11 @@ async def get_customizer_url(
         "mode": resolved_mode,
         "owned": owned_ids,
         "owned_sets": owned_sets,
+        # قیمتهای لباس — از config پاس داده میشوند تا مینی‌اپ هرگز عدد ثابت و
+        # ناهماهنگ با کارت متنی تلگرام نداشته باشد.
+        "pu": settings.clothing_price_unisex,
+        "ps": settings.clothing_price_same_gender,
+        "po": settings.clothing_price_opposite,
     }
 
     # Add shop_items only in shop mode

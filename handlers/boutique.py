@@ -272,13 +272,14 @@ async def _build_boutique_catalog(
     total_pages = cat_data["total_pages"]
     cat_title = cat_data["title"]
 
+    own_label = "دخترانه" if is_female else "پسرانه"
+    other_label = "پسرانه" if is_female else "دخترانه"
     gender_notice = (
-        "✨ <b>امتیاز جنسیت شما:</b> ۴۰٪ تخفیف ویژه روی پوشاک دخترانه (۳۰۰ رکسار)!\n"
-        "🔥 پوشاک پسرانه: ۱,۲۰۰ رکسار (نرخ غیرهم‌جنسیت) | ⚧ اسپرت: ۵۰۰ رکسار"
-        if is_female
-        else
-        "✨ <b>امتیاز جنسیت شما:</b> ۴۰٪ تخفیف ویژه روی پوشاک پسرانه (۳۰۰ رکسار)!\n"
-        "🔥 پوشاک دخترانه: ۱,۲۰۰ رکسار (نرخ غیرهم‌جنسیت) | ⚧ اسپرت: ۵۰۰ رکسار"
+        f"✨ <b>امتیاز جنسیت شما:</b> هم‌جنس ({own_label}) "
+        f"<b>{settings.clothing_price_same_gender:,}</b> رکسار\n"
+        f"🔥 غیرهم‌جنس ({other_label}): "
+        f"<b>{settings.clothing_price_opposite:,}</b> رکسار"
+        f" | ⚧ اسپرت/یونیسکس: <b>{settings.clothing_price_unisex:,}</b> رکسار"
     )
 
     lines = [

@@ -132,13 +132,8 @@ async def cmd_duel(message: Message, command: CommandObject | None = None) -> No
                 f"موجودی شما برای این شرط‌بندی کافی نیست! (موجودی شما: {c1:,} رکسار)"
             )
 
-        # Check opponent balance
-        c2, _ = await economy.balances(opponent.user_id)
-        if c2 < stake:
-            raise GameError(
-                f"موجودی {esc(opponent.display_tag)} برای این شرط‌بندی کافی نیست! "
-                f"(موجودی حریف: {c2:,} رکسار)"
-            )
+        # موجودی حریف اینجا چک نمی‌شود: چالش ارسال می‌شود و اگر در لحظه قبول
+        # موجودی کافی نداشته باشد، همان‌جا به او پیام داده می‌شود.
 
         economy.require_ready(user.id, "duel", settings.cooldown_duel)
 
@@ -336,6 +331,16 @@ async def cb_accept(call: CallbackQuery) -> None:
 
         challenger = await hydrate(duel["challenger_id"], "Challenger", None)
         opponent = await hydrate(user.id, user.full_name, user.username)
+
+        # شرط حریف دقیقاً در لحظه قبول بررسی می‌شود (نه لحظه ارسال درخواست).
+        opponent_cash, _ = await economy.balances(opponent.user_id)
+        if opponent_cash < duel["stake"]:
+            await call.answer(
+                "❌ موجودی کافی برای قبول این دوئل نداری! "
+                f"(شرط: {duel['stake']:,} — موجودی تو: {opponent_cash:,} رکسار)",
+                show_alert=True,
+            )
+            return
 
         # Escrow the opponent first: if they can't pay, nothing resolves.
         await _accept_escrow(duel, opponent)

@@ -352,62 +352,84 @@ async def do_work(user_id: int, level: int, drip: int) -> ActivityResult:
 
 
 def heist_success_chance(drip: int, stake: int) -> float:
-    """Base chance + drip luck, tightened for big stakes (riskier scores)."""
+    """شانس موفقیت سرقت: هرچه مبلغ هدف بزرگ‌تر، ریسک بیشتر و شانس کمتر.
+
+    استایل (DRIP) شانس را کمی بالا می‌برد، ولی جریمه اندازهٔ مبلغ قوی‌تر است تا
+    سرقت‌های بزرگ واقعاً سخت باشند.
+    """
     luck = drip * 0.0025
-    size_penalty = 0.10 * (stake / max(1, settings.heist_stake_max))
+    span = max(1, settings.heist_stake_max - settings.heist_stake_min)
+    ratio = (stake - settings.heist_stake_min) / span
+    ratio = min(1.0, max(0.0, ratio))
+    size_penalty = settings.heist_size_penalty_max * ratio
     chance = settings.heist_base_success + luck - size_penalty
     return min(settings.heist_max_success, max(settings.heist_min_success, chance))
 
 
-async def do_heist(user_id: int, stake: int, drip: int) -> ActivityResult:
+async def do_heist(user_id: int, target_loot: int, drip: int) -> ActivityResult:
+    """تلاش برای سرقت «مبلغ هدف» از خزانه شهر.
+
+    مبلغ داده‌شده پولی نیست که باید از قبل داشته باشی؛ همان مبلغی است که
+    می‌خواهی بدزدی. هرچه بزرگ‌تر باشد شانس موفقیت کمتر و احتمال دستگیری
+    بیشتر می‌شود.
+    """
     from services.game import grant_exp_conn, spend_energy_conn
 
-    if not settings.heist_stake_min <= stake <= settings.heist_stake_max:
+    if not settings.heist_stake_min <= target_loot <= settings.heist_stake_max:
         raise GameError(
             f"مبلغ سرقت باید بین {settings.heist_stake_min:,} تا "
             f"{settings.heist_stake_max:,} رکسار باشد."
         )
 
-    chance = heist_success_chance(drip, stake)
-    # House edge folded into the roll: win pays stake*(1+edge-adjusted odds).
+    chance = heist_success_chance(drip, target_loot)
     roll = secrets.randbelow(10_000) / 10_000.0
-    arrested = False
 
     async with db.write() as conn:
         await spend_energy_conn(conn, user_id, settings.heist_energy_cost)
-        # Escrow the stake first: losing the roll must not dodge the debit.
-        await mutate(
-            conn, user_id, credits=-stake, kind=ActivityKind.HEIST, ref="heist:stake"
-        )
 
         if roll < chance:
-            multiplier = 1.0 + (1.0 - settings.heist_house_edge)
-            payout = int(stake * multiplier)
             await mutate(
                 conn,
                 user_id,
-                credits=payout,
+                credits=target_loot,
                 kind=ActivityKind.HEIST,
                 ref="heist:win",
             )
-            await grant_exp_conn(conn, user_id, settings.work_exp + 5)
+            await conn.execute(
+                """
+                UPDATE players
+                SET thefts_success = thefts_success + 1,
+                    total_stolen = total_stolen + ?
+                WHERE user_id = ?
+                """,
+                (target_loot, user_id),
+            )
+            exp_gain = settings.work_exp + 5
+            await grant_exp_conn(conn, user_id, exp_gain)
             return ActivityResult(
                 True,
                 "سرقت موفقیت‌آمیز! 🥷",
-                f"مبلغ {payout:,} رکسار زدی به جیب! (سود خالص: +{payout - stake:,})",
-                credits_delta=payout - stake,
-                exp_gained=settings.work_exp + 5,
+                f"مبلغ {target_loot:,} رکسار از خزانه شهر زدی به جیب! "
+                f"(شانس این سرقت {int(chance * 100)}٪ بود)",
+                credits_delta=target_loot,
+                exp_gained=exp_gain,
             )
 
         arrested = secrets.randbelow(10_000) / 10_000.0 < settings.heist_arrest_chance
         if arrested:
-            # Already-exhausted players still owe the stake; only the energy
-            # penalty is best-effort (caught inside the live transaction, so
-            # the connection stays usable for the ledger row below).
             with contextlib.suppress(GameError):
-                await spend_energy_conn(
-                    conn, user_id, settings.heist_arrest_energy_cost
-                )
+                await spend_energy_conn(conn, user_id, settings.heist_arrest_energy_cost)
+            jail_until = int(time.time()) + settings.theft_jail_seconds
+            await conn.execute(
+                """
+                UPDATE players
+                SET is_jailed_until = ?,
+                    thefts_failed = thefts_failed + 1,
+                    jail_count = jail_count + 1
+                WHERE user_id = ?
+                """,
+                (jail_until, user_id),
+            )
             await mutate(
                 conn,
                 user_id,
@@ -415,14 +437,25 @@ async def do_heist(user_id: int, stake: int, drip: int) -> ActivityResult:
                 ref="heist:arrest",
             )
             detail = (
-                f"موقع خروج گیر افتادی! مبلغ {stake:,} رکسار پرید و "
-                f"{settings.heist_arrest_energy_cost}⚡ انرژی بابت بازداشتگاه کم شد."
+                f"موقع خروج از خزانه گیر افتادی! "
+                f"{int(settings.theft_jail_seconds // 60)} دقیقه در بازداشتگاه مرکزی "
+                f"حبس شدی و {settings.heist_arrest_energy_cost}⚡ انرژی هم پرید."
             )
         else:
-            detail = f"طرف متوجه شد! مبلغ {stake:,} رکسار از دست رفت اما جان سالم به در بردی."
+            await conn.execute(
+                "UPDATE players SET thefts_failed = thefts_failed + 1 WHERE user_id = ?",
+                (user_id,),
+            )
+            detail = (
+                f"آژیر خزانه صدا داد! مبلغ {target_loot:,} رکسار به دست نیامد و "
+                f"پا به فرار گذاشتی."
+            )
 
     return ActivityResult(
-        False, "دستگیر شدی! 🚨" if arrested else "سرقت ناموفق! 🏃‍♂️", detail, credits_delta=-stake
+        False,
+        "دستگیر شدی! 🚨" if arrested else "سرقت ناموفق! 🏃‍♂️",
+        detail,
+        credits_delta=0,
     )
 
 

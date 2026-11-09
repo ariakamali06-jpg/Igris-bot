@@ -640,8 +640,11 @@ async def cmd_heist(message: Message, command: CommandObject | None = None) -> N
         if not args or not args[0].isdigit():
             raise GameError(
                 f"نحوه استفاده: <code>سرقت [مبلغ]</code> یا <code>/heist [مبلغ]</code>\n"
-                f"حداقل {settings.heist_stake_min:,} و حداکثر {settings.heist_stake_max:,} سکه.\n"
-                f"استایل (DRIP) شانس موفقیت را افزایش می‌دهد!"
+                f"مبلغ بین {settings.heist_stake_min:,} تا "
+                f"{settings.heist_stake_max:,} رکسار.\n"
+                f"مبلغ همان چیزی است که می‌خواهی بدزدی (لازم نیست داشته باشی!)؛ "
+                f"هرچه بزرگ‌تر باشد شانس موفقیت کمتر و احتمال دستگیری بیشتر می‌شود.\n"
+                f"استایل (DRIP) شانس موفقیت را افزایش می‌دهد."
             )
         stake = int(args[0])
         result = await economy.do_heist(player.user_id, stake, player.drip)

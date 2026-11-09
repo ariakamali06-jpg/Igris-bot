@@ -4795,6 +4795,10 @@
     let currentUserCoins = 250;
     let shopItemsList = []; // آیتم‌های ست‌های روزانه بوتیک برای حالت شاپ
     let currentGender = 'female'; // 'female' | 'male'
+    // قیمت‌های لباس — از سرور (config.py) در پیلود می‌آیند؛ این‌ها فقط fallback‌اند.
+    let CLOTHING_PRICE_UNISEX = 2000;
+    let CLOTHING_PRICE_SAME = 1200;
+    let CLOTHING_PRICE_OPPOSITE = 4800;
     let ownedItemIds = [];
     let ownedSetsList = [];
 
@@ -5199,9 +5203,10 @@
     }
 
     function getItemPrice(it) {
-      if (!it || it.g === 'unisex') return 2000;
-      if (it.g === currentGender) return 1200;
-      return 4800;
+      // قیمت‌ها از سرور (config.py) در پیلود می‌آیند؛ ثابت‌های زیر فقط fallback هستند.
+      if (!it || it.g === 'unisex') return CLOTHING_PRICE_UNISEX;
+      if (it.g === currentGender) return CLOTHING_PRICE_SAME;
+      return CLOTHING_PRICE_OPPOSITE;
     }
 
     function getAvailableItems() {
@@ -5741,6 +5746,9 @@
             appMode = loadoutData.mode;
             try { localStorage.setItem('igris_app_mode', appMode); } catch (e) {}
           }
+          if (loadoutData.pu) CLOTHING_PRICE_UNISEX = Number(loadoutData.pu);
+          if (loadoutData.ps) CLOTHING_PRICE_SAME = Number(loadoutData.ps);
+          if (loadoutData.po) CLOTHING_PRICE_OPPOSITE = Number(loadoutData.po);
           if (Array.isArray(loadoutData.shop_items)) {
             shopItemsList = loadoutData.shop_items.map(Number).filter(Boolean);
             try { localStorage.setItem('igris_shop_items', JSON.stringify(shopItemsList)); } catch (e) {}
@@ -5889,10 +5897,14 @@
         }
 
         renderSkinSwatches();
-        if (appMode === 'wardrobe') {
-          // مخفی‌سازی سولاریوم و تب مو/چهره از کمد؛ مو و چهره در آرایشگاه مدیریت می‌شوند
+        if (appMode === 'wardrobe' || appMode === 'shop') {
+          // 🔒 رنگ پوست فقط هنگام ساخت کاراکتر (starter) قابل تغییر است.
+          // بعد از ساخت، تغییر رنگ پوست فقط از راه خدمات پولی آرایشگاه انجام می‌شود.
           const skinPicker = document.getElementById('skinTonePicker');
           if (skinPicker) skinPicker.style.display = 'none';
+        }
+        if (appMode === 'wardrobe') {
+          // مخفی‌سازی تب مو/چهره از کمد؛ مو و چهره در آرایشگاه مدیریت می‌شوند
           const headTab = document.querySelector('.zone-tab-btn[data-zone="head"]');
           if (headTab) headTab.style.display = 'none';
           if (currentZone === 'head') currentZone = 'sets';
