@@ -39,6 +39,28 @@ logger = logging.getLogger(__name__)
 
 router = Router(name="boutique")
 
+
+def _bot_username() -> str:
+    """نام کاربری واقعی ربات برای ساختن دیپ‌لینک در گروه‌ها (بدون @ ابتدایی)."""
+    return (avatar.RUNTIME_BOT_USERNAME or settings.bot_username or "").lstrip("@")
+
+
+def _is_group_chat(chat_type: str) -> bool:
+    """آیا چت یک گروه/سوپرگروه است؟ (توی گروه دکمه web_app ممنوع است)."""
+    return chat_type in ("group", "supergroup")
+
+
+def _mini_app_btn(
+    text: str, url: str, in_group: bool, payload: str = "app"
+) -> InlineKeyboardButton:
+    """دکمه مینی‌اپ یا دیپ‌لینک امن: در گروه → لینک به پیوی ربات، در پیوی → web_app واقعی."""
+    if in_group:
+        username = _bot_username() or "igrisbot"
+        return InlineKeyboardButton(
+            text=text, url=f"https://t.me/{username}?start={payload}"
+        )
+    return InlineKeyboardButton(text=text, web_app=WebAppInfo(url=url))
+
 BOUTIQUE_COMMANDS = {"بوتیک", "ویترین", "شاپ_لباس", "boutique", "fashion"}
 WARDROBE_COMMANDS = {"کمد", "کمد_لباس", "لباسهام", "wardrobe", "closet"}
 AVATAR_COMMANDS = {"آواتار", "ظاهر", "پوست", "avatar"}
@@ -223,6 +245,8 @@ async def _build_boutique_catalog(
     user_id: int,
     category: str = "top",
     page: int = 0,
+    *,
+    in_group: bool = False,
 ) -> tuple[str, str, InlineKeyboardMarkup]:
     """Generate high-efficiency item catalog for boutique with zero image bandwidth waste."""
     from services import catalog
@@ -302,9 +326,11 @@ async def _build_boutique_catalog(
     custom_url = await avatar.get_customizer_url(user_id, mode="shop")
     keyboard: list[list[InlineKeyboardButton]] = [
         [
-            InlineKeyboardButton(
-                text="📱 ورود به مینی‌اپ فروشگاه (Shop Mode)",
-                web_app=WebAppInfo(url=custom_url),
+            _mini_app_btn(
+                "📱 ورود به مینی‌اپ فروشگاه (Shop Mode)",
+                custom_url,
+                in_group,
+                payload="shop",
             )
         ]
     ]
@@ -506,6 +532,8 @@ async def _update_boutique_view(
 async def _build_wardrobe_card(
     user_id: int,
     index: int = 0,
+    *,
+    in_group: bool = False,
 ) -> tuple[str, str, InlineKeyboardMarkup]:
     """Generate media URL, caption, and keyboard for player wardrobe."""
     all_sets = await avatar.list_wardrobe_sets(user_id)
@@ -541,9 +569,11 @@ async def _build_wardrobe_card(
             buttons.insert(
                 0,
                 [
-                    InlineKeyboardButton(
-                        text="📱 مینی‌اپ شخصی‌سازی و طراحی لباس",
-                        web_app=WebAppInfo(url=custom_url),
+                    _mini_app_btn(
+                        "📱 مینی‌اپ شخصی‌سازی و طراحی لباس",
+                        custom_url,
+                        in_group,
+                        payload="wardrobe",
                     )
                 ],
             )
@@ -623,9 +653,11 @@ async def _build_wardrobe_card(
         custom_url = await avatar.get_customizer_url(user_id)
         options_row.insert(
             0,
-            InlineKeyboardButton(
-                text="📱 مینی‌اپ شخصی‌سازی",
-                web_app=WebAppInfo(url=custom_url),
+            _mini_app_btn(
+                "📱 مینی‌اپ شخصی‌سازی",
+                custom_url,
+                in_group,
+                payload="wardrobe",
             ),
         )
 
@@ -715,6 +747,8 @@ async def _build_wardrobe_items_menu(
 
 async def _build_outfit_switch_menu(
     user_id: int,
+    *,
+    in_group: bool = False,
 ) -> tuple[str, str, InlineKeyboardMarkup]:
     """Generate change-outfit menu listing all available owned sets with 1-tap equip."""
     items = await avatar.list_wardrobe_sets(user_id)
@@ -754,9 +788,11 @@ async def _build_outfit_switch_menu(
         custom_url = await avatar.get_customizer_url(user_id)
         buttons.append(
             [
-                InlineKeyboardButton(
-                    text="📱 طراحی و شخصی‌سازی در مینی‌اپ",
-                    web_app=WebAppInfo(url=custom_url),
+                _mini_app_btn(
+                    "📱 طراحی و شخصی‌سازی در مینی‌اپ",
+                    custom_url,
+                    in_group,
+                    payload="wardrobe",
                 )
             ]
         )
@@ -810,6 +846,7 @@ async def handle_boutique_command(message: Message) -> None:
         return
     user_id = message.from_user.id
     user = message.from_user
+    is_group = _is_group_chat(message.chat.type)
     try:
         player = await hydrate(user_id, user.full_name, user.username)
         custom_url = await avatar.get_customizer_url(user_id, mode="shop")
@@ -828,9 +865,11 @@ async def handle_boutique_command(message: Message) -> None:
         markup = InlineKeyboardMarkup(
             inline_keyboard=[
                 [
-                    InlineKeyboardButton(
-                        text="📱 باز کردن فروشگاه مد (مینی‌اپ)",
-                        web_app=WebAppInfo(url=custom_url),
+                    _mini_app_btn(
+                        "📱 باز کردن فروشگاه مد (مینی‌اپ)",
+                        custom_url,
+                        is_group,
+                        payload="shop",
                     )
                 ],
                 [
@@ -867,6 +906,7 @@ async def handle_boutique_showcase_command(message: Message) -> None:
             user_id=user_id,
             category="top",
             page=0,
+            in_group=_is_group_chat(message.chat.type),
         )
         photo_payload = await _render_photo_payload(render_url, "boutique.png")
         await message.reply_photo(photo=photo_payload, caption=caption, reply_markup=markup)
@@ -886,7 +926,9 @@ async def handle_wardrobe_command(message: Message) -> None:
         username=message.from_user.username or "",
         display_name=message.from_user.full_name or "مسافر",
     )
-    render_url, caption, markup = await _build_wardrobe_card(user_id=user_id, index=0)
+    render_url, caption, markup = await _build_wardrobe_card(
+        user_id=user_id, index=0, in_group=_is_group_chat(message.chat.type)
+    )
     photo_payload = await _render_photo_payload(render_url, "wardrobe.png")
     sent = await message.reply_photo(photo=photo_payload, caption=caption, reply_markup=markup)
     avatar.set_user_wardrobe_message(user_id, sent.chat.id, sent.message_id)
@@ -935,9 +977,11 @@ async def handle_avatar_command(message: Message) -> None:
         markup.inline_keyboard.insert(
             0,
             [
-                InlineKeyboardButton(
-                    text="📱 مینی‌اپ شخصی‌سازی کاراکتر",
-                    web_app=WebAppInfo(url=custom_url),
+                _mini_app_btn(
+                    "📱 مینی‌اپ شخصی‌سازی کاراکتر",
+                    custom_url,
+                    _is_group_chat(message.chat.type),
+                    payload="customizer",
                 )
             ],
         )
@@ -972,8 +1016,9 @@ async def handle_customizer_command(message: Message) -> None:
             "(سر، بالاتنه، پایین‌تنه، کفش و اکسسوری) به صورت زنده طراحی و ست کنید."
         )
         buttons: list[list[InlineKeyboardButton]] = []
-        if settings.bot_username:
-            deep_link = f"https://t.me/{settings.bot_username}?start=customizer"
+        username = _bot_username()
+        if username:
+            deep_link = f"https://t.me/{username}?start=customizer"
             buttons.append(
                 [
                     InlineKeyboardButton(
@@ -997,9 +1042,11 @@ async def handle_customizer_command(message: Message) -> None:
             custom_url = await avatar.get_customizer_url(user_id)
             buttons.append(
                 [
-                    InlineKeyboardButton(
-                        text="📱 باز کردن مینی‌اپ شخصی‌سازی",
-                        web_app=WebAppInfo(url=custom_url),
+                    _mini_app_btn(
+                        "📱 باز کردن مینی‌اپ شخصی‌سازی",
+                        custom_url,
+                        False,
+                        payload="customizer",
                     )
                 ]
             )
@@ -1131,7 +1178,9 @@ async def handle_customizer_webapp_data(message: Message) -> None:
         if wdr_msg and bot_instance:
             w_chat_id, w_msg_id = wdr_msg
             with contextlib.suppress(Exception):
-                w_url, w_cap, w_mark = await _build_wardrobe_card(user_id=user_id, index=0)
+                w_url, w_cap, w_mark = await _build_wardrobe_card(
+                    user_id=user_id, index=0, in_group=_is_group_chat(message.chat.type)
+                )
                 w_photo = await _render_photo_payload(w_url, "wardrobe.png")
                 await bot_instance.edit_message_media(
                     chat_id=w_chat_id,
@@ -1174,9 +1223,11 @@ async def handle_customizer_webapp_data(message: Message) -> None:
                         InlineKeyboardButton(text="🎒 کمد لباس من", callback_data="wdr:view:0"),
                     ],
                     [
-                        InlineKeyboardButton(
-                            text="🎨 ویرایش مجدد در مینی‌اپ",
-                            web_app=WebAppInfo(url=custom_url),
+                        _mini_app_btn(
+                            "🎨 ویرایش مجدد در مینی‌اپ",
+                            custom_url,
+                            _is_group_chat(message.chat.type),
+                            payload="customizer",
                         )
                     ],
                 ]
@@ -1202,9 +1253,11 @@ async def handle_customizer_webapp_data(message: Message) -> None:
             markup = InlineKeyboardMarkup(
                 inline_keyboard=[
                     [
-                        InlineKeyboardButton(
-                            text="🎨 ویرایش مجدد در مینی‌اپ",
-                            web_app=WebAppInfo(url=custom_url),
+                        _mini_app_btn(
+                            "🎨 ویرایش مجدد در مینی‌اپ",
+                            custom_url,
+                            _is_group_chat(message.chat.type),
+                            payload="customizer",
                         )
                     ],
                     [InlineKeyboardButton(text="👕 کمد لباس", callback_data="wdr:view:0")],
@@ -1230,6 +1283,7 @@ async def open_boutique_from_callback(call: CallbackQuery) -> None:
 
     user_id = call.from_user.id
     user = call.from_user
+    is_group = _is_group_chat(call.message.chat.type)
 
     try:
         player = await hydrate(user_id, user.full_name, user.username)
@@ -1249,9 +1303,11 @@ async def open_boutique_from_callback(call: CallbackQuery) -> None:
         markup = InlineKeyboardMarkup(
             inline_keyboard=[
                 [
-                    InlineKeyboardButton(
-                        text="📱 باز کردن فروشگاه مد (مینی‌اپ)",
-                        web_app=WebAppInfo(url=custom_url),
+                    _mini_app_btn(
+                        "📱 باز کردن فروشگاه مد (مینی‌اپ)",
+                        custom_url,
+                        is_group,
+                        payload="shop",
                     )
                 ],
                 [
@@ -1317,6 +1373,7 @@ async def handle_boutique_callback(call: CallbackQuery) -> None:
             user_id=user_id,
             category=cat_key,
             page=page,
+            in_group=_is_group_chat(call.message.chat.type),
         )
         if call.message.photo:
             await _update_boutique_view(call, caption=caption, markup=markup, media_url=None)
@@ -1346,6 +1403,7 @@ async def handle_boutique_callback(call: CallbackQuery) -> None:
                 user_id=user_id,
                 category=cat_key,
                 page=0,
+                in_group=_is_group_chat(call.message.chat.type),
             )
             await _update_boutique_view(call, caption=caption, markup=markup, media_url=None)
             await call.answer()
@@ -1375,6 +1433,7 @@ async def handle_boutique_callback(call: CallbackQuery) -> None:
             user_id=user_id,
             category=cat_key,
             page=page,
+            in_group=_is_group_chat(call.message.chat.type),
         )
         await _update_boutique_view(call, caption=caption, markup=markup, media_url=None)
         await call.answer()
@@ -1579,7 +1638,9 @@ async def handle_wardrobe_callback(call: CallbackQuery) -> None:
     action = parts[1] if len(parts) > 1 else ""
 
     if action == "sets_list":
-        render_url, caption, markup = await _build_outfit_switch_menu(user_id=user_id)
+        render_url, caption, markup = await _build_outfit_switch_menu(
+            user_id=user_id, in_group=_is_group_chat(call.message.chat.type)
+        )
         photo_payload = await _render_photo_payload(render_url, "wardrobe.png")
         with contextlib.suppress(TelegramBadRequest):
             await call.message.edit_media(
@@ -1633,7 +1694,9 @@ async def handle_wardrobe_callback(call: CallbackQuery) -> None:
 
     if action in ("open", "nav", "view"):
         idx = int(parts[2]) if len(parts) > 2 else 0
-        render_url, caption, markup = await _build_wardrobe_card(user_id=user_id, index=idx)
+        render_url, caption, markup = await _build_wardrobe_card(
+            user_id=user_id, index=idx, in_group=_is_group_chat(call.message.chat.type)
+        )
         photo_payload = await _render_photo_payload(render_url, "wardrobe.png")
         with contextlib.suppress(TelegramBadRequest):
             await call.message.edit_media(
@@ -1657,7 +1720,9 @@ async def handle_wardrobe_callback(call: CallbackQuery) -> None:
         except Exception as exc:
             await call.answer(f"خطا: {exc}", show_alert=True)
 
-        render_url, caption, markup = await _build_wardrobe_card(user_id=user_id, index=0)
+        render_url, caption, markup = await _build_wardrobe_card(
+            user_id=user_id, index=0, in_group=_is_group_chat(call.message.chat.type)
+        )
         photo_payload = await _render_photo_payload(render_url, "wardrobe.png")
         with contextlib.suppress(TelegramBadRequest):
             await call.message.edit_media(
@@ -1670,7 +1735,9 @@ async def handle_wardrobe_callback(call: CallbackQuery) -> None:
         idx = int(parts[2]) if len(parts) > 2 else 0
         await avatar.unequip(user_id)
         await call.answer("لباس‌های کاراکتر درآورده شد.", show_alert=True)
-        render_url, caption, markup = await _build_wardrobe_card(user_id=user_id, index=idx)
+        render_url, caption, markup = await _build_wardrobe_card(
+            user_id=user_id, index=idx, in_group=_is_group_chat(call.message.chat.type)
+        )
         with contextlib.suppress(TelegramBadRequest):
             await call.message.edit_media(
                 media=InputMediaPhoto(media=render_url, caption=caption, parse_mode="HTML"),

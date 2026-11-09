@@ -145,8 +145,6 @@ async def cmd_shop(message: Message) -> None:
     if user is None:
         return
     try:
-        from aiogram.types import WebAppInfo
-
         from services import avatar
 
         player = await hydrate(user.id, user.full_name, user.username)
@@ -161,14 +159,25 @@ async def cmd_shop(message: Message) -> None:
             "۲. 💬 <b>ویترین متنی داخل تلگرام:</b>\n"
             "مرور سریع کاتالوگ روزانه بر اساس دسته‌بندی (بالاتنه، پایین‌تنه، کفش) بدون مصرف نت."
         )
+        _in_group = message.chat.type in ("group", "supergroup")
+        if _in_group:
+            from handlers.boutique import _bot_username
+
+            _uname = _bot_username() or "igrisbot"
+            shop_button = InlineKeyboardButton(
+                text="📱 باز کردن فروشگاه مد (در DM بات)",
+                url=f"https://t.me/{_uname}?start=shop",
+            )
+        else:
+            from aiogram.types import WebAppInfo
+
+            shop_button = InlineKeyboardButton(
+                text="📱 باز کردن فروشگاه مد (مینی‌اپ)",
+                web_app=WebAppInfo(url=custom_url),
+            )
         markup = InlineKeyboardMarkup(
             inline_keyboard=[
-                [
-                    InlineKeyboardButton(
-                        text="📱 باز کردن فروشگاه مد (مینی‌اپ)",
-                        web_app=WebAppInfo(url=custom_url),
-                    )
-                ],
+                [shop_button],
                 [
                     InlineKeyboardButton(
                         text="🛍 مشاهده ویترین متنی بوتیک", callback_data="btq:catalog:top:0"
