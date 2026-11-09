@@ -960,13 +960,14 @@ async def handle_customizer_command(message: Message) -> None:
     photo_payload = await _render_photo_payload(render_url, "avatar.png")
 
     is_group = message.chat.type in ("group", "supergroup")
-    
+
     if is_group:
         # In groups: use deep link to DM
         caption = (
             "👑 <b>مینی‌اپ شخصی‌سازی و تجهیز کاراکتر ایگریس</b>\n"
             "━━━━━━━━━━━━━━━━━━━━\n"
-            "⚠️ برای استفاده از مینی‌اپ کاستومایز، روی دکمه زیر کلیک کنید تا به فضای خصوصی ربات منتقل شوید.\n\n"
+            "⚠️ برای استفاده از مینی‌اپ کاستومایز، روی دکمه زیر کلیک کنید تا\n"
+            "به فضای خصوصی ربات منتقل شوید.\n\n"
             "در بخش شخصی می‌توانید آواتار خود را با بیش از ۹,۰۰۰ قطعه در ۵ ناحیه بدنه "
             "(سر، بالاتنه، پایین‌تنه، کفش و اکسسوری) به صورت زنده طراحی و ست کنید."
         )
@@ -1002,7 +1003,7 @@ async def handle_customizer_command(message: Message) -> None:
                     )
                 ]
             )
-    
+
     buttons.append(
         [
             InlineKeyboardButton(text="👕 کمد لباس من", callback_data="wdr:view:0"),
