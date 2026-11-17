@@ -11,7 +11,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 from aiogram import Bot, Dispatcher
-from aiogram.types import BufferedInputFile, CallbackQuery, Chat, Message, Update, User
+from aiogram.types import CallbackQuery, Chat, Message, Update, User
 
 from database.connection import db
 from database.seed import seed_catalog

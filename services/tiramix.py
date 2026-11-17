@@ -339,13 +339,18 @@ def list_available_jobs(education_level: int) -> list[dict[str, Any]]:
 async def set_player_job(player: Player, job_title: str) -> dict[str, Any]:
     """Switch career if qualified."""
     if job_title not in JOBS_CATALOG:
-        return {"success": False, "message": f"❌ شغل «{job_title}» در سازمان استخدامی تیرامیکس یافت نشد."}
+        return {
+            "success": False,
+            "message": f"❌ شغل «{job_title}» در سازمان استخدامی تیرامیکس یافت نشد.",
+        }
 
     req_level = JOBS_CATALOG[job_title]["level"]
     if player.education_level < req_level:
         return {
             "success": False,
-            "message": f"⛔️ مدرک تحصیلی شما برای این شغل کافی نیست!\nنیاز به مدرک حداقل سطح {req_level} دارید. با دستور <code>تحصیل</code> مدرک خود را ارتقا دهید.",
+            "message": f"⛔️ مدرک تحصیلی شما برای این شغل کافی نیست!\n"
+            f"نیاز به مدرک حداقل سطح {req_level} دارید. "
+            "با دستور <code>تحصیل</code> مدرک خود را ارتقا دهید.",
         }
 
     async with db.write() as conn:
@@ -358,7 +363,8 @@ async def set_player_job(player: Player, job_title: str) -> dict[str, Any]:
         "success": True,
         "job": job_title,
         "wage": JOBS_CATALOG[job_title]["wage"],
-        "message": f"✅ تبریک! قرارداد کاری شما به عنوان <b>{job_title}</b> امضا شد.\nدستمزد پایه ساعتی: <b>{JOBS_CATALOG[job_title]['wage']:,}</b> رکسار.",
+        "message": f"✅ تبریک! قرارداد کاری شما به عنوان <b>{job_title}</b> امضا شد.\n"
+        f"دستمزد پایه ساعتی: <b>{JOBS_CATALOG[job_title]['wage']:,}</b> رکسار.",
     }
 
 
@@ -373,7 +379,10 @@ async def deposit_bank(player: Player, amount: int) -> dict[str, Any]:
 
     creds, _ = await economy.balances(player.user_id)
     if creds < amount:
-        return {"success": False, "message": f"❌ موجودی نقد شما کافی نیست! (موجودی: {creds:,} رکسار)"}
+        return {
+            "success": False,
+            "message": f"❌ موجودی نقد شما کافی نیست! (موجودی: {creds:,} رکسار)",
+        }
 
     await economy.spend(player.user_id, credits=amount, kind=ActivityKind.BANK_DEPOSIT)
     async with db.write() as conn:
@@ -399,7 +408,11 @@ async def withdraw_bank(player: Player, amount: int) -> dict[str, Any]:
         return {"success": False, "message": "❌ مبلغ برداشت باید بیشتر از صفر باشد."}
 
     if player.bank_balance < amount:
-        return {"success": False, "message": f"❌ موجودی حساب بانکی شما کافی نیست! (موجودی: {player.bank_balance:,} رکسار)"}
+        return {
+            "success": False,
+            "message": f"❌ موجودی حساب بانکی شما کافی نیست! "
+            f"(موجودی: {player.bank_balance:,} رکسار)",
+        }
 
     async with db.write() as conn:
         await conn.execute(
@@ -424,7 +437,9 @@ async def apply_bank_loan(player: Player, requested_amount: int) -> dict[str, An
     if player.loan_amount > 0:
         return {
             "success": False,
-            "message": f"❌ شما هم‌اکنون دارای یک فقره وام تسویه‌نشده به مبلغ <b>{player.loan_amount:,}</b> رکسار هستید!\nابتدا بدهی خود را پرداخت کنید.",
+            "message": f"❌ شما هم‌اکنون دارای یک فقره وام تسویه‌نشده به مبلغ "
+            f"<b>{player.loan_amount:,}</b> رکسار هستید!\n"
+            "ابتدا بدهی خود را پرداخت کنید.",
         }
 
     # Credit limit = base + balance * 2 + level * 500
@@ -432,7 +447,8 @@ async def apply_bank_loan(player: Player, requested_amount: int) -> dict[str, An
     if requested_amount <= 0 or requested_amount > credit_limit:
         return {
             "success": False,
-            "message": f"❌ سقف مجاز تسهیلات برای شما حداکثر <b>{credit_limit:,}</b> رکسار است.\n(محاسبه بر اساس موجودی بانکی و اعتبار شهروندی)",
+            "message": f"❌ سقف مجاز تسهیلات برای شما حداکثر <b>{credit_limit:,}</b> "
+            "رکسار است.\n(محاسبه بر اساس موجودی بانکی و اعتبار شهروندی)",
         }
 
     interest_rate = 0.15  # 15% interest
@@ -469,7 +485,10 @@ async def repay_bank_loan(player: Player, amount: int) -> dict[str, Any]:
     to_pay = min(amount, player.loan_amount)
     creds, _ = await economy.balances(player.user_id)
     if creds < to_pay:
-        return {"success": False, "message": f"❌ موجودی کیف پول برای پرداخت اقساط کافی نیست! (نیاز: {to_pay:,} رکسار)"}
+        return {
+            "success": False,
+            "message": f"❌ موجودی کیف پول برای پرداخت اقساط کافی نیست! (نیاز: {to_pay:,} رکسار)",
+        }
 
     await economy.spend(player.user_id, credits=to_pay, kind=ActivityKind.LOAN)
     new_due = player.loan_amount - to_pay
@@ -566,7 +585,8 @@ async def attempt_theft(thief: Player, victim: Player) -> dict[str, Any]:
         rem = int((thief.is_jailed_until - now) // 60)
         return {
             "success": False,
-            "message": f"🚨 <b>وَخَه بینُم خلافکار!</b> تو در زندان مرکزی حبس هستی و دستت به جیب کسی نمی‌رسه! تا {rem} دقیقه دیگر در بند هستی.",
+            "message": f"🚨 <b>وَخَه بینُم خلافکار!</b> تو در زندان مرکزی حبس "
+            f"هستی و دستت به جیب کسی نمی‌رسه! تا {rem} دقیقه دیگر در بند هستی.",
         }
 
     if victim.is_in_jail(now):
@@ -577,7 +597,8 @@ async def attempt_theft(thief: Player, victim: Player) -> dict[str, Any]:
         rem_min = int((STEAL_COOLDOWN - elapsed) // 60)
         return {
             "success": False,
-            "message": f"⏳ پلیس شهر تیرامیکس به شما مشکوک است! برای سرقت بعدی باید <b>{rem_min} دقیقه</b> صبر کنید.",
+            "message": f"⏳ پلیس شهر تیرامیکس به شما مشکوک است! برای سرقت بعدی "
+            f"باید <b>{rem_min} دقیقه</b> صبر کنید.",
         }
 
     # سپر ضدسرقت: the victim's active cover turns the attempt into a clean
@@ -594,7 +615,8 @@ async def attempt_theft(thief: Player, victim: Player) -> dict[str, Any]:
     if victim_cash < 50:
         return {
             "success": False,
-            "message": f"❌ جیب {victim.display_name} خالی‌تر از آن است که ارزش ریسک داشته باشد! (زیر ۵۰ رکسار)",
+            "message": f"❌ جیب {victim.display_name} خالی‌تر از آن است "
+            "که ارزش ریسک داشته باشد! (زیر ۵۰ رکسار)",
         }
 
     # Theft percentage: 35% to 85% of victim's cash
@@ -634,7 +656,8 @@ async def attempt_theft(thief: Player, victim: Player) -> dict[str, Any]:
             "percentage": int(steal_pct * 100),
             "message": f"🥷 <b>سرقت موفقیت‌آمیز در کوچه پس‌کوچه‌های تیرامیکس!</b>\n\n"
                        f"دزد حرفه‌ای ({thief.display_name}) موفق شد <b>{target_loot:,}</b> رکسار "
-                       f"({int(steal_pct * 100)}٪ از دارایی نقد) از جیب {victim.display_name} به جیب بزند!",
+                       f"({int(steal_pct * 100)}٪ از دارایی نقد) از جیب "
+                       f"{victim.display_name} به جیب بزند!",
         }
     else:
         # Caught by police!
@@ -660,9 +683,12 @@ async def attempt_theft(thief: Player, victim: Player) -> dict[str, Any]:
                 "fine": fine_amount,
                 "compensation": compensation,
                 "message": f"🚨 <b>دستگیری دزد ناشی توسط پلیس تیرامیکس!</b>\n\n"
-                           f"سارق ({thief.display_name}) حین اقدام به سرقت از {victim.display_name} به دام افتاد!\n"
-                           f"⚖️ حکم دادگاه: پرداخت <b>۵ برابر مبلغ سرقت</b> معادل <b>{fine_amount:,}</b> رکسار جریمه نقدی.\n"
-                           f"💵 مبلغ <b>{compensation:,}</b> رکسار به عنوان غرامت به جیب مال‌باخته واریز شد!",
+                           f"سارق ({thief.display_name}) حین اقدام به سرقت از "
+                           f"{victim.display_name} به دام افتاد!\n"
+                           f"⚖️ حکم دادگاه: پرداخت <b>۵ برابر مبلغ سرقت</b> معادل "
+                           f"<b>{fine_amount:,}</b> رکسار جریمه نقدی.\n"
+                           f"💵 مبلغ <b>{compensation:,}</b> رکسار به عنوان غرامت "
+                           "به جیب مال‌باخته واریز شد!",
             }
         else:
             # Cannot pay full fine -> Jailed for 30 minutes!
@@ -689,7 +715,8 @@ async def attempt_theft(thief: Player, victim: Player) -> dict[str, Any]:
                 "jail_minutes": int(JAIL_DURATION // 60),
                 "message": f"🚨 <b>دستگیری و محکومیت به حبس تعزیری!</b>\n\n"
                            f"سارق ({thief.display_name}) توانایی پرداخت جریمه ۵ برابری را نداشت!\n"
-                           f"🔒 به دستور قاضی، او به مدت <b>۳۰ دقیقه</b> به بازداشتگاه مرکزی تیرامیکس منتقل شد.\n"
+                           f"🔒 به دستور قاضی، او به مدت <b>۳۰ دقیقه</b> به "
+                           "بازداشتگاه مرکزی تیرامیکس منتقل شد.\n"
                            f"⚠️ در طول مدت حبس هیچ دستوری برای این بازیکن کار نخواهد کرد!",
             }
 
@@ -710,7 +737,11 @@ async def marry_citizens(proposer: Player, partner: Player) -> dict[str, Any]:
         return {"success": False, "message": f"❌ {partner.display_name} قبلاً ازدواج کرده است!"}
 
     if proposer.level < 3 or partner.level < 3:
-        return {"success": False, "message": "⚠️ برای ثبت ازدواج رسمی، هر دو طرف باید حداقل به <b>لول ۳</b> رسیده باشند."}
+        return {
+            "success": False,
+            "message": "⚠️ برای ثبت ازدواج رسمی، هر دو طرف باید حداقل "
+            "به <b>لول ۳</b> رسیده باشند.",
+        }
 
     now = int(time.time())
     async with db.write() as conn:
@@ -726,7 +757,8 @@ async def marry_citizens(proposer: Player, partner: Player) -> dict[str, Any]:
     return {
         "success": True,
         "message": f"💍 <b>پیوند آسمانی در شهرداری تیرامیکس!</b>\n\n"
-                   f"عقد رسمی بین <b>{proposer.display_name}</b> و <b>{partner.display_name}</b> با شکوه تمام ثبت شد! 💐🕊\n"
+                   f"عقد رسمی بین <b>{proposer.display_name}</b> و "
+                   f"<b>{partner.display_name}</b> با شکوه تمام ثبت شد! 💐🕊\n"
                    f"از این پس می‌توانید از دستورات مشترک زندگی و فرزندآوری استفاده کنید.",
     }
 
@@ -747,7 +779,8 @@ async def divorce_citizens(user1_id: int, user2_id: int) -> dict[str, Any]:
 
     return {
         "success": True,
-        "message": "⚖️ <b>حکم قطعی طلاق صادر شد!</b>\n\nپیوند زناشویی بین طرفین باطل گردید و هر دو طرف مجدداً مجرد شدند.",
+        "message": "⚖️ <b>حکم قطعی طلاق صادر شد!</b>\n\n"
+        "پیوند زناشویی بین طرفین باطل گردید و هر دو طرف مجدداً مجرد شدند.",
     }
 
 
@@ -763,7 +796,8 @@ async def execute_intimacy(p1: Player, p2: Player) -> dict[str, Any]:
         rem_min = int(((INTIMACY_COOLDOWN - elapsed) % 3600) // 60)
         return {
             "success": False,
-            "message": f"⏳ رابطه فقط هر ۸ ساعت یک‌بار مجاز است.\nزمان باقی‌مانده: <b>{rem_hours} ساعت و {rem_min} دقیقه</b>.",
+            "message": "⏳ رابطه فقط هر ۸ ساعت یک‌بار مجاز است.\n"
+            f"زمان باقی‌مانده: <b>{rem_hours} ساعت و {rem_min} دقیقه</b>.",
         }
 
     async with db.write() as conn:
@@ -774,18 +808,19 @@ async def execute_intimacy(p1: Player, p2: Player) -> dict[str, Any]:
 
     # Check pregnancy chance: 7%
     # Determine who is female
-    female = p1 if p1.gender in ("female", "دختر", "زن") else (p2 if p2.gender in ("female", "دختر", "زن") else None)
+    female = next(
+        (p for p in (p1, p2) if p.gender in ("female", "دختر", "زن")), None
+    )
     pregnancy_happened = False
 
-    if female and not female.is_pregnant(now):
-        if random.random() <= 0.07:
-            pregnancy_happened = True
-            pregnant_until = now + PREGNANCY_DURATION
-            async with db.write() as conn:
-                await conn.execute(
-                    "UPDATE players SET is_pregnant_until = ? WHERE user_id = ?",
-                    (pregnant_until, female.user_id),
-                )
+    if female and not female.is_pregnant(now) and random.random() <= 0.07:
+        pregnancy_happened = True
+        pregnant_until = now + PREGNANCY_DURATION
+        async with db.write() as conn:
+            await conn.execute(
+                "UPDATE players SET is_pregnant_until = ? WHERE user_id = ?",
+                (pregnant_until, female.user_id),
+            )
 
     if pregnancy_happened:
         return {
@@ -793,14 +828,17 @@ async def execute_intimacy(p1: Player, p2: Player) -> dict[str, Any]:
             "pregnancy": True,
             "female_name": female.display_name if female else "همسر",
             "message": f"💕 <b>شبی رمانتیک و فراموش‌نشدنی...</b>\n\n"
-                       f"🍼 <b>خبر بزرگ! آزمایش بارداری {female.display_name if female else 'همسر'} مثبت شد!</b>\n"
-                       f"فرزند شما در راه است. برای مراقبت و زایمان ایمن حتماً به <code>کلینیک</code> مراجعه کنید.",
+                       f"🍼 <b>خبر بزرگ! آزمایش بارداری "
+                       f"{female.display_name if female else 'همسر'} مثبت شد!</b>\n"
+                       "فرزند شما در راه است. برای مراقبت و زایمان ایمن حتماً "
+                       "به <code>کلینیک</code> مراجعه کنید.",
         }
     else:
         return {
             "success": True,
             "pregnancy": False,
-            "message": "💕 <b>لحظاتی گرم و آرام در کانون خانواده سپری شد.</b>\n(شانس بارداری این بار رخ نداد).",
+            "message": "💕 <b>لحظاتی گرم و آرام در کانون خانواده سپری شد.</b>\n"
+            "(شانس بارداری این بار رخ نداد).",
         }
 
 
@@ -814,7 +852,8 @@ async def clinic_service(player: Player) -> dict[str, Any]:
         if creds < DELIVERY_FEE:
             return {
                 "success": False,
-                "message": f"❌ هزینه زایمان و بستری در کلینیک <b>{DELIVERY_FEE:,}</b> رکسار است! (موجودی شما: {creds:,} رکسار)",
+                "message": f"❌ هزینه زایمان و بستری در کلینیک <b>{DELIVERY_FEE:,}</b> "
+                f"رکسار است! (موجودی شما: {creds:,} رکسار)",
             }
         await economy.spend(player.user_id, credits=DELIVERY_FEE, kind=ActivityKind.CLINIC)
         async with db.write() as conn:
@@ -836,9 +875,10 @@ async def clinic_service(player: Player) -> dict[str, Any]:
         return {
             "success": True,
             "action": "delivery",
-            "message": f"👶🎉 <b>تبریک فراوان! زایمان در کلینیک تیرامیکس با موفقیت انجام شد!</b>\n\n"
-                       f"قدم نورسیده مبارک! فرزند دلبندتان به سلامت متولد شد.\n"
-                       f"تعداد فرزندان خانواده: <b>{player.children_count + 1}</b> فرزند.",
+            "message": "👶🎉 <b>تبریک فراوان! زایمان در کلینیک تیرامیکس "
+            "با موفقیت انجام شد!</b>\n\n"
+            "قدم نورسیده مبارک! فرزند دلبندتان به سلامت متولد شد.\n"
+            f"تعداد فرزندان خانواده: <b>{player.children_count + 1}</b> فرزند.",
         }
     else:
         # Regular medical checkup / heal
@@ -866,7 +906,11 @@ async def attempt_affair(cheater: Player, partner: Player, victim_spouse: Player
     elapsed = now - cheater.last_affair_time
     if elapsed < AFFAIR_COOLDOWN:
         rem_hours = int((AFFAIR_COOLDOWN - elapsed) // 3600)
-        return {"success": False, "message": f"⏳ پلیس اخلاق یا شک همسر در کمین است! حداقل <b>{rem_hours} ساعت</b> صبر کنید."}
+        return {
+            "success": False,
+            "message": f"⏳ پلیس اخلاق یا شک همسر در کمین است! "
+            f"حداقل <b>{rem_hours} ساعت</b> صبر کنید.",
+        }
 
     async with db.write() as conn:
         await conn.execute(
@@ -875,7 +919,9 @@ async def attempt_affair(cheater: Player, partner: Player, victim_spouse: Player
         )
 
     # Intel calculation: average intelligence of cheaters vs spouse intelligence
-    avg_cheaters_intel = (cheater.education_level + cheater.level + partner.education_level + partner.level) / 2.0
+    avg_cheaters_intel = (
+        cheater.education_level + cheater.level + partner.education_level + partner.level
+    ) / 2.0
     spouse_intel = (victim_spouse.education_level * 1.5) + victim_spouse.level
 
     # Probability of being caught: if spouse is smarter, higher detection chance
@@ -889,7 +935,8 @@ async def attempt_affair(cheater: Player, partner: Player, victim_spouse: Player
             "success": False,
             "busted": True,
             "message": f"🚨😱 <b>رسوایی و لو رفتن خیانت در شهر تیرامیکس!</b>\n\n"
-                       f"همسر تیزهوش ({victim_spouse.display_name}) با ردیابی شواهد، مچ {cheater.display_name} را "
+                       f"همسر تیزهوش ({victim_spouse.display_name}) با ردیابی "
+                       f"شواهد، مچ {cheater.display_name} را "
                        f"در قرار پنهانی با {partner.display_name} گرفت!\n"
                        f"هم‌اکنون همسر می‌تواند با دستور <code>طلاق</code> دادخواست جدایی دهد!",
         }
@@ -941,7 +988,10 @@ async def update_hairstyle(player: Player, style_key: str, color_key: str) -> di
     """Change hairstyle and hair color at the local salon."""
     creds, _ = await economy.balances(player.user_id)
     if creds < HAIRSTYLE_FEES:
-        return {"success": False, "message": f"❌ هزینه پیرایش و رنگ مو <b>{HAIRSTYLE_FEES:,}</b> رکسار است."}
+        return {
+            "success": False,
+            "message": f"❌ هزینه پیرایش و رنگ مو <b>{HAIRSTYLE_FEES:,}</b> رکسار است.",
+        }
 
     await economy.spend(player.user_id, credits=HAIRSTYLE_FEES, kind=ActivityKind.SALON)
     async with db.write() as conn:
@@ -955,15 +1005,21 @@ async def update_hairstyle(player: Player, style_key: str, color_key: str) -> di
         "style": style_key,
         "color": color_key,
         "fee": HAIRSTYLE_FEES,
-        "message": f"✂️ <b>مدل موی جدید در آرایشگاه تیرامیکس اعمال شد!</b>\nهزینه: <b>{HAIRSTYLE_FEES:,}</b> رکسار.",
+        "message": "✂️ <b>مدل موی جدید در آرایشگاه تیرامیکس اعمال شد!</b>\n"
+        f"هزینه: <b>{HAIRSTYLE_FEES:,}</b> رکسار.",
     }
 
 
-async def update_facial_surgery(player: Player, eye_style: str, eye_color: str, mouth_style: str) -> dict[str, Any]:
+async def update_facial_surgery(
+    player: Player, eye_style: str, eye_color: str, mouth_style: str
+) -> dict[str, Any]:
     """Plastic surgery for eyes and facial expression."""
     creds, _ = await economy.balances(player.user_id)
     if creds < SURGERY_FEES:
-        return {"success": False, "message": f"❌ هزینه جراحی زیبایی چهره <b>{SURGERY_FEES:,}</b> رکسار است."}
+        return {
+            "success": False,
+            "message": f"❌ هزینه جراحی زیبایی چهره <b>{SURGERY_FEES:,}</b> رکسار است.",
+        }
 
     await economy.spend(player.user_id, credits=SURGERY_FEES, kind=ActivityKind.SALON)
     async with db.write() as conn:
@@ -975,7 +1031,8 @@ async def update_facial_surgery(player: Player, eye_style: str, eye_color: str, 
     return {
         "success": True,
         "fee": SURGERY_FEES,
-        "message": "💎 <b>عمل زیبایی با موفقیت در کلینیک زیبایی تیرامیکس انجام شد!</b>\nفرم چشم‌ها و لبخند شما ارتقا یافت.",
+        "message": "💎 <b>عمل زیبایی با موفقیت در کلینیک زیبایی تیرامیکس انجام شد!</b>\n"
+        "فرم چشم‌ها و لبخند شما ارتقا یافت.",
     }
 
 
@@ -995,7 +1052,11 @@ async def create_new_clan(leader: Player, group_id: int, clan_name: str) -> dict
     creation_cost = 5000
     creds, _ = await economy.balances(leader.user_id)
     if creds < creation_cost:
-        return {"success": False, "message": f"❌ هزینه تأسیس کلن <b>{creation_cost:,}</b> رکسار است. (موجودی: {creds:,} رکسار)"}
+        return {
+            "success": False,
+            "message": f"❌ هزینه تأسیس کلن <b>{creation_cost:,}</b> رکسار است. "
+            f"(موجودی: {creds:,} رکسار)",
+        }
 
     await economy.spend(leader.user_id, credits=creation_cost, kind=ActivityKind.CLAN)
 

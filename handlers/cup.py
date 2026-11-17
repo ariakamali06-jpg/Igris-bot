@@ -30,7 +30,13 @@ _USAGE = (
 )
 
 
-@router.message(CommandOrText(["cup", "tournament"], words=CUP_WORDS))
+@router.message(
+    CommandOrText(
+        ["cup", "tournament"],
+        words=CUP_WORDS,
+        arg_words=_JOIN_ACTIONS | _RESULTS_ACTIONS,
+    )
+)
 async def cmd_cup(message: Message, command: CommandObject | None = None) -> None:
     user = message.from_user
     if user is None:

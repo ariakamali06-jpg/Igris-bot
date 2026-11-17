@@ -77,8 +77,55 @@ async def test_listing_escrows_the_item_out_of_inventory() -> None:
     res = await bazaar.list_item(seller.user_id, "ابزار سرقت", 500)
 
     assert res["success"] is True
+    assert res["fee"] == settings.bazaar_listing_fee
     assert not await _owns(seller.user_id, SELL_ITEM)
     assert await _status(res["listing_id"]) == "active"
+
+
+async def test_listing_fee_is_charged_and_ledgered() -> None:
+    """The fee is debited in the same transaction and lands in the ledger."""
+    seller = await _seller_with_item(15)
+
+    listed = await bazaar.list_item(seller.user_id, "ابزار سرقت", 500)
+
+    async with db.read() as conn:
+        cursor = await conn.execute(
+            "SELECT credits_delta FROM ledger WHERE user_id = ? AND kind = ? AND ref = ?",
+            (
+                seller.user_id,
+                ActivityKind.BAZAAR_FEE.value,
+                f"bazaar:fee:{listed['listing_id']}",
+            ),
+        )
+        row = await cursor.fetchone()
+        await cursor.close()
+    assert row is not None
+    assert int(row["credits_delta"]) == -settings.bazaar_listing_fee
+
+
+async def test_listing_fee_cannot_be_evaded_by_low_balance() -> None:
+    """A seller who cannot pay the fee gets a full rollback: no listing, item kept."""
+    seller = await _player(16, credits=100_000)
+    await shop.buy_item(seller.user_id, SELL_ITEM, drip=0)
+    async with db.write() as conn:
+        await conn.execute(
+            "UPDATE wallets SET credits = ? WHERE user_id = ?",
+            (settings.bazaar_listing_fee - 1, seller.user_id),
+        )
+
+    with pytest.raises(GameError):
+        await bazaar.list_item(seller.user_id, "ابزار سرقت", 500)
+
+    # Everything rolled back with the transaction: item never left the bag.
+    assert await _owns(seller.user_id, SELL_ITEM)
+    async with db.read() as conn:
+        cursor = await conn.execute(
+            "SELECT COUNT(*) AS n FROM bazaar_listings WHERE seller_id = ?",
+            (seller.user_id,),
+        )
+        row = await cursor.fetchone()
+        await cursor.close()
+    assert int(row["n"]) == 0
 
 
 async def test_listing_an_unowned_item_fails() -> None:

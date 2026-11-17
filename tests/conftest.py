@@ -19,3 +19,6 @@ from pathlib import Path
 os.environ.setdefault(
     "DB_PATH", str(Path(tempfile.mkdtemp(prefix="tgbot-pytest-")) / "test.db")
 )
+# Register the "Rex Lapis" test persona as an admin — production does the same
+# via ADMIN_IDS in .env. Admin access comes ONLY from this list (no hardcodes).
+os.environ.setdefault("ADMIN_IDS", "5765828495")

@@ -129,7 +129,10 @@ async def test_marriage_and_intimacy(_db) -> None:
     intimacy_msg = MutableMessage(text="رابطه", user=u1, reply_to_message=target_msg)
     await social.cmd_intimacy(intimacy_msg)
     assert len(intimacy_msg.replies) == 1
-    assert "خانواده" in intimacy_msg.replies[0]["text"] or "بارداری" in intimacy_msg.replies[0]["text"]
+    assert (
+        "خانواده" in intimacy_msg.replies[0]["text"]
+        or "بارداری" in intimacy_msg.replies[0]["text"]
+    )
 
     # 4. Divorce request: Juliet requests divorce
     divorce_msg = MutableMessage(text="طلاق", user=u2, reply_to_message=target_msg)
@@ -147,7 +150,9 @@ async def test_marriage_and_intimacy(_db) -> None:
 
     # 6. Judge confirms divorce
     judge_user = User(id=7777, is_bot=False, first_name="JudgeAli", username="judgeali")
-    judge_call = FakeCall(data=f"judge:divorce:{u1.id}:{u2.id}", message=divorce_msg, user=judge_user)
+    judge_call = FakeCall(
+        data=f"judge:divorce:{u1.id}:{u2.id}", message=divorce_msg, user=judge_user
+    )
     await social.cb_judge_verdict(judge_call)
 
     p1_divorced = await game.load_player(7003)

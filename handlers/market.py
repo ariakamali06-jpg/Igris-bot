@@ -99,7 +99,14 @@ async def _run_action(user_id: int, player, args: list[str]) -> dict:
     raise GameError(_USAGE)
 
 
-@router.message(CommandOrText(["exchange", "stocks"], words=MARKET_WORDS))
+@router.message(
+    CommandOrText(
+        ["exchange", "stocks"],
+        words=MARKET_WORDS,
+        arg_words=_BUY_ACTIONS | _SELL_ACTIONS | _BET_ACTIONS,
+        name_tail=True,
+    )
+)
 async def cmd_market(message: Message, command: CommandObject | None = None) -> None:
     user = message.from_user
     if user is None:

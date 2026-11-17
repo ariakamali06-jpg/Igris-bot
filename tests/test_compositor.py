@@ -114,20 +114,25 @@ def test_bad_background_falls_back(sample: RenderRequest) -> None:
 
 
 def test_render_budget_under_50ms(sample: RenderRequest) -> None:
-    """Warm render p95 must stay inside the 50ms contract.
+    """Warm render CPU p95 must stay inside the 50ms contract.
 
-    Tolerance is generous (2x) to survive CI noise; local benchmarks show
-    ~15-25ms. A regression that pushes warm renders past 100ms fails hard.
+    Measures process CPU time instead of wall time so a busy host (CI runner,
+    parallel test runs) cannot fail the budget with scheduling delays — the
+    contract is about render cost, not host load. Warm-up renders absorb lazy
+    font/codec init. A regression that pushes warm renders past 100ms CPU
+    time still fails hard.
     """
     compositor.clear_cache()
+    for _ in range(3):  # warm-up: lazy fonts / PIL codecs
+        compositor.render(sample, use_cache=False)
     samples: list[float] = []
     for _ in range(20):
-        start = time.perf_counter()
+        start = time.process_time()
         compositor.render(sample, use_cache=False)
-        samples.append((time.perf_counter() - start) * 1000)
+        samples.append((time.process_time() - start) * 1000)
     samples.sort()
     p95 = samples[int(len(samples) * 0.95) - 1]
-    assert p95 < 100, f"p95={p95:.1f}ms (budget 50ms, CI tolerance 100ms)"
+    assert p95 < 100, f"cpu p95={p95:.1f}ms (budget 50ms, CI tolerance 100ms)"
 
 
 def test_canvas_is_512(sample: RenderRequest) -> None:

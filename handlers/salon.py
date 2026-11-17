@@ -21,7 +21,7 @@ from aiogram.types import (
     Message,
 )
 
-from handlers.common import CommandOrText, answer_error
+from handlers.common import CommandOrText, answer_error, editable_message
 from services import salon
 
 logger = logging.getLogger(__name__)
@@ -38,6 +38,12 @@ SALON_COMMANDS = {
     "سولاریوم",
     "پیرایش",
     "رنگ پوست",
+}
+
+# رنگ‌های مجاز دستورات سریع متنی (مثل «آرایشگاه 3 بلوند» یا «زیبایی 2 آبی 1»)
+SALON_ARG_WORDS = {
+    "مشکی", "نقره‌ای", "نقره", "قهوه‌ای", "قهوه", "بلوند", "شرابی",
+    "بنفش", "صورتی", "آبی", "سبز", "عسلی",
 }
 
 
@@ -291,7 +297,13 @@ async def _build_lips_menu(user_id: int) -> tuple[str, str, InlineKeyboardMarkup
 # Message Commands
 # ---------------------------------------------------------------------------
 
-@router.message(CommandOrText(["salon", "barber", "makeup", "beauty", "skin"], SALON_COMMANDS))
+@router.message(
+    CommandOrText(
+        ["salon", "barber", "makeup", "beauty", "skin"],
+        SALON_COMMANDS,
+        arg_words=SALON_ARG_WORDS,
+    )
+)
 async def cmd_salon_entry(message: Message) -> None:
     """Entry point for salon, barbershop, solarium and makeup."""
     user = message.from_user
@@ -377,6 +389,10 @@ async def cmd_salon_entry(message: Message) -> None:
 @router.callback_query(F.data.startswith("sal:"))
 async def cb_salon_actions(call: CallbackQuery) -> None:
     """Unified handler for all salon, solarium and makeup callbacks."""
+    message = editable_message(call)
+    if message is None:
+        await call.answer()
+        return
     user = call.from_user
     if user is None:
         return
@@ -389,7 +405,7 @@ async def cb_salon_actions(call: CallbackQuery) -> None:
         if action == "close":
             if call.message:
                 with contextlib.suppress(TelegramBadRequest):
-                    await call.message.delete()
+                    await message.delete()
             await call.answer("با تشکر از مراجعه شما به سالن زیبایی تیرامیکس! ✨")
             return
 
@@ -470,7 +486,8 @@ async def _update_view(
     markup: InlineKeyboardMarkup,
 ) -> None:
     """Update message media or text without chat spam using fresh HD bytes."""
-    if not call.message:
+    message = editable_message(call)
+    if message is None:
         return
 
     if render_url:
@@ -478,7 +495,7 @@ async def _update_view(
         photo_payload = await _render_photo_payload(render_url, "salon.png")
         media = InputMediaPhoto(media=photo_payload, caption=caption, parse_mode="HTML")
         with contextlib.suppress(TelegramBadRequest):
-            await call.message.edit_media(media=media, reply_markup=markup)
+            await message.edit_media(media=media, reply_markup=markup)
     else:
         with contextlib.suppress(TelegramBadRequest):
-            await call.message.edit_text(text=caption, reply_markup=markup, parse_mode="HTML")
+            await message.edit_text(text=caption, reply_markup=markup, parse_mode="HTML")

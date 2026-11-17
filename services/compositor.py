@@ -25,6 +25,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from PIL import Image, ImageDraw, ImageFont
 
@@ -254,7 +255,7 @@ def _recolor_hair_layer(layer: Image.Image, hair_color: str) -> Image.Image:
         return layer
     img = layer.copy()
     data = list(img.getdata())
-    new_data = []
+    new_data: list[Any] = []
     for r, g, b, a in data:
         if a > 80 and r < 120 and g < 120 and b < 120:
             lum = (r + g + b) / 3.0
@@ -342,9 +343,13 @@ def _customize_figure(
     is_female: bool = False,
     is_shadow: bool = False,
 ) -> Image.Image:
-    """Dynamically tint skin, hair, and render subtle glowing eyes only when explicitly requested."""
+    """Dynamically tint skin, hair and render subtle glowing eyes when requested."""
     # Fast path: if completely default, return untouched high-quality manhwa figure
-    if (not skin_tone or skin_tone == "fair") and (not hair_color or hair_color == "black") and (not eye_color or eye_color == "default"):
+    if (
+        (not skin_tone or skin_tone == "fair")
+        and (not hair_color or hair_color == "black")
+        and (not eye_color or eye_color == "default")
+    ):
         return figure
 
     img = figure.copy()
@@ -353,7 +358,7 @@ def _customize_figure(
     # 1. Skin tone
     if skin_tone and skin_tone != "fair" and not is_shadow:
         data = list(img.getdata())
-        new_data = []
+        new_data: list[Any] = []
         for r, g, b, a in data:
             if a > 80 and r > 90 and g > 65 and b > 55 and r >= g and r > b:
                 if r < 95 and g < 95 and b < 95:
@@ -389,28 +394,34 @@ def _customize_figure(
         for idx, (r, g, b, a) in enumerate(data):
             x = idx % w
             y = idx // w
-            if a > 100 and x_min <= x <= x_max and y_min <= y <= y_max:
-                if r < 100 and g < 100 and b < 100:
-                    lum = (r + g + b) / 3.0
-                    if hair_color == "silver":
-                        val = int(215 + lum * 0.35)
-                        nr, ng, nb = val, val, min(255, val + 15)
-                    elif hair_color == "crimson":
-                        nr = min(255, int(195 + lum * 0.6))
-                        ng = int(25 + lum * 0.25)
-                        nb = int(35 + lum * 0.25)
-                    elif hair_color == "blonde":
-                        nr = min(255, int(225 + lum * 0.3))
-                        ng = min(255, int(195 + lum * 0.25))
-                        nb = int(70 + lum * 0.2)
-                    elif hair_color == "blue":
-                        nr = int(20 + lum * 0.25)
-                        ng = min(255, int(140 + lum * 0.8))
-                        nb = min(255, int(235 + lum * 0.2))
-                    else:
-                        nr, ng, nb = r, g, b
-                    new_data.append((nr, ng, nb, a))
-                    continue
+            if (
+                a > 100
+                and x_min <= x <= x_max
+                and y_min <= y <= y_max
+                and r < 100
+                and g < 100
+                and b < 100
+            ):
+                lum = (r + g + b) / 3.0
+                if hair_color == "silver":
+                    val = int(215 + lum * 0.35)
+                    nr, ng, nb = val, val, min(255, val + 15)
+                elif hair_color == "crimson":
+                    nr = min(255, int(195 + lum * 0.6))
+                    ng = int(25 + lum * 0.25)
+                    nb = int(35 + lum * 0.25)
+                elif hair_color == "blonde":
+                    nr = min(255, int(225 + lum * 0.3))
+                    ng = min(255, int(195 + lum * 0.25))
+                    nb = int(70 + lum * 0.2)
+                elif hair_color == "blue":
+                    nr = int(20 + lum * 0.25)
+                    ng = min(255, int(140 + lum * 0.8))
+                    nb = min(255, int(235 + lum * 0.2))
+                else:
+                    nr, ng, nb = r, g, b
+                new_data.append((nr, ng, nb, a))
+                continue
             new_data.append((r, g, b, a))
         img.putdata(new_data)
 
@@ -451,7 +462,10 @@ def _render_face_and_badges(plate: Image.Image, request: RenderRequest) -> None:
     ], fill=skin_neck)
 
     # Head (face shape: smooth anime chin)
-    draw.pieslice((head_cx - 28, head_cy - 36, head_cx + 28, head_cy + 20), start=180, end=360, fill=skin_face)
+    draw.pieslice(
+        ((head_cx - 28, head_cy - 36), (head_cx + 28, head_cy + 20)),
+        start=180, end=360, fill=skin_face,
+    )
     draw.polygon([
         (head_cx - 28, head_cy - 8),
         (head_cx + 28, head_cy - 8),
@@ -488,8 +502,14 @@ def _render_face_and_badges(plate: Image.Image, request: RenderRequest) -> None:
         draw.line([(head_cx + 6, by), (head_cx + 14, by - 5)], fill=brow_col, width=3)
         draw.line([(head_cx + 14, by - 5), (head_cx + 22, by - 1)], fill=brow_col, width=3)
     else:  # Model 1: Gentle arched
-        draw.arc((head_cx - 22, by - 5, head_cx - 6, by + 5), start=190, end=350, fill=brow_col, width=3)
-        draw.arc((head_cx + 6, by - 5, head_cx + 22, by + 5), start=190, end=350, fill=brow_col, width=3)
+        draw.arc(
+            (head_cx - 22, by - 5, head_cx - 6, by + 5),
+            start=190, end=350, fill=brow_col, width=3,
+        )
+        draw.arc(
+            (head_cx + 6, by - 5, head_cx + 22, by + 5),
+            start=190, end=350, fill=brow_col, width=3,
+        )
 
     # Eyes
     eye_palettes = {
@@ -503,10 +523,24 @@ def _render_face_and_badges(plate: Image.Image, request: RenderRequest) -> None:
     ey = head_cy - 5
 
     if clean_eye == "2":  # Model 2: Sharp Hunter Eyes
-        draw.polygon([(head_cx - 21, ey + 1), (head_cx - 13, ey - 6), (head_cx - 5, ey), (head_cx - 13, ey + 5)], fill=(255, 255, 255, 255))
-        draw.polygon([(head_cx + 21, ey + 1), (head_cx + 13, ey - 6), (head_cx + 5, ey), (head_cx + 13, ey + 5)], fill=(255, 255, 255, 255))
-        draw.line([(head_cx - 22, ey + 2), (head_cx - 13, ey - 7), (head_cx - 5, ey)], fill=(15, 15, 20, 255), width=3)
-        draw.line([(head_cx + 22, ey + 2), (head_cx + 13, ey - 7), (head_cx + 5, ey)], fill=(15, 15, 20, 255), width=3)
+        draw.polygon(
+            [(head_cx - 21, ey + 1), (head_cx - 13, ey - 6), (head_cx - 5, ey),
+             (head_cx - 13, ey + 5)],
+            fill=(255, 255, 255, 255),
+        )
+        draw.polygon(
+            [(head_cx + 21, ey + 1), (head_cx + 13, ey - 6), (head_cx + 5, ey),
+             (head_cx + 13, ey + 5)],
+            fill=(255, 255, 255, 255),
+        )
+        draw.line(
+            [(head_cx - 22, ey + 2), (head_cx - 13, ey - 7), (head_cx - 5, ey)],
+            fill=(15, 15, 20, 255), width=3,
+        )
+        draw.line(
+            [(head_cx + 22, ey + 2), (head_cx + 13, ey - 7), (head_cx + 5, ey)],
+            fill=(15, 15, 20, 255), width=3,
+        )
         draw.ellipse((head_cx - 16, ey - 4, head_cx - 9, ey + 4), fill=iris_base)
         draw.ellipse((head_cx + 9, ey - 4, head_cx + 16, ey + 4), fill=iris_base)
         draw.ellipse((head_cx - 14, ey - 2, head_cx - 11, ey + 2), fill=(10, 10, 20, 255))
@@ -516,19 +550,39 @@ def _render_face_and_badges(plate: Image.Image, request: RenderRequest) -> None:
     elif clean_eye == "3":  # Model 3: Calm almond eyes
         draw.ellipse((head_cx - 20, ey - 4, head_cx - 6, ey + 4), fill=(255, 255, 255, 255))
         draw.ellipse((head_cx + 6, ey - 4, head_cx + 20, ey + 4), fill=(255, 255, 255, 255))
-        draw.arc((head_cx - 21, ey - 6, head_cx - 5, ey + 4), start=190, end=350, fill=(15, 15, 20, 255), width=3)
-        draw.arc((head_cx + 5, ey - 6, head_cx + 21, ey + 4), start=190, end=350, fill=(15, 15, 20, 255), width=3)
+        draw.arc(
+            (head_cx - 21, ey - 6, head_cx - 5, ey + 4),
+            start=190, end=350, fill=(15, 15, 20, 255), width=3,
+        )
+        draw.arc(
+            (head_cx + 5, ey - 6, head_cx + 21, ey + 4),
+            start=190, end=350, fill=(15, 15, 20, 255), width=3,
+        )
         draw.ellipse((head_cx - 16, ey - 3, head_cx - 10, ey + 4), fill=iris_base)
         draw.ellipse((head_cx + 10, ey - 3, head_cx + 16, ey + 4), fill=iris_base)
         draw.point((head_cx - 13, ey), fill=(10, 10, 20, 255))
         draw.point((head_cx + 13, ey), fill=(10, 10, 20, 255))
     elif clean_eye == "4":  # Model 4: Awakened / Fierce Winged Eyes
         # Sclera with winged outer edge
-        draw.polygon([(head_cx - 23, ey - 1), (head_cx - 13, ey - 6), (head_cx - 5, ey), (head_cx - 13, ey + 5)], fill=(255, 255, 255, 255))
-        draw.polygon([(head_cx + 23, ey - 1), (head_cx + 13, ey - 6), (head_cx + 5, ey), (head_cx + 13, ey + 5)], fill=(255, 255, 255, 255))
+        draw.polygon(
+            [(head_cx - 23, ey - 1), (head_cx - 13, ey - 6), (head_cx - 5, ey),
+             (head_cx - 13, ey + 5)],
+            fill=(255, 255, 255, 255),
+        )
+        draw.polygon(
+            [(head_cx + 23, ey - 1), (head_cx + 13, ey - 6), (head_cx + 5, ey),
+             (head_cx + 13, ey + 5)],
+            fill=(255, 255, 255, 255),
+        )
         # Bold winged outer lash
-        draw.line([(head_cx - 24, ey - 2), (head_cx - 13, ey - 7), (head_cx - 5, ey)], fill=(15, 15, 20, 255), width=3)
-        draw.line([(head_cx + 24, ey - 2), (head_cx + 13, ey - 7), (head_cx + 5, ey)], fill=(15, 15, 20, 255), width=3)
+        draw.line(
+            [(head_cx - 24, ey - 2), (head_cx - 13, ey - 7), (head_cx - 5, ey)],
+            fill=(15, 15, 20, 255), width=3,
+        )
+        draw.line(
+            [(head_cx + 24, ey - 2), (head_cx + 13, ey - 7), (head_cx + 5, ey)],
+            fill=(15, 15, 20, 255), width=3,
+        )
         draw.line([(head_cx - 24, ey - 2), (head_cx - 18, ey + 2)], fill=(15, 15, 20, 255), width=2)
         draw.line([(head_cx + 24, ey - 2), (head_cx + 18, ey + 2)], fill=(15, 15, 20, 255), width=2)
         # Intense glowing iris
@@ -542,8 +596,14 @@ def _render_face_and_badges(plate: Image.Image, request: RenderRequest) -> None:
     else:  # Model 1: Round friendly anime eyes
         draw.ellipse((head_cx - 20, ey - 6, head_cx - 6, ey + 6), fill=(255, 255, 255, 255))
         draw.ellipse((head_cx + 6, ey - 6, head_cx + 20, ey + 6), fill=(255, 255, 255, 255))
-        draw.arc((head_cx - 21, ey - 8, head_cx - 5, ey + 5), start=180, end=360, fill=(15, 15, 20, 255), width=3)
-        draw.arc((head_cx + 5, ey - 8, head_cx + 21, ey + 5), start=180, end=360, fill=(15, 15, 20, 255), width=3)
+        draw.arc(
+            (head_cx - 21, ey - 8, head_cx - 5, ey + 5),
+            start=180, end=360, fill=(15, 15, 20, 255), width=3,
+        )
+        draw.arc(
+            (head_cx + 5, ey - 8, head_cx + 21, ey + 5),
+            start=180, end=360, fill=(15, 15, 20, 255), width=3,
+        )
         draw.ellipse((head_cx - 17, ey - 4, head_cx - 9, ey + 5), fill=iris_base)
         draw.ellipse((head_cx + 9, ey - 4, head_cx + 17, ey + 5), fill=iris_base)
         draw.ellipse((head_cx - 15, ey - 2, head_cx - 11, ey + 3), fill=(10, 10, 20, 255))
@@ -562,14 +622,23 @@ def _render_face_and_badges(plate: Image.Image, request: RenderRequest) -> None:
     my = head_cy + 19
     lip_color = (195, 65, 75, 255) if request.gender in ("زن", "دختر") else (170, 75, 70, 255)
     if clean_mouth == "2":  # Model 2: Smirk
-        draw.line([(head_cx - 7, my + 1), (head_cx + 1, my), (head_cx + 9, my - 4)], fill=lip_color, width=3)
+        draw.line(
+            [(head_cx - 7, my + 1), (head_cx + 1, my), (head_cx + 9, my - 4)],
+            fill=lip_color, width=3,
+        )
     elif clean_mouth == "3":  # Model 3: Open grin
-        draw.pieslice((head_cx - 9, my - 2, head_cx + 9, my + 8), start=0, end=180, fill=lip_color)
+        draw.pieslice(
+            ((head_cx - 9, my - 2), (head_cx + 9, my + 8)),
+            start=0, end=180, fill=lip_color,
+        )
         draw.line([(head_cx - 9, my), (head_cx + 9, my)], fill=(255, 255, 255, 255), width=2)
     elif clean_mouth == "4":  # Model 4: Stoic line
         draw.line([(head_cx - 8, my), (head_cx + 8, my)], fill=lip_color, width=3)
     else:  # Model 1: Smile
-        draw.arc((head_cx - 8, my - 4, head_cx + 8, my + 5), start=20, end=160, fill=lip_color, width=3)
+        draw.arc(
+            (head_cx - 8, my - 4, head_cx + 8, my + 5),
+            start=20, end=160, fill=lip_color, width=3,
+        )
 
     # Face Badges on left side
     font_badge = _font(13)
@@ -581,16 +650,34 @@ def _render_face_and_badges(plate: Image.Image, request: RenderRequest) -> None:
     mouth_num = clean_mouth if clean_mouth in ("1", "2", "3", "4") else "1"
 
     # Badge 1: Eye
-    draw.rounded_rectangle((20, 85, 140, 120), radius=8, fill=(15, 23, 42, 235), outline=iris_base, width=2)
-    draw.text((80, 102), f"چشم {_to_fa(eye_num)}", font=font_badge, fill=(255, 255, 255, 255), anchor="mm")
+    draw.rounded_rectangle(
+        (20, 85, 140, 120), radius=8,
+        fill=(15, 23, 42, 235), outline=iris_base, width=2,
+    )
+    draw.text(
+        (80, 102), f"چشم {_to_fa(eye_num)}",
+        font=font_badge, fill=(255, 255, 255, 255), anchor="mm",
+    )
 
     # Badge 2: Eyebrow
-    draw.rounded_rectangle((20, 126, 140, 161), radius=8, fill=(15, 23, 42, 235), outline=(148, 163, 184, 255), width=2)
-    draw.text((80, 143), f"ابرو {_to_fa(eye_num)}", font=font_badge, fill=(255, 255, 255, 255), anchor="mm")
+    draw.rounded_rectangle(
+        (20, 126, 140, 161), radius=8,
+        fill=(15, 23, 42, 235), outline=(148, 163, 184, 255), width=2,
+    )
+    draw.text(
+        (80, 143), f"ابرو {_to_fa(eye_num)}",
+        font=font_badge, fill=(255, 255, 255, 255), anchor="mm",
+    )
 
     # Badge 3: Mouth
-    draw.rounded_rectangle((20, 167, 140, 202), radius=8, fill=(15, 23, 42, 235), outline=(244, 114, 182, 255), width=2)
-    draw.text((80, 184), f"دهان {_to_fa(mouth_num)}", font=font_badge, fill=(255, 255, 255, 255), anchor="mm")
+    draw.rounded_rectangle(
+        (20, 167, 140, 202), radius=8,
+        fill=(15, 23, 42, 235), outline=(244, 114, 182, 255), width=2,
+    )
+    draw.text(
+        (80, 184), f"دهان {_to_fa(mouth_num)}",
+        font=font_badge, fill=(255, 255, 255, 255), anchor="mm",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -697,33 +784,7 @@ class Compositor:
         composited = True
 
         # Layers 2..7: equipped cosmetics in bottom-to-top order.
-        is_manhwa_male = request.body in (
-            "base_shadow",
-            "base_aegis",
-        )
-        is_vn_female = request.body in (
-            "base_female",
-            "base_vn_1",
-            "base_vn_2",
-            "base_vn_3",
-            "base_vn_4",
-            "base_vn_5",
-        )
         is_vn_male = request.body.startswith("base_boy_") or request.gender in ("مرد", "پسر")
-        legacy_procedural_items = {
-            "street_slacks",
-            "combat_boots",
-            "techwear_cargo",
-            "street_slides",
-            "shadow_wargreaves",
-            "tactical_hoodie",
-            "leather_bomber",
-            "hunter_trench",
-            "void_cuirass",
-            "street_fade",
-            "hood_up",
-            "raven_shag",
-        }
         for slot in SLOT_RENDER_ORDER:
             key = request.loadout.get(slot.value)
             if not key:
@@ -788,7 +849,9 @@ class Compositor:
 
         cached = self._sutemo_cache
         if "body_skin.png" not in cached:
-            return self._assets.get("body", "base_female") or Image.new("RGBA", (CANVAS, CANVAS), (0, 0, 0, 0))
+            return self._assets.get("body", "base_female") or Image.new(
+                "RGBA", (CANVAS, CANVAS), (0, 0, 0, 0)
+            )
 
         skin_tints = {
             "1": (255, 240, 232),
@@ -823,7 +886,11 @@ class Compositor:
         # always matches the label the user tapped.
         eye_keys = {
             "1": ("eyes_friendly_skin.png", "eyes_friendly_base.png", "eyes_friendly_static.png"),
-            "2": ("eyes_determined_skin.png", "eyes_determined_base.png", "eyes_determined_static.png"),
+            "2": (
+                "eyes_determined_skin.png",
+                "eyes_determined_base.png",
+                "eyes_determined_static.png",
+            ),
             "3": ("eyes_neutral_skin.png", "eyes_neutral_base.png", "eyes_neutral_static.png"),
         }
         mouth_keys = {
@@ -944,7 +1011,7 @@ class Compositor:
         sutemo_dir = Path(__file__).resolve().parent.parent / "assets" / "layers" / "sutemo"
         if is_boy and sutemo_dir.is_dir() and any(sutemo_dir.iterdir()):
             skin_num = body.split("_")[-1] if body.startswith("base_boy_") else "2"
-            figure = self._render_sutemo_boy(
+            figure: Image.Image | None = self._render_sutemo_boy(
                 skin_num=skin_num,
                 eye_style=eye_style,
                 eye_color=eye_color,
@@ -958,8 +1025,14 @@ class Compositor:
                 target_body = "base_male"
             elif body.startswith("base_vn_"):
                 target_body = "base_female"
-            figure = self._assets.get("body", target_body) or self._assets.get("body", "base_male") or self._assets.get("body", "base_female")
-            if figure is not None and target_body in ("base_male", "base_female", "base_shadow", "base_street", "base_aegis"):
+            figure = (
+                self._assets.get("body", target_body)
+                or self._assets.get("body", "base_male")
+                or self._assets.get("body", "base_female")
+            )
+            if figure is not None and target_body in (
+                "base_male", "base_female", "base_shadow", "base_street", "base_aegis",
+            ):
                 figure = _customize_figure(
                     figure,
                     skin_tone=skin_tone,

@@ -27,7 +27,14 @@ _USAGE = (
 )
 
 
-@router.message(CommandOrText(["blackmarket", "fence"], words=BLACKMARKET_WORDS))
+@router.message(
+    CommandOrText(
+        ["blackmarket", "fence"],
+        words=BLACKMARKET_WORDS,
+        arg_words=_BUY_ACTIONS,
+        name_tail=True,
+    )
+)
 async def cmd_blackmarket(message: Message, command: CommandObject | None = None) -> None:
     user = message.from_user
     if user is None:

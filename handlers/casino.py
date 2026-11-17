@@ -75,7 +75,13 @@ async def cmd_slots(message: Message, command: CommandObject | None = None) -> N
         await answer_error(exc, message=message)
 
 
-@router.message(CommandOrText(["rps"], words=RPS_WORDS))
+@router.message(
+    CommandOrText(
+        ["rps"],
+        words=RPS_WORDS,
+        arg_words={"سنگ", "کاغذ", "قیچی", "rock", "paper", "scissors"},
+    )
+)
 async def cmd_rps(message: Message, command: CommandObject | None = None) -> None:
     user = message.from_user
     if user is None:

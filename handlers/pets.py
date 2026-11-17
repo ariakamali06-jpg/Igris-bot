@@ -57,7 +57,19 @@ async def _reply_target(message: Message, token: str = "") -> Player:
     return target
 
 
-@router.message(CommandOrText(["pet"], words=PET_WORDS))
+@router.message(
+    CommandOrText(
+        ["pet"],
+        words=PET_WORDS,
+        arg_words=(
+            _BUY_ACTIONS
+            | _UPGRADE_ACTIONS
+            | _BATTLE_ACTIONS
+            | _DECLINE_ACTIONS
+            | _CANCEL_ACTIONS
+        ),
+    )
+)
 async def cmd_pet(message: Message, command: CommandObject | None = None) -> None:
     """مدیریت فرامین و تعاملات مربوط به حیوان خانگی بازیکن."""
     user = message.from_user

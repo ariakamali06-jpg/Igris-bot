@@ -51,7 +51,7 @@ async def _status_with_history(user_id: int) -> dict:
     return res
 
 
-@router.message(CommandOrText(["risk"], words=RISK_WORDS))
+@router.message(CommandOrText(["risk"], words=RISK_WORDS, arg_words=_CASHOUT_ACTIONS))
 async def cmd_risk(message: Message, command: CommandObject | None = None) -> None:
     user = message.from_user
     if user is None:

@@ -26,6 +26,7 @@ from aiogram.types import (
 from handlers.common import (
     CommandOrText,
     answer_error,
+    editable_message,
     extract_args,
     hydrate,
     resolve_target_player,
@@ -155,7 +156,11 @@ async def cmd_marriage(message: Message, command: CommandObject | None = None) -
 @router.callback_query(F.data.startswith("marry:"))
 async def cb_marry_response(call: CallbackQuery) -> None:
     """پاسخ به پیشنهاد ازدواج با تایید یا رد از طرف مخاطب."""
-    parts = call.data.split(":")
+    message = editable_message(call)
+    if message is None:
+        await call.answer()
+        return
+    parts = (call.data or "").split(":")
     decision = parts[1]
     proposer_id = int(parts[2])
     user = call.from_user
@@ -172,7 +177,7 @@ async def cb_marry_response(call: CallbackQuery) -> None:
     PENDING_MARRIAGES.pop(user.id, None)
 
     if decision == "no":
-        await call.message.edit_text(f"💔 درخواست ازدواج با <b>{user.full_name}</b> رد شد.")
+        await message.edit_text(f"💔 درخواست ازدواج با <b>{user.full_name}</b> رد شد.")
         return
 
     try:
@@ -182,7 +187,7 @@ async def cb_marry_response(call: CallbackQuery) -> None:
             return
         partner = await hydrate(user.id, user.full_name, user.username)
         res = await tiramix.marry_citizens(proposer, partner)
-        await call.message.edit_text(res["message"])
+        await message.edit_text(res["message"])
     except Exception as exc:  # noqa: BLE001
         await answer_error(exc, callback=call)
 
@@ -240,7 +245,11 @@ async def cmd_divorce(message: Message) -> None:
 @router.callback_query(F.data.startswith("div:") | F.data.startswith("divorce:"))
 async def cb_divorce_response(call: CallbackQuery) -> None:
     """پردازش پاسخ همسر: پذیرش توافقی یا تشکیل دادگاه با قاضی بی‌طرف."""
-    parts = call.data.split(":")
+    message = editable_message(call)
+    if message is None:
+        await call.answer()
+        return
+    parts = (call.data or "").split(":")
     action = parts[1]
     requester_id = int(parts[2])
     user = call.from_user
@@ -251,7 +260,7 @@ async def cb_divorce_response(call: CallbackQuery) -> None:
     if action == "agree":
         await call.answer()
         res = await tiramix.divorce_citizens(user.id, requester_id)
-        await call.message.edit_text(res["message"])
+        await message.edit_text(res["message"])
         PENDING_DIVORCES.pop(user.id, None)
     elif action == "court":
         await call.answer("تشکیل دادگاه خانواده تیرامیکس... ⚖️")
@@ -273,7 +282,7 @@ async def cb_divorce_response(call: CallbackQuery) -> None:
                 ),
             ]
         ]
-        await call.message.edit_text(
+        await message.edit_text(
             judge_prompt,
             reply_markup=InlineKeyboardMarkup(inline_keyboard=judge_buttons),
         )
@@ -282,7 +291,11 @@ async def cb_divorce_response(call: CallbackQuery) -> None:
 @router.callback_query(F.data.startswith("judge:"))
 async def cb_judge_verdict(call: CallbackQuery) -> None:
     """ثبت حکم قطعی قاضی گروه در پرونده طلاق شهروندان."""
-    parts = call.data.split(":")
+    message = editable_message(call)
+    if message is None:
+        await call.answer()
+        return
+    parts = (call.data or "").split(":")
     verdict = parts[1]
     p1_id = int(parts[2])
     p2_id = int(parts[3])
@@ -312,7 +325,7 @@ async def cb_judge_verdict(call: CallbackQuery) -> None:
             "و طرفین را به صلح و سازش در زندگی مشترک فراخواند! 🕊💐"
         )
 
-    await call.message.edit_text(verdict_text)
+    await message.edit_text(verdict_text)
 
 
 # ---------------------------------------------------------------------------
@@ -396,7 +409,14 @@ async def cmd_affair(message: Message) -> None:
 # ---------------------------------------------------------------------------
 
 
-@router.message(CommandOrText(["clan"], {"کلن", "گروه", "سندیکا"}))
+@router.message(
+    CommandOrText(
+        ["clan"],
+        {"کلن", "گروه", "سندیکا"},
+        arg_words={"ساخت", "تاسیس", "create", "کلن", "گروه", "سندیکا"},
+        name_tail=True,
+    )
+)
 async def cmd_clan(message: Message) -> None:
     """مدیریت عضویت، خزانه و تأسیس کلن‌ها و سندیکاهای تیرامیکس."""
     user = message.from_user

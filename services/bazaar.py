@@ -97,8 +97,42 @@ async def browse(limit: int = 20) -> dict[str, Any]:
     }
 
 
+async def _charge_listing_fee(
+    conn: Any, user_id: int, listing_id: int
+) -> int:
+    """Charge the listing fee inside the *open* transaction.
+
+    Runs in the same ``db.write()`` block that escrows the item and creates
+    the listing, so a listing can never exist without its fee being paid —
+    any failure rolls the whole thing back.
+    """
+    fee = settings.bazaar_listing_fee
+    if fee <= 0:
+        return 0
+    cursor = await conn.execute(
+        "SELECT credits FROM wallets WHERE user_id = ?", (user_id,)
+    )
+    row = await cursor.fetchone()
+    await cursor.close()
+    if row is None or int(row["credits"]) < fee:
+        raise GameError(
+            f"موجودی شما برای پرداخت کارمزد ثبت آگهی ({fee:,} رکسار) کافی نیست!"
+        )
+    await economy.mutate(
+        conn,
+        user_id,
+        credits=-fee,
+        kind=ActivityKind.BAZAAR_FEE,
+        ref=f"bazaar:fee:{listing_id}",
+    )
+    return fee
+
+
 async def list_item(user_id: int, query: str, price: int) -> dict[str, Any]:
-    """Escrow one owned item (RPG item or wardrobe clothing) into an active listing."""
+    """Escrow one owned item (RPG item or wardrobe clothing) into an active listing.
+
+    The listing fee is charged atomically inside the same transaction as the
+    escrow, so there is no window where a listing exists unpaid."""
     if not settings.bazaar_price_min <= price <= settings.bazaar_price_max:
         raise GameError(
             f"قیمت باید بین {settings.bazaar_price_min:,} و "
@@ -187,6 +221,7 @@ async def list_item(user_id: int, query: str, price: int) -> dict[str, Any]:
             )
             listing_id = int(cursor.lastrowid or 0)
             await cursor.close()
+            fee = await _charge_listing_fee(conn, user_id, listing_id)
 
         avatar.invalidate_avatar_cache(user_id)
         return {
@@ -194,9 +229,11 @@ async def list_item(user_id: int, query: str, price: int) -> dict[str, Any]:
             "listing_id": listing_id,
             "item_id": item_id,
             "price": price,
+            "fee": fee,
             "message": (
                 f"📋 آگهی #{listing_id} ثبت شد — <b>{_item_name(item_id)}</b> "
-                f"به قیمت <b>{price:,}</b> رکسار (تا زمان فروش در بازارچه امانت است)."
+                f"به قیمت <b>{price:,}</b> رکسار (کارمزد: {fee:,} رکسار؛ "
+                "تا زمان فروش در بازارچه امانت است)."
             ),
         }
 
@@ -234,15 +271,18 @@ async def list_item(user_id: int, query: str, price: int) -> dict[str, Any]:
         )
         listing_id = int(cursor.lastrowid or 0)
         await cursor.close()
+        fee = await _charge_listing_fee(conn, user_id, listing_id)
 
     return {
         "success": True,
         "listing_id": listing_id,
         "item_id": item.id,
         "price": price,
+        "fee": fee,
         "message": (
             f"📋 آگهی #{listing_id} ثبت شد — <b>{item.name}</b> "
-            f"به قیمت <b>{price:,}</b> رکسار (تا زمان فروش در بازارچه امانت است)."
+            f"به قیمت <b>{price:,}</b> رکسار (کارمزد: {fee:,} رکسار؛ "
+            "تا زمان فروش در بازارچه امانت است)."
         ),
     }
 

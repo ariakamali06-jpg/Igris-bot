@@ -34,7 +34,8 @@ def test_empty_is_no_admins(monkeypatch: pytest.MonkeyPatch) -> None:
     assert Settings(_env_file=None).admin_ids == []
 
 
-def test_unset_defaults_empty() -> None:
+def test_unset_defaults_empty(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("ADMIN_IDS", raising=False)
     assert Settings(_env_file=None).admin_ids == []
 
 

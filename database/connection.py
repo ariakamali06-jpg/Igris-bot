@@ -91,7 +91,8 @@ class Database:
     async def _migrate(self) -> None:
         """Idempotent schema install. ``CREATE TABLE IF NOT EXISTS`` throughout."""
         script = SCHEMA_PATH.read_text(encoding="utf-8")
-        assert self._write_conn is not None
+        if self._write_conn is None:
+            raise RuntimeError("_migrate() called before the write connection was open")
         await self._write_conn.executescript(script)
         await self._widen_items_pool()
 

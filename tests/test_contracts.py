@@ -63,7 +63,13 @@ async def _seed_code(user_id: int, code: str, rows: int) -> None:
                                     ref, created_at)
                 VALUES (?, ?, ?, 0, 0, 0, ?, ?)
                 """,
-                (user_id, kind.value, 1 if code == "theft" else 0, f"contract-seed:{code}:{i}", current),
+                (
+                    user_id,
+                    kind.value,
+                    1 if code == "theft" else 0,
+                    f"contract-seed:{code}:{i}",
+                    current,
+                ),
             )
 
 

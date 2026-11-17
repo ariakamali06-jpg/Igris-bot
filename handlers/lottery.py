@@ -36,7 +36,7 @@ _GIFT_USAGE = (
 )
 
 
-@router.message(CommandOrText(["lottery", "raffle"], words=LOTTERY_WORDS))
+@router.message(CommandOrText(["lottery", "raffle"], words=LOTTERY_WORDS, arg_words=_BUY_ACTIONS))
 async def cmd_lottery(message: Message, command: CommandObject | None = None) -> None:
     user = message.from_user
     if user is None:
@@ -56,7 +56,15 @@ async def cmd_lottery(message: Message, command: CommandObject | None = None) ->
         await answer_error(exc, message=message)
 
 
-@router.message(CommandOrText(["gift"], words=GIFT_WORDS))
+@router.message(
+    CommandOrText(
+        ["gift"],
+        words=GIFT_WORDS,
+        arg_words=_CREATE_ACTIONS,
+        name_tail=True,
+        arg_pattern=r"[A-Za-z0-9_\-\u0600-\u06FF]{2,40}",
+    )
+)
 async def cmd_gift(message: Message, command: CommandObject | None = None) -> None:
     user = message.from_user
     if user is None:

@@ -141,21 +141,18 @@ async def _try_edit(message: Message, text: str | None, photo: bytes | None,
     # Text / Caption panel (photo is None)
     # If it is a photo/caption message, edit_caption; else edit_text.
     # If Telegram rejects with "no text" or "no caption", swap and retry immediately!
-    first_fn = message.edit_caption if is_photo_msg else message.edit_text
-    second_fn = message.edit_text if is_photo_msg else message.edit_caption
-    first_kw = (
-        {"caption": text, "reply_markup": reply_markup}
-        if is_photo_msg
-        else {"text": text or "", "reply_markup": reply_markup}
-    )
-    second_kw = (
-        {"text": text or "", "reply_markup": reply_markup}
-        if is_photo_msg
-        else {"caption": text, "reply_markup": reply_markup}
-    )
+    async def _edit_first() -> Any:
+        if is_photo_msg:
+            return await message.edit_caption(caption=text, reply_markup=reply_markup)
+        return await message.edit_text(text or "", reply_markup=reply_markup)
+
+    async def _edit_second() -> Any:
+        if is_photo_msg:
+            return await message.edit_text(text or "", reply_markup=reply_markup)
+        return await message.edit_caption(caption=text, reply_markup=reply_markup)
 
     try:
-        await first_fn(**first_kw)
+        await _edit_first()
         return True
     except TelegramBadRequest as exc:
         err = str(exc).lower()
@@ -165,7 +162,7 @@ async def _try_edit(message: Message, text: str | None, photo: bytes | None,
             return True
         if "there is no text" in err or "there is no caption" in err:
             try:
-                await second_fn(**second_kw)
+                await _edit_second()
                 return True
             except Exception as second_exc:
                 logger.warning("panel: fallback edit attempt failed: %s", second_exc)

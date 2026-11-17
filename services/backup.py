@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import os
 import shutil
 import sqlite3
 import tempfile
@@ -22,9 +23,6 @@ from config import settings
 from database.connection import db
 
 logger = logging.getLogger(__name__)
-
-# Rex Lapis Telegram User ID
-PRIMARY_ADMIN_ID = 5765828495
 
 
 async def create_backup_file() -> Path | None:
@@ -43,7 +41,11 @@ async def create_backup_file() -> Path | None:
         logger.warning("WAL checkpoint before backup encountered an issue: %s", exc)
 
     timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
-    backup_path = Path(tempfile.gettempdir()) / f"tiramix_backup_{timestamp}.db"
+    # نام تصادفی و مجوز محدود (mkstemp) تا فایل دیتابیس در مسیر مشترک سیستم
+    # قابل حدس یا خواندن توسط کاربران دیگر نباشد.
+    fd, name = tempfile.mkstemp(prefix=f"tiramix_backup_{timestamp}_", suffix=".db")
+    os.close(fd)
+    backup_path = Path(name)
 
     def _sync_backup() -> None:
         src = sqlite3.connect(db_path)
@@ -57,7 +59,7 @@ async def create_backup_file() -> Path | None:
 
     try:
         await asyncio.to_thread(_sync_backup)
-        if backup_path.exists():
+        if await asyncio.to_thread(backup_path.exists):
             return backup_path
     except Exception as exc:
         logger.error("Failed to generate SQLite backup file: %s", exc)
@@ -73,7 +75,9 @@ async def send_backup_to_admins(bot: Bot) -> int:
         return 0
 
     recipients = set(settings.admin_ids)
-    recipients.add(PRIMARY_ADMIN_ID)
+    if not recipients:
+        logger.warning("ADMIN_IDS is empty; nobody to receive the backup.")
+        return 0
 
     sent_count = 0
     now_str = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC")
@@ -128,7 +132,10 @@ async def save_and_pin_backup(bot: Bot) -> bool:
     if not backup_file or not backup_file.exists():
         return False
 
-    chat_id = settings.backup_chat_id or PRIMARY_ADMIN_ID
+    chat_id = settings.backup_chat_id or settings.primary_admin_id
+    if not chat_id:
+        logger.warning("No BACKUP_CHAT_ID or ADMIN_IDS configured; cannot store cloud backup.")
+        return False
     now_str = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC")
     file_size_kb = backup_file.stat().st_size / 1024
     caption = (
@@ -160,7 +167,9 @@ async def auto_restore_on_startup(bot: Bot) -> bool:
     try:
         async with db.read() as conn:
             cur = await conn.execute("SELECT COUNT(*) FROM players")
-            count = int((await cur.fetchone())[0])
+            row = await cur.fetchone()
+            await cur.close()
+            count = int(row[0]) if row else 0
             if count > 0:
                 logger.info(
                     "Local database already contains %d players; skipping auto-restore.", count
@@ -169,7 +178,10 @@ async def auto_restore_on_startup(bot: Bot) -> bool:
     except Exception as exc:
         logger.warning("Error checking local player count: %s", exc)
 
-    chat_id = settings.backup_chat_id or PRIMARY_ADMIN_ID
+    chat_id = settings.backup_chat_id or settings.primary_admin_id
+    if not chat_id:
+        logger.warning("No BACKUP_CHAT_ID or ADMIN_IDS configured; cannot auto-restore.")
+        return False
     logger.info(
         "Local database is empty. Attempting auto-restore from pinned backup in chat %s...",
         chat_id,
@@ -187,20 +199,21 @@ async def auto_restore_on_startup(bot: Bot) -> bool:
             logger.info("Pinned document %s is not a .db file; skipping.", doc.file_name)
             return False
 
-        temp_dir = tempfile.gettempdir()
-        temp_file = Path(temp_dir) / f"auto_restore_{int(datetime.now(UTC).timestamp())}.db"
+        fd, name = tempfile.mkstemp(prefix="auto_restore_", suffix=".db")
+        os.close(fd)
+        temp_file = Path(name)
         await bot.download(doc, destination=temp_file)
 
         ok, reason = await restore_database_from_file(temp_file)
         with contextlib.suppress(Exception):
-            if temp_file.exists():
-                temp_file.unlink()
+            if await asyncio.to_thread(temp_file.exists):
+                await asyncio.to_thread(temp_file.unlink)
 
         if ok:
             logger.info("Auto-restore success: %s", reason)
             with contextlib.suppress(Exception):
                 await bot.send_message(
-                    chat_id=PRIMARY_ADMIN_ID,
+                    chat_id=settings.primary_admin_id,
                     text=(
                         "🔄 <b>بازیابی خودکار دیتابیس پس از دیپلوی جدید!</b>\n\n"
                         f"{reason}\n"
@@ -222,28 +235,32 @@ async def restore_database_from_file(backup_path: Path) -> tuple[bool, str]:
     def _verify_integrity() -> tuple[bool, str, int]:
         if not backup_path.exists() or backup_path.stat().st_size == 0:
             return False, "فایل ارسالی خالی است یا یافت نشد.", 0
+        conn = None
         try:
             conn = sqlite3.connect(backup_path)
             cur = conn.cursor()
             cur.execute("PRAGMA integrity_check")
             row = cur.fetchone()
             if not row or row[0].lower() != "ok":
-                conn.close()
                 return False, f"فایل پشتیبان خراب است ({row[0] if row else 'ناشناخته'})", 0
 
             # بررسی وجود جدول‌های حیاتی
             cur.execute("SELECT name FROM sqlite_master WHERE type='table'")
             tables = {r[0] for r in cur.fetchall()}
             if "players" not in tables:
-                conn.close()
                 return False, "فایل مربوط به بازی تیرامیکس نیست (جدول بازیکنان وجود ندارد).", 0
 
             cur.execute("SELECT COUNT(*) FROM players")
             p_count = int(cur.fetchone()[0])
-            conn.close()
             return True, "ok", p_count
         except Exception as exc:
             return False, f"خطا در خواندن فایل دیتابیس: {exc}", 0
+        finally:
+            # بستن حتمی اتصال: روی ویندوز اتصال باز، فایل را قفل نگه می‌دارد
+            # و از حذف فایل پشتیبان جلوگیری می‌کند.
+            if conn is not None:
+                with contextlib.suppress(Exception):
+                    conn.close()
 
     ok, reason, player_count = await asyncio.to_thread(_verify_integrity)
     if not ok:
@@ -266,10 +283,13 @@ async def restore_database_from_file(backup_path: Path) -> tuple[bool, str]:
         shutil.copy2(backup_path, target_path)
         wal_path = Path(f"{target_path}-wal")
         shm_path = Path(f"{target_path}-shm")
-        if wal_path.exists():
-            wal_path.unlink()
-        if shm_path.exists():
-            shm_path.unlink()
+        # روی ویندوز ممکن است WAL/SHM هنوز توسط آخرین خواننده قفل شده باشد؛
+        # این بی‌خطر است چون فایل اصلی جایگزین شده و SQLite هنگام اتصال بعدی
+        # دوباره آن‌ها را می‌سازد. حذف فقط با تلاش (best-effort).
+        for p in (wal_path, shm_path):
+            if p.exists():
+                with contextlib.suppress(OSError):
+                    p.unlink()
 
     await asyncio.to_thread(_swap_files)
 

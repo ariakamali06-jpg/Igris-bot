@@ -59,7 +59,13 @@ async def _resolve_victim(message: Message, token: str = "") -> Player:
     return target
 
 
-@shadow_router.message(CommandOrText(["shadow"], words=SHADOW_WORDS))
+@shadow_router.message(
+    CommandOrText(
+        ["shadow"],
+        words=SHADOW_WORDS,
+        arg_words=_HACK_KINDS | _KILL_KINDS,
+    )
+)
 async def cmd_shadow(message: Message, command: CommandObject | None = None) -> None:
     """اجرای عملیات محرمانه سایه (هکر حساب یا قاتل اجاره‌ای)."""
     user = message.from_user

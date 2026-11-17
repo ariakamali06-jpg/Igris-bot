@@ -124,7 +124,10 @@ def simulate(a: Fighter, b: Fighter, seed: int) -> BattleResult:
 
         a_hp, b_hp = hp[a.user_id], hp[b.user_id]
         if a_hp == b_hp:
-            label = f"راند {round_no}: نبرد برابر — {a.name} ({a_hp} جان) در برابر {b.name} ({b_hp} جان)"
+            label = (
+                f"راند {round_no}: نبرد برابر — {a.name} ({a_hp} جان) "
+                f"در برابر {b.name} ({b_hp} جان)"
+            )
         else:
             leader = a if a_hp > b_hp else b
             label = (

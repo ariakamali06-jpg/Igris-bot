@@ -14,9 +14,12 @@ import asyncio
 import html
 import io
 import logging
+import re
+from collections.abc import Callable, Collection
+from typing import ClassVar, cast
 
 from aiogram.filters import BaseFilter, CommandObject
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import CallbackQuery, InaccessibleMessage, Message
 from PIL import Image
 
 from models import Player
@@ -45,46 +48,159 @@ __all__ = [
 
 
 def is_admin_or_owner(user_id: int) -> bool:
-    """بررسی اینکه آیا کاربر مالک اصلی پروژه (Rex Lapis) یا ادمین سرور است."""
+    """بررسی اینکه آیا کاربر در فهرست ادمین‌های پیکربندی‌شده (ADMIN_IDS) است."""
     from config import settings
 
-    return settings.is_admin(user_id) or user_id == 5765828495
+    return settings.is_admin(user_id)
+
+
+# ---------------------------------------------------------------------------
+# قاعده مشترک فراخوانی دستورات متنی (Single Source of Truth)
+#
+# هر پیام متنی فقط وقتی «فرمان» شمرده می‌شود که یا دقیقاً خودِ کلید فرمان باشد
+# (پیام خالی از هر متن اضافه) یا کلید فرمان به‌همراه آرگومان‌های مستندش آمده
+# باشد: عدد/مبلغ، منشن @username، شناسه عددی، لینک، کلمات کلیدی مجاز همان
+# دستور (arg_words) یا نام‌های شناخته‌شده (arg_names).
+# هر متن جمله‌ای و گفتگویی — مثل «کار من خیلی سخته» — بی‌صدا نادیده گرفته
+# می‌شود تا ربات در گروه‌ها مزاحم گفتگوهای عادی نشود.
+# ---------------------------------------------------------------------------
+
+_AMOUNT_RE = re.compile(r"^-?\d[\d,_]*(?:\.\d+)?[kKmM]?$")
+_PERSIAN_DIGITS_RE = re.compile(r"^[۰-۹٠-٩][۰-۹٠-٩,_]*$")
+_MENTION_RE = re.compile(r"^@[A-Za-z0-9_]{3,32}$")
+_LINK_RE = re.compile(r"^(?:https?://|www\.|t\.me/)\S+$", re.IGNORECASE)
+
+
+def _is_structured_arg(token: str) -> bool:
+    """آرگومان‌های مستند و بدون ابهام: مبلغ/عدد، منشن، شناسه عددی یا لینک."""
+    return bool(
+        _AMOUNT_RE.match(token)
+        or _PERSIAN_DIGITS_RE.match(token)
+        or _MENTION_RE.match(token)
+        or _LINK_RE.match(token)
+    )
 
 
 class CommandOrText(BaseFilter):
-    """فیلتر هوشمند و دوگانه تلگرام برای پذیرش همزمان دستورات اسلش و کلمات متنی فارسی."""
+    """فیلتر هوشمند و دوگانه تلگرام برای پذیرش همزمان دستورات اسلش و کلمات متنی فارسی.
+
+    قاعده سراسری (طراحی‌شده یک‌بار و استفاده‌شده در تمام کلیدها):
+    در فرم متنی، پیام باید «خودِ فرمان» یا «فرمان + آرگومان مستند» باشد؛
+    هر جمله یا متن گفتگویی که کلید فرمان داخل آن آمده باشد بی‌صدا رد می‌شود.
+    """
+
+    _REGISTRY: ClassVar[list[CommandOrText]] = []
 
     def __init__(
         self,
         commands: list[str] | tuple[str, ...] | set[str] | None = None,
         words: set[str] | list[str] | tuple[str, ...] | None = None,
         prefix_words: set[str] | list[str] | tuple[str, ...] | None = None,
+        *,
+        arg_words: set[str] | list[str] | tuple[str, ...] | None = None,
+        name_tail: bool = False,
+        arg_names: Collection[str] | Callable[[], Collection[str]] | None = None,
+        arg_pattern: str | re.Pattern[str] | None = None,
     ) -> None:
-        self.commands = {c.lower() for c in (commands or ())}
-        self.words = {w.lower() for w in (words or ())}
-        self.prefix_words = tuple(p.lower() for p in (prefix_words or ()))
+        self.commands = {c.lower().lstrip("/") for c in (commands or ())}
+        raw_phrases = list(words or ()) + list(prefix_words or ())
+        cleaned = {p.casefold().strip().lstrip("/") for p in raw_phrases}
+        # عبارت‌های بلندتر اول بررسی می‌شوند تا عبارت‌های چندکلمه‌ای درست بخورند
+        self.phrases = tuple(sorted((p for p in cleaned if p), key=len, reverse=True))
+        self.arg_words = {w.casefold() for w in (arg_words or ())}
+        self.name_tail = name_tail
+        self.arg_names = arg_names
+        self.arg_pattern = (
+            re.compile(arg_pattern) if isinstance(arg_pattern, str) else arg_pattern
+        )
+        CommandOrText._REGISTRY.append(self)
 
     async def __call__(self, message: Message) -> bool:
         if not message.text:
             return False
-        text = message.text.strip()
-        parts = text.split()
-        if not parts:
+        return self.match_text(message.text)
+
+    def match_text(self, text: str) -> bool:
+        """تطابق خام متن با فرمان (بدون نیاز به شیء پیام) — مرجع واحد قاعده."""
+        norm = " ".join(text.split()).casefold()
+        if not norm:
             return False
-        first_token = parts[0].lower()
-        if first_token.startswith("/"):
-            cmd = first_token[1:].split("@")[0]
-            if cmd in self.commands:
+        # ۱. فرم اسلش: /cmd آرگومان‌ها — اعلام صریح فرمان، آرگومان‌ها آزادند
+        if norm.startswith("/"):
+            head = norm.split()[0][1:].split("@")[0]
+            return head in self.commands
+        # ۲. فرم متنی: فقط «خودِ فرمان» یا «فرمان + آرگومان مستند»
+        for phrase in self.phrases:
+            if norm == phrase:
                 return True
-        if first_token in self.words or text.lower() in self.words:
+            if norm.startswith(phrase + " ") and self._args_ok(norm[len(phrase) + 1 :]):
+                return True
+        return False
+
+    def _args_ok(self, args: str) -> bool:
+        """اعتبارسنجی آرگومان‌های متنی: فقط شکل‌های مستند، نه متن جمله‌ای."""
+        tokens = args.split()
+        if not tokens:
             return True
-        return bool(self.prefix_words and text.lower().startswith(self.prefix_words))
+        if self.arg_pattern is not None and self.arg_pattern.fullmatch(args):
+            return True
+        if self._known_name(args):
+            return True
+        keyword_seen = False
+        for token in tokens:
+            t = token.casefold()
+            if t in self.arg_words:
+                keyword_seen = True
+                continue
+            if _is_structured_arg(token):
+                continue
+            # نام آزاد (مثل نام کالا یا کلن) فقط بعد از کلمه کلیدی مجاز است
+            if self.name_tail and keyword_seen:
+                continue
+            return False
+        return True
+
+    def _known_name(self, args: str) -> bool:
+        """تطابق آرگومان با نام‌های شناخته‌شده (کاتالوگ غذا، عناوین شغل و ...)."""
+        if not self.arg_names:
+            return False
+        names = self.arg_names() if callable(self.arg_names) else self.arg_names
+        q = args.casefold()
+        for name in names:
+            n = str(name).casefold()
+            if q == n or (len(q) >= 2 and (q in n or n in q)):
+                return True
+        return False
+
+    @classmethod
+    def is_game_command(cls, text: str) -> bool:
+        """آیا این متن یک فراخوانی فرمان بازی است؟ (همان قاعده سراسری فیلترها)"""
+        return any(f.match_text(text) for f in cls._REGISTRY)
+
+    @classmethod
+    def leading_phrase(cls, text: str) -> str | None:
+        """بلندترین عبارت فرمان شناخته‌شده که ابتدای متن را می‌گیرد (برای جداسازی آرگومان‌ها)."""
+        norm = " ".join(text.split()).casefold()
+        best: str | None = None
+        for f in cls._REGISTRY:
+            for phrase in f.phrases:
+                if (norm == phrase or norm.startswith(phrase + " ")) and (
+                    best is None or len(phrase) > len(best)
+                ):
+                    best = phrase
+        return best
 
 
 def editable_message(call: CallbackQuery) -> Message | None:
-    """استخراج پیام معتبر و قابل ویرایش از کال‌بک کوئری تلگرام."""
+    """استخراج پیام معتبر و قابل ویرایش از کال‌بک کوئری تلگرام.
+
+    پیام‌های None و InaccessibleMessage رد می‌شوند؛ اشیاء سازگار (duck-typed)
+    مثل استنداین‌های تست پذیرفته می‌شوند.
+    """
     message = call.message
-    return message if isinstance(message, Message) else None
+    if message is None or isinstance(message, InaccessibleMessage):
+        return None
+    return cast("Message", message)
 
 
 def esc(text: str | None) -> str:
@@ -106,8 +222,15 @@ def extract_args(message: Message, command: CommandObject | None = None) -> list
     if command and command.args:
         return list(command.args.split())
     text = (message.text or "").strip()
-    parts = text.split()
-    return list(parts[1:]) if len(parts) > 1 else []
+    tokens = text.split()
+    if not tokens:
+        return []
+    if tokens[0].startswith("/"):
+        return tokens[1:]
+    # عبارت فرمان — حتی چندکلمه‌ای مثل «کارت به کارت» — از ابتدای متن جدا می‌شود
+    phrase = CommandOrText.leading_phrase(text)
+    drop = len(phrase.split()) if phrase else 1
+    return tokens[drop:]
 
 
 async def hydrate(user_id: int, display_name: str, username: str | None) -> Player:
@@ -184,7 +307,6 @@ async def resolve_target_player(
 
     # ۳. جستجو بر اساس یوزرنیم در پایگاه داده
     from database.connection import db
-    from services.game import _load_player
 
     async with db.read() as conn:
         cursor = await conn.execute(
@@ -194,7 +316,7 @@ async def resolve_target_player(
         row = await cursor.fetchone()
         await cursor.close()
         if row:
-            return await _load_player(conn, row["user_id"], row["display_name"])
+            return await hydrate(int(row["user_id"]), str(row["display_name"]), cleaned)
 
     return None
 

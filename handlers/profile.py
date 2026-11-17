@@ -21,7 +21,6 @@ from aiogram.types import (
     Message,
 )
 
-from config import settings
 from handlers.common import (
     CommandOrText,
     answer_error,
@@ -30,6 +29,7 @@ from handlers.common import (
     editable_message,
     esc,
     hydrate,
+    is_admin_or_owner,
 )
 from handlers.panel import refresh_markup, render_panel
 from models import Player, Slot
@@ -37,11 +37,6 @@ from services import avatar, economy, game
 
 logger = logging.getLogger(__name__)
 router = Router(name="profile")
-
-
-def is_admin_or_owner(user_id: int) -> bool:
-    """Check if the user is the project owner (Rex Lapis) or has admin privileges."""
-    return settings.is_admin(user_id) or user_id == 5765828495
 
 
 _INVENTORY_PAGE_SIZE = 6
@@ -275,8 +270,9 @@ async def _send_profile(target: Message, player: Player) -> None:
             reply_markup=markup,
         )
     except Exception:
-        if getattr(target, "bot", None):
-            await target.bot.send_photo(
+        bot = getattr(target, "bot", None)
+        if bot is not None:
+            await bot.send_photo(
                 chat_id=target.chat.id,
                 photo=BufferedInputFile(photo, filename="character.png"),
                 caption=caption,
@@ -311,15 +307,10 @@ async def cmd_profile(message: Message) -> None:
         await answer_error(exc, message=message)
 
 
-def is_creator(user_id: int) -> bool:
-    """Check if the user is the bot creator (Rex Lapis) or has admin privileges."""
-    return user_id == 5765828495 or settings.is_admin(user_id)
-
-
 @router.message(CommandOrText(["version", "ver"], {"ورژن", "نسخه"}))
 async def cmd_version(message: Message) -> None:
     user_id = message.from_user.id if message.from_user else 0
-    if not is_creator(user_id):
+    if not is_admin_or_owner(user_id):
         await message.answer("🔒 <i>این دستور محرمانه و مختص سازنده‌ی ربات است.</i>")
         return
 

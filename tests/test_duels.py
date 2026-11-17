@@ -72,7 +72,9 @@ async def challenger_and_opponent():
     p2 = await game.ensure_player(1002, "Opponent", "p2")
     async with db.write() as conn:
         await conn.execute("UPDATE wallets SET credits = 5000 WHERE user_id IN (1001, 1002)")
-        await conn.execute("UPDATE players SET onboarding_completed = 1 WHERE user_id IN (1001, 1002)")
+        await conn.execute(
+            "UPDATE players SET onboarding_completed = 1 WHERE user_id IN (1001, 1002)"
+        )
     economy._cooldowns.clear()
     return p1, p2
 
@@ -92,7 +94,8 @@ async def test_cmd_duel_creates_challenge_with_buttons(challenger_and_opponent):
     async with db.read() as conn:
         row = await (
             await conn.execute(
-                "SELECT * FROM duels WHERE challenger_id = ? AND opponent_id = ? ORDER BY id DESC LIMIT 1",
+                "SELECT * FROM duels WHERE challenger_id = ? AND opponent_id = ? "
+                "ORDER BY id DESC LIMIT 1",
                 (1001, 1002),
             )
         ).fetchone()
@@ -142,7 +145,9 @@ async def test_duel_decline_refunds_challenger(challenger_and_opponent):
 
     # Duel is declined and challenger refunded
     async with db.read() as conn:
-        row = await (await conn.execute("SELECT status FROM duels WHERE id = ?", (duel_id,))).fetchone()
+        row = await (
+            await conn.execute("SELECT status FROM duels WHERE id = ?", (duel_id,))
+        ).fetchone()
         assert row["status"] == "declined"
 
     bal1, _ = await economy.balances(1001)
@@ -171,7 +176,11 @@ async def test_duel_accept_and_settle(challenger_and_opponent):
 
     # Duel settled
     async with db.read() as conn:
-        row = await (await conn.execute("SELECT status, winner_id, log_json FROM duels WHERE id = ?", (duel_id,))).fetchone()
+        row = await (
+            await conn.execute(
+                "SELECT status, winner_id, log_json FROM duels WHERE id = ?", (duel_id,)
+            )
+        ).fetchone()
         assert row["status"] == "resolved"
         assert row["winner_id"] in (1001, 1002)
         log = json.loads(row["log_json"])

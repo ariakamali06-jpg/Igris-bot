@@ -24,7 +24,6 @@ from aiogram.types import (
     WebAppInfo,
 )
 
-from config import settings
 from database.connection import db
 from handlers.common import (
     CommandOrText,
@@ -32,6 +31,7 @@ from handlers.common import (
     editable_message,
     esc,
     hydrate,
+    is_admin_or_owner,
 )
 from handlers.profile import _send_profile
 from models.enums import ActivityKind
@@ -40,11 +40,6 @@ from services.channels import channel_join_markup, get_missing_channels
 
 logger = logging.getLogger(__name__)
 router = Router(name="onboarding")
-
-
-def is_admin_or_owner(user_id: int) -> bool:
-    """Check if the user is the project owner (Rex Lapis) or has admin privileges."""
-    return settings.is_admin(user_id) or user_id == 5765828495
 
 
 class OnboardingState(StatesGroup):
@@ -192,7 +187,7 @@ async def _start_name_wizard(
     await state.update_data(tracked_msg_ids=tracked)
 
 
-@router.message(CommandOrText(["start"], {}))
+@router.message(CommandOrText(["start"]))
 async def cmd_start_wear(message: Message, state: FSMContext) -> None:
     """Handle /start with composable Mini App payload: /start w_<b64> or wear_<b64>.
 
@@ -327,9 +322,9 @@ async def _handle_compact_wear_payload(
         )
 
         if is_new_player:
-            fsm_data = {}
+            fsm_data: dict[str, Any] = {}
             if state and hasattr(state, "get_data"):
-                res = state.get_data()
+                res: Any = state.get_data()
                 if asyncio.iscoroutine(res) or hasattr(res, "__await__"):
                     res = await res
                 if isinstance(res, dict):
@@ -489,7 +484,11 @@ async def _handle_compact_wear_payload(
             logger.warning("w_ save: render fetch failed for %s", user.id)
             await message.reply(caption, reply_markup=markup)
         else:
-            await message.reply_photo(photo=photo_payload, caption=caption, reply_markup=markup)
+            await message.reply_photo(
+                photo=BufferedInputFile(photo_payload, filename="citizen_avatar.png"),
+                caption=caption,
+                reply_markup=markup,
+            )
     except Exception as exc:  # noqa: BLE001
         logger.warning("compact wear_ deep link failed: %s", exc)
 
@@ -534,9 +533,9 @@ async def _handle_wear_payload(
         )
 
         if is_new_player:
-            fsm_data = {}
+            fsm_data: dict[str, Any] = {}
             if state and hasattr(state, "get_data"):
-                res = state.get_data()
+                res: Any = state.get_data()
                 if asyncio.iscoroutine(res) or hasattr(res, "__await__"):
                     res = await res
                 if isinstance(res, dict):
@@ -678,7 +677,11 @@ async def _handle_wear_payload(
             logger.warning("wear_ save: render fetch failed for %s", user.id)
             await message.reply(caption, reply_markup=markup)
         else:
-            await message.reply_photo(photo=photo_payload, caption=caption, reply_markup=markup)
+            await message.reply_photo(
+                photo=BufferedInputFile(photo_payload, filename="citizen_avatar.png"),
+                caption=caption,
+                reply_markup=markup,
+            )
     except Exception as exc:  # noqa: BLE001
         logger.warning("wear_ deep link failed: %s", exc)
 
@@ -919,7 +922,7 @@ async def _advance_to_gender(target: Message, state: FSMContext, age: int) -> No
 @router.callback_query(OnboardingState.waiting_for_age, F.data.startswith("ob:age:"))
 async def cb_age(call: CallbackQuery, state: FSMContext) -> None:
     await call.answer()
-    val = int(call.data.split(":")[2])
+    val = int((call.data or "").split(":")[2])
     msg = editable_message(call)
     if msg:
         await _advance_to_gender(msg, state, val)
@@ -950,7 +953,7 @@ msg_age_text = msg_age
 @router.callback_query(OnboardingState.waiting_for_gender, F.data.startswith("ob:gen:"))
 async def cb_gender(call: CallbackQuery, state: FSMContext) -> None:
     await call.answer()
-    gender = call.data.split(":")[2]
+    gender = (call.data or "").split(":")[2]
     gender_fa = "دختر" if gender == "female" else "پسر"
     await state.update_data(gender=gender, gender_fa=gender_fa)
     await _show_starter_set_step(call, state)
@@ -975,7 +978,7 @@ async def cb_quick_sets(call: CallbackQuery, state: FSMContext) -> None:
 @router.callback_query(OnboardingState.waiting_for_skin, F.data.startswith("ob:skin:"))
 async def cb_skin(call: CallbackQuery, state: FSMContext) -> None:
     await call.answer()
-    skin_num = call.data.split(":")[2]
+    skin_num = (call.data or "").split(":")[2]
     await state.update_data(skin_tone=skin_num)
     await state.set_state(OnboardingState.waiting_for_eye_shape)
 
@@ -1001,7 +1004,7 @@ async def cb_skin(call: CallbackQuery, state: FSMContext) -> None:
 @router.callback_query(OnboardingState.waiting_for_eye_shape, F.data.startswith("ob:eyes:"))
 async def cb_eye_shape(call: CallbackQuery, state: FSMContext) -> None:
     await call.answer()
-    eye_shape = call.data.split(":")[2]
+    eye_shape = (call.data or "").split(":")[2]
     await state.update_data(eye_shape=eye_shape)
     await state.set_state(OnboardingState.waiting_for_eye_color)
 
@@ -1034,7 +1037,7 @@ async def cb_eye_shape(call: CallbackQuery, state: FSMContext) -> None:
 @router.callback_query(OnboardingState.waiting_for_eye_color, F.data.startswith("ob:eyec:"))
 async def cb_eye_color(call: CallbackQuery, state: FSMContext) -> None:
     await call.answer()
-    eye_col = call.data.split(":")[2]
+    eye_col = (call.data or "").split(":")[2]
     await state.update_data(eye_color=eye_col)
     await state.set_state(OnboardingState.waiting_for_nose)
 
@@ -1061,7 +1064,7 @@ async def cb_eye_color(call: CallbackQuery, state: FSMContext) -> None:
 @router.callback_query(OnboardingState.waiting_for_nose, F.data.startswith("ob:nose:"))
 async def cb_nose(call: CallbackQuery, state: FSMContext) -> None:
     await call.answer()
-    nose_key = call.data.split(":")[2]
+    nose_key = (call.data or "").split(":")[2]
     await state.update_data(nose_style=nose_key)
     await state.set_state(OnboardingState.waiting_for_mouth)
 
@@ -1088,7 +1091,7 @@ async def cb_nose(call: CallbackQuery, state: FSMContext) -> None:
 @router.callback_query(OnboardingState.waiting_for_hair_style, F.data.startswith("ob:hair:"))
 async def cb_hair_style(call: CallbackQuery, state: FSMContext) -> None:
     await call.answer()
-    hair_key = call.data.split(":")[2]
+    hair_key = (call.data or "").split(":")[2]
     await state.update_data(hair_style=hair_key)
     await state.set_state(OnboardingState.waiting_for_hair_color)
 
@@ -1115,7 +1118,7 @@ async def cb_hair_style(call: CallbackQuery, state: FSMContext) -> None:
 @router.callback_query(OnboardingState.waiting_for_hair_color, F.data.startswith("ob:hairc:"))
 async def cb_hair_color(call: CallbackQuery, state: FSMContext) -> None:
     await call.answer()
-    hair_col = call.data.split(":")[2]
+    hair_col = (call.data or "").split(":")[2]
     await state.update_data(hair_color=hair_col)
 
     await _show_starter_set_step(call, state)
@@ -1178,7 +1181,7 @@ async def _show_starter_set_step(call: CallbackQuery, state: FSMContext) -> None
 @router.callback_query(OnboardingState.waiting_for_mouth, F.data.startswith("ob:mouth:"))
 async def cb_mouth(call: CallbackQuery, state: FSMContext) -> None:
     await call.answer()
-    mouth_key = call.data.split(":")[2]
+    mouth_key = (call.data or "").split(":")[2]
     await state.update_data(mouth_style=mouth_key)
 
     data = await state.get_data()
@@ -1215,7 +1218,7 @@ async def cb_starter_set(call: CallbackQuery, state: FSMContext) -> None:
     if user is None:
         return
 
-    set_id_str = call.data.split(":")[2]
+    set_id_str = (call.data or "").split(":")[2]
     try:
         chosen_set_id = int(set_id_str)
     except ValueError:

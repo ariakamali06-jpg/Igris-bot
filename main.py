@@ -159,6 +159,11 @@ async def run() -> None:
             "Copy .env.example to .env and set a real token from @BotFather."
         )
         sys.exit(2)
+    if not settings.admin_ids:
+        logger.warning(
+            "ADMIN_IDS is empty — nobody will have admin commands (/admin, backups, ...). "
+            "Set ADMIN_IDS=<your telegram user id> in .env."
+        )
 
     import socket
 
@@ -178,8 +183,14 @@ async def run() -> None:
         logger.info("Connecting directly to official Telegram Bot API (api.telegram.org)")
         session = AiohttpSession()
 
-    # Force IPv4 socket family to eliminate broken IPv6 timeouts & address errors
-    session._connector_init["family"] = socket.AF_INET
+    # Force IPv4 socket family to eliminate broken IPv6 timeouts & address
+    # errors. ``_connector_init`` is a private session hook — guard it so an
+    # aiogram/aiohttp upgrade can never crash startup.
+    connector_init = getattr(session, "_connector_init", None)
+    if isinstance(connector_init, dict):
+        connector_init["family"] = socket.AF_INET
+    else:
+        logger.warning("AiohttpSession exposes no _connector_init; IPv4 pinning skipped.")
 
     if settings.dry_run:
         # Boot everything except the network loop: useful for smoke tests.

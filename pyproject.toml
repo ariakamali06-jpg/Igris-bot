@@ -43,6 +43,8 @@ python_version = "3.11"
 ignore_missing_imports = true
 check_untyped_defs = true
 warn_unused_ignores = true
+explicit_package_bases = true
+mypy_path = "."
 exclude = ["scripts", ".venv", "cache"]
 
 [[tool.mypy.overrides]]

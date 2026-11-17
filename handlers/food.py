@@ -101,7 +101,17 @@ async def _render_food_view(player: Player) -> tuple[str, InlineKeyboardMarkup]:
     return "\n".join(lines), _food_markup(daily_items)
 
 
-@router.message(CommandOrText(["food", "restaurant", "cafe", "eat"], words=FOOD_WORDS))
+@router.message(
+    CommandOrText(
+        ["food", "restaurant", "cafe", "eat"],
+        words=FOOD_WORDS,
+        arg_names=lambda: [
+            name
+            for item in food.get_food_catalog()
+            for name in (item["name"], item["id"])
+        ],
+    )
+)
 async def cmd_food(message: Message, command: CommandObject | None = None) -> None:
     """مشاهده منوی رستوران و کافه یا خرید مستقیم غذا با متن."""
     user = message.from_user
@@ -133,9 +143,10 @@ async def cb_food_action(call: CallbackQuery) -> None:
     act = parts[1] if len(parts) > 1 else "menu"
 
     if act == "close":
-        if call.message:
+        message = editable_message(call)
+        if message is not None:
             with contextlib.suppress(Exception):
-                await call.message.delete()
+                await message.delete()
         await call.answer("با آرزوی اوقات خوش در شهر تیرامیکس! ✨")
         return
 

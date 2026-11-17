@@ -36,9 +36,11 @@ class CallbackDiagnosticsMiddleware(BaseMiddleware):
     async def __call__(
         self,
         handler: Callable[[TelegramObject, dict[str, Any]], Awaitable[Any]],
-        event: CallbackQuery,
+        event: TelegramObject,
         data: dict[str, Any],
     ) -> Any:
+        if not isinstance(event, CallbackQuery):
+            return await handler(event, data)
         payload = event.data or "<none>"
         user = event.from_user.id if event.from_user else "?"
         has_message = event.message is not None

@@ -21,7 +21,7 @@ from aiogram.types import (
 )
 
 from config import settings
-from handlers.common import esc, hydrate, is_admin_or_owner
+from handlers.common import CommandOrText, esc, hydrate, is_admin_or_owner
 from services import avatar
 
 logger = logging.getLogger(__name__)
@@ -36,34 +36,6 @@ _ONBOARDING_COMMANDS = {
     "شخصیت جدید",
     "تغییر چهره",
 }
-
-_GAME_COMMAND_KEYWORDS: set[str] = {
-    # Economy & Stats
-    "کار", "شغل", "استخدام", "بانک", "بورس", "سهام", "روزانه", "پاداش", "حقوق",
-    "موجودی", "حساب", "کیف", "کیف پول", "سکه", "رکسار", "استاتس", "لول",
-    "وضعیت", "راهنما", "کمک", "آموزش", "دستورات", "انتقال", "کارت به کارت",
-    # Profile & Wardrobe
-    "پروفایل", "کارت", "کاراکتر", "مشخصات", "کمد", "لباس", "کمد لباس",
-    "بوتیک", "ویترین", "شاپ", "فروشگاه", "خرید", "بازار", "بازارچه", "آواتار",
-    "ظاهر", "پوست", "کاستومایز", "طراحی", "مینی اپ", "مینی‌اپ", "کوله‌پشتی", "کوله",
-    # Salon & Food
-    "آرایشگاه", "سلمونی", "میکاپ", "زیبایی", "رژ", "غذا", "رستوران", "کافه", "سولاریوم",
-    # Underworld & Crime
-    "دوز", "سایه", "اخاذی", "سپر", "دستبرد", "سرقت", "دزدی", "ریسک", "قمار",
-    "تاس", "قرعه", "هدیه", "باس", "حمله", "غول", "راید", "دروازه", "زندان", "دادگاه",
-    # Properties & Social
-    "املاک", "ملک", "دارایی", "نوچه", "نیرو", "بادیگارد", "حیوان", "پت",
-    "ازدواج", "طلاق", "خواستگاری", "همسر", "بیمارستان", "کلینیک", "دوئل", "چالش", "کاپ",
-    # English equivalents
-    "work", "job", "bank", "stock", "daily", "bal", "balance", "wallet", "stats",
-    "level", "help", "transfer", "profile", "card", "wardrobe", "closet",
-    "boutique", "fashion", "shop", "store", "market", "bazaar", "avatar",
-    "customizer", "inv", "inventory", "salon", "barber", "food", "eat",
-    "xo", "shadow", "extort", "shield", "rob", "robbery", "risk", "dice",
-    "gift", "boss", "raid", "gate", "jail", "court", "properties", "prop",
-    "crew", "hire", "pet", "marry", "divorce", "hospital", "clinic", "duel", "cup",
-}
-
 
 def _is_onboarding_message(text: str | None) -> bool:
     if not text:
@@ -93,20 +65,9 @@ def _is_intended_as_command(
     if bot_username and f"@{bot_username.lower()}" in clean.lower():
         return True
 
-    parts = clean.lower().split()
-    if not parts:
-        return False
-
-    first_word = parts[0].lstrip("/")
-    if first_word in _GAME_COMMAND_KEYWORDS:
-        return True
-
-    if len(parts) >= 2:
-        phrase = f"{parts[0]} {parts[1]}"
-        if phrase in _GAME_COMMAND_KEYWORDS:
-            return True
-
-    return False
+    # قاعده مشترک سراسری: پیام فقط وقتی «فرمان» است که خودِ فرمان (یا فرمان +
+    # آرگومان مستندش) باشد؛ جملات گفتگویی مثل «کار من خیلی سخته» فرمان نیستند.
+    return CommandOrText.is_game_command(clean)
 
 
 class OnboardingGateMiddleware(BaseMiddleware):

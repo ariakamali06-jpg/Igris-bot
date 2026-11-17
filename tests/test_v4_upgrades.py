@@ -12,6 +12,7 @@ import json
 
 import pytest
 
+from config import settings
 from database.connection import db
 from database.seed import seed_catalog
 from services import avatar, food, tiramix
@@ -197,10 +198,10 @@ async def test_bazaar_wardrobe_item_listing_and_buy():
     # And still NOT in seller's wardrobe
     assert await avatar.owns_item(seller_id, 28144) is False
 
-    # Check wallet balances: seller +8000, buyer -8000
+    # Check wallet balances: seller pays the listing fee, buyer pays the price
     s_bal, _ = await economy.balances(seller_id)
     b_bal, _ = await economy.balances(buyer_id)
-    assert s_bal == 13000
+    assert s_bal == 5000 + 8000 - settings.bazaar_listing_fee
     assert b_bal == 12000
 
 

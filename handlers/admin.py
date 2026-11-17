@@ -14,11 +14,17 @@ import time
 from pathlib import Path
 
 from aiogram import F, Router
-from aiogram.filters import Command, CommandObject
+from aiogram.filters import CommandObject
 from aiogram.types import Message
 
 from database.connection import db
-from handlers.common import CommandOrText, esc, hydrate, is_admin_or_owner
+from handlers.common import (
+    CommandOrText,
+    esc,
+    extract_args,
+    hydrate,
+    is_admin_or_owner,
+)
 from models.enums import ActivityKind
 from services import economy, game
 
@@ -172,21 +178,33 @@ async def _resolve_target(
     return caller_id, tokens
 
 
+_CHEAT_ARG_WORDS = {
+    # کدهای تقلب
+    "لول", "سطح", "level", "lvl",
+    "سواد", "تحصیلات", "مدرک", "edu", "education",
+    "پول", "سکه", "نقد", "money", "cash", "credits", "coin", "coins",
+    "بانک", "سپرده", "bank",
+    "انرژی", "energy",
+    "اتک", "حمله", "atk", "attack",
+    "دفاع", "def", "defense",
+    "دریپ", "تیپ", "استایل", "drip", "style",
+    "شغل", "job",
+    "ازادی", "آزادی", "زندان", "free", "jail",
+    "مکس", "max", "god",
+    "ریست", "reset", "reset_char",
+    "وضعیت", "status", "info",
+    # پاداش همگانی (چیت پاداش/عیدی/ایردراپ)
+    "پاداش", "عیدی", "ایردراپ", "airdrop", "giveall",
+    "پاداش_همگانی", "پاداش‌همگانی", "جایزه_همگانی", "همگانی",
+}
+
+
 @router.message(
     CommandOrText(
         ["cheat", "admin", "set"],
         words={"چیت", "تقلب", "کد تقلب", "ادمین"},
-        prefix_words=(
-            "چیت",
-            "تقلب",
-            "کد تقلب",
-            "ادمین",
-            "cheat",
-            "admin",
-            "/cheat",
-            "/admin",
-            "/set",
-        ),
+        arg_words=_CHEAT_ARG_WORDS,
+        name_tail=True,
     )
 )
 async def cmd_cheat(message: Message, command: CommandObject | None = None) -> None:
@@ -523,8 +541,12 @@ async def cmd_cheat(message: Message, command: CommandObject | None = None) -> N
         await message.reply(f"❌ خطا در اجرای کد تقلب: <code>{esc(str(exc))}</code>")
 
 
-@router.message(Command("reset", "reset_char", "admin_reset_char"))
-@router.message(F.text.lower().in_({"ریست", "ریست کاراکتر", "ریست_کاراکتر"}))
+@router.message(
+    CommandOrText(
+        ["reset", "reset_char", "admin_reset_char"],
+        words={"ریست", "ریست کاراکتر", "ریست_کاراکتر"},
+    )
+)
 async def cmd_direct_reset(message: Message) -> None:
     """دستور مستقیم ریست کامل کاراکتر برای ادمین و سازنده ربات."""
     user = message.from_user
@@ -558,8 +580,12 @@ async def cmd_direct_reset(message: Message) -> None:
     )
 
 
-@router.message(Command("backup", "db_backup"))
-@router.message(F.text.lower().in_({"بکاپ", "بک‌آپ", "پشتیبان", "backup"}))
+@router.message(
+    CommandOrText(
+        ["backup", "db_backup"],
+        words={"بکاپ", "بک‌آپ", "پشتیبان", "backup", "چیت بکاپ"},
+    )
+)
 async def cmd_manual_backup(message: Message) -> None:
     """دستور ارسال فوری و دستی فایل بکاپ دیتابیس برای مالک و ادمین."""
     user = message.from_user
@@ -587,8 +613,12 @@ async def cmd_manual_backup(message: Message) -> None:
         await status_msg.edit_text(f"❌ خطا: <code>{esc(str(exc))}</code>")
 
 
-@router.message(Command("restore", "db_restore"))
-@router.message(F.text.lower().in_({"بازیابی", "ریستور", "restore", "چیت بازیابی"}))
+@router.message(
+    CommandOrText(
+        ["restore", "db_restore"],
+        words={"بازیابی", "ریستور", "restore", "چیت بازیابی"},
+    )
+)
 @router.message(
     F.document
     & (
@@ -641,10 +671,19 @@ async def cmd_admin_restore(message: Message) -> None:
                 temp_file.unlink()
 
 
+_CHANNEL_ARG_WORDS = {
+    "روشن", "خاموش", "فعال", "غیرفعال", "افزودن", "حذف", "ثبت", "لیست", "نمایش",
+    "on", "off", "enable", "disable", "add", "remove", "del", "list", "show",
+}
+
+
 @router.message(
-    F.text.startswith("چیت کانال")
-    | F.text.startswith("کانال اجباری")
-    | F.text.startswith("/channel")
+    CommandOrText(
+        ["channel", "channels"],
+        words={"چیت کانال", "کانال اجباری"},
+        arg_words=_CHANNEL_ARG_WORDS,
+        name_tail=True,
+    )
 )
 async def cmd_admin_channels(message: Message) -> None:
     """مدیریت کانال‌های عضویت اجباری توسط مالک و ادمین‌های ربات."""
@@ -731,11 +770,11 @@ async def cmd_admin_channels(message: Message) -> None:
     await message.reply("\n".join(lines))
 
 
-@router.message(Command("airdrop", "giveall"))
 @router.message(
-    F.text.startswith("ایردراپ")
-    | F.text.startswith("پاداش همگانی")
-    | F.text.startswith("عیدی همگانی")
+    CommandOrText(
+        ["airdrop", "giveall"],
+        words={"ایردراپ", "پاداش همگانی", "عیدی همگانی"},
+    )
 )
 async def cmd_direct_airdrop(message: Message, command: CommandObject | None = None) -> None:
     """دستور مستقیم و سریع واریز رکسار همگانی به تمام بازیکنان توسط سازنده/ادمین."""
@@ -743,13 +782,8 @@ async def cmd_direct_airdrop(message: Message, command: CommandObject | None = N
     if user is None or not is_admin_or_owner(user.id):
         return
 
-    raw_args = ""
-    if command and command.args:
-        raw_args = command.args.strip()
-    elif message.text:
-        parts = message.text.strip().split()
-        if len(parts) >= 2:
-            raw_args = parts[1]
+    args = extract_args(message, command)
+    raw_args = args[0] if args else ""
 
     parsed = _parse_amount(raw_args) if raw_args else None
     if not parsed:

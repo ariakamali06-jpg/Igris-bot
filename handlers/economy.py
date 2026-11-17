@@ -64,6 +64,13 @@ STATS_WORDS = {"استاتس", "لول", "وضعیت", "stats", "level"}
 HELP_WORDS = {"راهنما", "کمک", "آموزش", "اموزش", "دستورات", "help"}
 
 
+def _job_titles() -> tuple[str, ...]:
+    """عنوان‌های شناخته‌شده شغل‌ها — برای تطبیق «شغل [عنوان]» با قاعده فرمان."""
+    from services import tiramix
+
+    return tuple(tiramix.JOBS_CATALOG)
+
+
 # ---------------------------------------------------------------------------
 # پاداش روزانه و حقوق شهروندی (/daily)
 # ---------------------------------------------------------------------------
@@ -186,7 +193,13 @@ def _render_job_view(player: Player) -> tuple[str, InlineKeyboardMarkup]:
     return "\n".join(lines), markup
 
 
-@router.message(CommandOrText(["job", "career"], {"شغل", "کارها", "استخدام"}))
+@router.message(
+    CommandOrText(
+        ["job", "career"],
+        {"شغل", "کارها", "استخدام"},
+        arg_names=_job_titles,
+    )
+)
 async def cmd_job(message: Message, command: CommandObject | None = None) -> None:
     """مشاهده لیست مشاغل باز متناسب با تحصیلات یا استخدام در یک موقعیت کاری جدید."""
     user = message.from_user
@@ -291,7 +304,13 @@ async def _render_bank_view(player: Player) -> tuple[str, InlineKeyboardMarkup]:
     return text, _bank_markup()
 
 
-@router.message(CommandOrText(["bank"], {"بانک", "وام", "سپرده", "صندوق"}))
+@router.message(
+    CommandOrText(
+        ["bank"],
+        {"بانک", "وام", "سپرده", "صندوق"},
+        arg_words={"واریز", "برداشت", "وام", "تسویه", "deposit", "withdraw", "loan", "repay"},
+    )
+)
 async def cmd_bank(message: Message, command: CommandObject | None = None) -> None:
     """خدمات مالی بانک مرکزی شامل واریز به گاوصندوق ضدسرقت، برداشت و دریافت وام."""
     user = message.from_user
@@ -658,14 +677,24 @@ async def cmd_heist(message: Message, command: CommandObject | None = None) -> N
 # ---------------------------------------------------------------------------
 
 
-@router.message(CommandOrText(["dice"], prefix_words=("تاس", "dice")))
+@router.message(
+    CommandOrText(
+        ["dice"],
+        words={"تاس", "dice"},
+        arg_words={"بالا", "پایین", "بزرگ", "کوچک", "high", "low"},
+    )
+)
 async def cmd_dice(message: Message, command: CommandObject | None = None) -> None:
     """شرط‌بندی روی مجموع تاس‌های دوتایی (بالا ۸+ یا پایین ۶-)."""
     await _casino_command(message, command, game="dice")
 
 
 @router.message(
-    CommandOrText(["coinflip", "flip"], prefix_words=("سکه", "شیرخط", "شیر یا خط", "coinflip"))
+    CommandOrText(
+        ["coinflip", "flip"],
+        words={"سکه", "شیرخط", "شیر یا خط", "coinflip"},
+        arg_words={"شیر", "خط", "heads", "tails"},
+    )
 )
 async def cmd_coinflip(message: Message, command: CommandObject | None = None) -> None:
     """شرط‌بندی روی شیر یا خط سکه ۵۰/۵۰."""

@@ -187,12 +187,26 @@ async def _run_action(user_id: int, player: Player, args: list[str]) -> dict:
     raise GameError(_USAGE)
 
 
-@router.message(CommandOrText(["property", "estate"], words=PROPERTIES_WORDS))
+@router.message(
+    CommandOrText(
+        ["property", "estate"],
+        words=PROPERTIES_WORDS,
+        arg_words=_COLLECT_ACTIONS | _BUY_ACTIONS | _UPGRADE_ACTIONS,
+        name_tail=True,
+    )
+)
 async def cmd_properties(message: Message, command: CommandObject | None = None) -> None:
     await _reply(message, command)
 
 
-@router.message(CommandOrText(["crew", "hire", "minion"], words=CREW_WORDS))
+@router.message(
+    CommandOrText(
+        ["crew", "hire", "minion"],
+        words=CREW_WORDS,
+        arg_words=_BUY_ACTIONS,
+        name_tail=True,
+    )
+)
 async def cmd_crew(message: Message, command: CommandObject | None = None) -> None:
     user = message.from_user
     if user is None:

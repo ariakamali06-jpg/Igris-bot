@@ -3,16 +3,13 @@
 from __future__ import annotations
 
 import logging
-import time
 
 from aiogram import F, Router
 from aiogram.filters import CommandObject
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
 from config import settings
-from database.connection import db
-from handlers.common import CommandOrText, answer_error, hydrate
-from models.enums import ActivityKind
+from handlers.common import CommandOrText, answer_error, editable_message, hydrate
 from services import avatar, bazaar, economy, game
 from services.game import GameError
 
@@ -106,7 +103,14 @@ async def _render_bazaar_view(user_id: int) -> tuple[str, InlineKeyboardMarkup]:
     return text, markup
 
 
-@router.message(CommandOrText(["/bazaar", "bazaar"], words=BAZAAR_WORDS))
+@router.message(
+    CommandOrText(
+        ["bazaar", "marketplace"],
+        words=BAZAAR_WORDS,
+        arg_words=_LIST_ACTIONS | _BUY_ACTIONS | _SELL_ACTIONS | _CANCEL_ACTIONS,
+        name_tail=True,
+    )
+)
 async def cmd_bazaar(message: Message, command: CommandObject | None = None) -> None:
     """نمایش بازارچه با UI شیشه‌ای."""
     user = message.from_user
@@ -123,6 +127,10 @@ async def cmd_bazaar(message: Message, command: CommandObject | None = None) -> 
 @router.callback_query(F.data.startswith("bzr:"))
 async def cb_bazaar(call: CallbackQuery) -> None:
     """مدیریت callback های بازارچه."""
+    message = editable_message(call)
+    if message is None:
+        await call.answer()
+        return
     user = call.from_user
     if user is None or call.data is None:
         return
@@ -133,7 +141,7 @@ async def cb_bazaar(call: CallbackQuery) -> None:
 
         if action == "refresh":
             text, markup = await _render_bazaar_view(user.id)
-            await call.message.edit_text(text, reply_markup=markup)
+            await message.edit_text(text, reply_markup=markup)
             await call.answer("🔄 لیست به‌روز شد")
 
         elif action == "buy":
@@ -147,7 +155,7 @@ async def cb_bazaar(call: CallbackQuery) -> None:
 
             # به‌روزرسانی لیست
             text, markup = await _render_bazaar_view(user.id)
-            await call.message.edit_text(text, reply_markup=markup)
+            await message.edit_text(text, reply_markup=markup)
             await call.answer(f"✅ {result.get('message', 'خرید موفق!')}", show_alert=True)
 
         elif action == "cancel":
@@ -161,7 +169,7 @@ async def cb_bazaar(call: CallbackQuery) -> None:
 
             # به‌روزرسانی لیست
             text, markup = await _render_bazaar_view(user.id)
-            await call.message.edit_text(text, reply_markup=markup)
+            await message.edit_text(text, reply_markup=markup)
             await call.answer(f"✅ {result.get('message', 'آگهی لغو شد')}", show_alert=True)
 
         elif action == "sell_menu":
@@ -226,7 +234,7 @@ async def cb_bazaar(call: CallbackQuery) -> None:
             ])
 
             markup = InlineKeyboardMarkup(inline_keyboard=rows)
-            await call.message.edit_text(text, reply_markup=markup)
+            await message.edit_text(text, reply_markup=markup)
             await call.answer()
 
         elif action in ("sel", "sel_item"):
@@ -251,35 +259,35 @@ async def cb_bazaar(call: CallbackQuery) -> None:
 
             # پیشنهاد قیمت‌های از پیش تعیین شده
             suggested_prices = [500, 1000, 2500, 5000, 10000, 25000]
-            rows: list[list[InlineKeyboardButton]] = []
+            kb_rows: list[list[InlineKeyboardButton]] = []
 
             for i in range(0, len(suggested_prices), 2):
-                row = []
+                kb_row = []
                 for j in range(2):
                     if i + j < len(suggested_prices):
                         price = suggested_prices[i + j]
                         if settings.bazaar_price_min <= price <= settings.bazaar_price_max:
-                            row.append(
+                            kb_row.append(
                                 InlineKeyboardButton(
                                     text=f"💰 {price:,} رکسار",
                                     callback_data=f"bzr:set_price:{price}:{item_code}",
                                 )
                             )
-                if row:
-                    rows.append(row)
+                if kb_row:
+                    kb_rows.append(kb_row)
 
-            rows.append([
+            kb_rows.append([
                 InlineKeyboardButton(
                     text="✏️ قیمت دلخواه (متنی)",
                     callback_data=f"bzr:custom_price:{item_code}",
                 )
             ])
-            rows.append([
+            kb_rows.append([
                 InlineKeyboardButton(text="🔙 انتخاب آیتم دیگر", callback_data="bzr:sell_menu")
             ])
 
-            markup = InlineKeyboardMarkup(inline_keyboard=rows)
-            await call.message.edit_text(text, reply_markup=markup)
+            markup = InlineKeyboardMarkup(inline_keyboard=kb_rows)
+            await message.edit_text(text, reply_markup=markup)
             await call.answer()
 
         elif action in ("custom_price", "cprc"):
@@ -307,11 +315,11 @@ async def cb_bazaar(call: CallbackQuery) -> None:
                     [InlineKeyboardButton(text="🔙 بازگشت", callback_data=f"bzr:sel:{item_code}")]
                 ]
             )
-            await call.message.edit_text(text, reply_markup=markup)
+            await message.edit_text(text, reply_markup=markup)
             await call.answer()
 
         elif action == "set_price":
-            # مرحله ۳: ثبت آگهی با کسر کارمزد
+            # مرحله ۳: ثبت آگهی + کسر کارمزد در یک تراکنش اتمیک
             if len(parts) < 4:
                 await call.answer("❌ خطا در تعیین قیمت", show_alert=True)
                 return
@@ -320,55 +328,18 @@ async def cb_bazaar(call: CallbackQuery) -> None:
             item_code = ":".join(parts[3:])
             clean_query = item_code.replace("rpg:", "")
 
-            # بررسی موجودی برای کارمزد
-            async with db.read() as conn:
-                cursor = await conn.execute(
-                    "SELECT credits FROM wallets WHERE user_id = ?",
-                    (user.id,),
-                )
-                row = await cursor.fetchone()
-                await cursor.close()
-                current_credits = int(row["credits"]) if row else 0
-
-            listing_fee = settings.bazaar_listing_fee
-
-            if current_credits < listing_fee:
-                await call.answer(
-                    f"❌ موجودی شما برای پرداخت کارمزد ({listing_fee:,} رکسار) کافی نیست!",
-                    show_alert=True,
-                )
-                return
-
             try:
                 economy.require_ready(user.id, "bazaar_sell", settings.cooldown_bazaar)
 
-                # ثبت آگهی
-                result = await bazaar.list_item(user.id, clean_query, price)
-
-                # کسر کارمزد
-                async with db.write() as conn:
-                    await conn.execute(
-                        "UPDATE wallets SET credits = credits - ? WHERE user_id = ?",
-                        (listing_fee, user.id),
-                    )
-                    await conn.execute(
-                        """INSERT INTO activity_log
-                           (user_id, kind, details, amount, created_at)
-                           VALUES (?, ?, ?, ?, ?)""",
-                        (
-                            user.id,
-                            ActivityKind.BAZAAR_FEE.value,
-                            f"کارمزد ثبت آگهی #{result.get('listing_id', 0)}",
-                            -listing_fee,
-                            int(time.time()),
-                        ),
-                    )
+                # ثبت آگهی و کسر کارمزد؛ یا هر دو انجام می‌شوند یا هیچ‌کدام
+                # (services/bazaar.list_item — تراکنش واحد).
+                await bazaar.list_item(user.id, clean_query, price)
 
                 # بازگشت به لیست اصلی بازارچه
                 text, markup = await _render_bazaar_view(user.id)
-                await call.message.edit_text(text, reply_markup=markup)
+                await message.edit_text(text, reply_markup=markup)
                 await call.answer(
-                    f"✅ آگهی ثبت شد! ({listing_fee:,} رکسار کارمزد کسر شد)",
+                    f"✅ آگهی ثبت شد! ({settings.bazaar_listing_fee:,} رکسار کارمزد کسر شد)",
                     show_alert=True,
                 )
             except GameError as ge:
@@ -380,8 +351,8 @@ async def cb_bazaar(call: CallbackQuery) -> None:
     except GameError as ge:
         await call.answer(f"❌ {ge}", show_alert=True)
     except Exception as exc:  # noqa: BLE001
-        logger.exception("Bazaar callback error")
-        await call.answer(f"❌ خطا: {exc}", show_alert=True)
+        logger.exception("Bazaar callback error: %s", exc)
+        await call.answer("⛔ خطای غیرمنتظره‌ای رخ داد. دوباره تلاش کن.", show_alert=True)
 
 
 async def _dispatch(user_id: int, args: list[str]) -> dict:

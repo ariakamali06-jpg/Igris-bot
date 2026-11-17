@@ -434,6 +434,11 @@ class Settings(BaseSettings):
         """Whether ``user_id`` holds admin privileges."""
         return user_id in self.admin_ids
 
+    @property
+    def primary_admin_id(self) -> int:
+        """First configured admin (from ``ADMIN_IDS``); 0 when none is set."""
+        return self.admin_ids[0] if self.admin_ids else 0
+
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:

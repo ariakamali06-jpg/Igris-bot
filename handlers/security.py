@@ -30,7 +30,7 @@ _USAGE = (
 )
 
 
-@router.message(CommandOrText(["shield"], words=SHIELD_WORDS))
+@router.message(CommandOrText(["shield"], words=SHIELD_WORDS, arg_words=_BUY_ACTIONS))
 async def cmd_shield(message: Message, command: CommandObject | None = None) -> None:
     user = message.from_user
     if user is None:

@@ -36,6 +36,7 @@ from handlers.common import (
     answer_error,
     editable_message,
     esc,
+    extract_args,
     hydrate,
     resolve_target_player,
 )
@@ -102,7 +103,7 @@ async def cmd_duel(message: Message, command: CommandObject | None = None) -> No
     if user is None:
         return
     try:
-        raw_args = command.args if command and command.args else (message.text or "")
+        raw_args = " ".join(extract_args(message, command))
         stake_arg, token = _parse_stake_text(raw_args)
         stake = stake_arg if stake_arg is not None else settings.duel_min_bet
         if not settings.duel_min_bet <= stake <= settings.duel_max_bet:

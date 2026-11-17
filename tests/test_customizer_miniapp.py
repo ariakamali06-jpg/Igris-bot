@@ -630,7 +630,6 @@ async def test_wardrobe_message_live_refresh_on_miniapp_save():
 async def test_set_builder_and_miniapp_layer_priority_script():
     """Verify set_builder.html unshifts new items to the top and keeps mannequin at bottom."""
     import asyncio
-    from pathlib import Path
 
     def _read_file() -> str:
         sb_path = ROOT_DIR / "set_builder.html"

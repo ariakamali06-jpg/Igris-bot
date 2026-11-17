@@ -100,7 +100,7 @@ async def _boss_card(spawn: raids.SpawnResult) -> bytes:
 
         img = Image.new("RGB", (640, 800), (18, 20, 29))
         draw = ImageDraw.Draw(img)
-        draw.rectangle([20, 20, 620, 780], outline=(230, 50, 70), width=4)
+        draw.rectangle((20, 20, 620, 780), outline=(230, 50, 70), width=4)
         buf = io.BytesIO()
         img.save(buf, format="JPEG", quality=90)
         return buf.getvalue()
