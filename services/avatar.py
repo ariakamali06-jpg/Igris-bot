@@ -375,21 +375,12 @@ async def add_set_to_wardrobe(
         )
 
 
-async def save_custom_avatar(
-    user_id: int,
-    var_ids: list[int],
-    skin_tone: int = -1,
-    is_plus_size: int = 0,
-    custom_set: dict[str, Any] | None = None,
-    owned_sets: list[dict[str, Any]] | None = None,
-) -> dict[str, Any]:
-    """Save player custom avatar composition from customizer / Mini App without clothes stacking."""
-    cur_av = await get_player_avatar(user_id)  # ensure row exists
-    now_ts = int(time.time())
+async def _apply_skin_lock(user_id: int, cur_av: dict[str, Any], skin_tone: int) -> int:
+    """قفل رنگ پوست: بعد از ساخته‌شدن کاراکتر، تغییر رنگ پوست از مینی‌اپ رایگان نیست.
 
-    # 🔒 قفل رنگ پوست: بعد از ساخته‌شدن کاراکتر، تغییر رنگ پوست از راه مینی‌اپ
-    # رایگان نیست و فقط سرویس پولی آرایشگاه مجاز است. اگر پیلود رنگ پوست دیگری
-    # فرستاد، رنگ ذخیره‌شده حفظ می‌شود.
+    اگر پیلود رنگ پوست دیگری بفرستد، رنگ ذخیره‌شده حفظ می‌شود (فقط سرویس پولی
+    آرایشگاه مجاز است)؛ این نگهبان هرگز نباید ذخیره را بشکند.
+    """
     try:
         stored_skin = int(cur_av.get("skin_tone", skin_tone))
         if int(skin_tone) != stored_skin:
@@ -397,36 +388,30 @@ async def save_custom_avatar(
 
             _player = await _game.load_player(user_id)
             if _player is not None and _player.onboarding_completed == 1:
-                skin_tone = stored_skin
+                return stored_skin
     except Exception:  # noqa: BLE001 - guard must never break a save
         logger.warning("skin lock check failed for user %s", user_id)
-    clean_vars = [int(v) for v in var_ids if int(v) > 0]
-    cur_vars = cur_av.get("equipped_var_ids", [])
+    return skin_tone
 
-    # If incoming items do not have hair/eyes (because user was styling clothes in wardrobe mode),
-    # preserve player's current hair/eyes from cur_av:
-    if not any(v in ALL_HAIR_VAR_IDS for v in clean_vars):
-        cur_hair = [v for v in cur_vars if v in ALL_HAIR_VAR_IDS]
-        clean_vars = cur_hair + clean_vars
 
-    if not any(v in ALL_EYES_VAR_IDS for v in clean_vars):
-        cur_eyes = [v for v in cur_vars if v in ALL_EYES_VAR_IDS]
-        clean_vars = cur_eyes + clean_vars
+def _preserve_face_layers(clean_vars: list[int], cur_vars: list[int]) -> list[int]:
+    """اگر ورودی مو/چشم/لب/آرایش/تغییرات پوست ندارد، لایه‌های فعلی حفظ می‌شوند."""
+    face_groups = (
+        ALL_HAIR_VAR_IDS,
+        ALL_EYES_VAR_IDS,
+        ALL_LIPS_VAR_IDS,
+        ALL_MAKEUP_VAR_IDS,
+        ALL_SKIN_MOD_VAR_IDS,
+    )
+    for group in face_groups:
+        if not any(v in group for v in clean_vars):
+            kept = [v for v in cur_vars if v in group]
+            clean_vars = kept + clean_vars
+    return clean_vars
 
-    if not any(v in ALL_LIPS_VAR_IDS for v in clean_vars):
-        cur_lips = [v for v in cur_vars if v in ALL_LIPS_VAR_IDS]
-        clean_vars = cur_lips + clean_vars
 
-    if not any(v in ALL_MAKEUP_VAR_IDS for v in clean_vars):
-        cur_mu = [v for v in cur_vars if v in ALL_MAKEUP_VAR_IDS]
-        clean_vars = cur_mu + clean_vars
-
-    if not any(v in ALL_SKIN_MOD_VAR_IDS for v in clean_vars):
-        cur_sm = [v for v in cur_vars if v in ALL_SKIN_MOD_VAR_IDS]
-        clean_vars = cur_sm + clean_vars
-
-    # Check if clean_vars matches an owned set exactly
-    active_set = 9999
+async def _match_owned_set(user_id: int, clean_vars: list[int]) -> int:
+    """اگر ترکیب دقیقاً یک ست مالکیت باشد، شناسهٔ آن ست فعال می‌شود (وگرنه 9999)."""
     async with db.read() as conn:
         cur = await conn.execute(
             "SELECT set_id, var_ids FROM player_wardrobe WHERE user_id = ? AND set_id != 9999",
@@ -439,9 +424,19 @@ async def save_custom_avatar(
     for r in owned_rows:
         r_vars = set(json.loads(r["var_ids"] or "[]"))
         if r_vars == clean_set:
-            active_set = r["set_id"]
-            break
+            return r["set_id"]
+    return 9999
 
+
+async def _persist_equipped(
+    user_id: int,
+    clean_vars: list[int],
+    skin_tone: int,
+    is_plus_size: int,
+    active_set: int,
+    now_ts: int,
+) -> None:
+    """ثبت ترکیب پوشیده + همگام‌سازی ردیف 9999 (استایل اختصاصی)."""
     async with db.write() as conn:
         await conn.execute(
             """
@@ -476,6 +471,30 @@ async def save_custom_avatar(
                 "DELETE FROM player_wardrobe WHERE user_id = ? AND set_id = 9999",
                 (user_id,),
             )
+
+
+async def save_custom_avatar(
+    user_id: int,
+    var_ids: list[int],
+    skin_tone: int = -1,
+    is_plus_size: int = 0,
+    custom_set: dict[str, Any] | None = None,
+    owned_sets: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Save player custom avatar composition from customizer / Mini App without clothes stacking."""
+    cur_av = await get_player_avatar(user_id)  # ensure row exists
+    now_ts = int(time.time())
+
+    skin_tone = await _apply_skin_lock(user_id, cur_av, skin_tone)
+    clean_vars = [int(v) for v in var_ids if int(v) > 0]
+    # If incoming items do not have hair/eyes (because user was styling clothes in wardrobe mode),
+    # preserve player's current hair/eyes from cur_av:
+    clean_vars = _preserve_face_layers(clean_vars, cur_av.get("equipped_var_ids", []))
+
+    # Check if clean_vars matches an owned set exactly
+    active_set = await _match_owned_set(user_id, clean_vars)
+
+    await _persist_equipped(user_id, clean_vars, skin_tone, is_plus_size, active_set, now_ts)
 
     # Persist custom set if created by the player in the Mini App
     if custom_set and isinstance(custom_set, dict):
@@ -1447,52 +1466,35 @@ async def list_wardrobe(user_id: int) -> list[dict[str, Any]]:
     result.sort(key=_sort_key)
     return result
 
-async def get_customizer_url(
+async def _customizer_avatar_state(
     user_id: int,
-    display_name: str | None = None,
-    level: int | None = None,
-    credits: int | None = None,
-    gender: str | None = None,
-    skin_tone: int | None = None,
-    is_plus_size: int | None = None,
-    var_ids: list[int] | None = None,
-    mode: str | None = None,
-) -> str:
-    """Generate personalized Telegram Mini App URL carrying user loadout."""
-    base_url = settings.webapp_url.rstrip("/")
+    var_ids: list[int] | None,
+    skin_tone: int | None,
+    is_plus_size: int | None,
+) -> tuple[list[int], int, int]:
+    """بارگذاری وضعیت آواتار برای پی‌لود مینی‌اپ؛ فال‌بک به پیش‌فرض‌ها."""
+    if var_ids is not None and skin_tone is not None and is_plus_size is not None:
+        return var_ids, skin_tone, is_plus_size
+    try:
+        player_av = await get_player_avatar(user_id)
+        if var_ids is None:
+            var_ids = list(player_av.get("equipped_var_ids", []))
+        if skin_tone is None:
+            skin_tone = int(player_av.get("skin_tone", -1))
+        if is_plus_size is None:
+            is_plus_size = int(player_av.get("is_plus_size", 0))
+    except Exception:
+        logger.debug("customizer url: avatar state unavailable; using defaults", exc_info=True)
+        var_ids = var_ids or []
+        skin_tone = skin_tone or -1
+        is_plus_size = is_plus_size or 0
+    return var_ids, skin_tone, is_plus_size
 
-    # If parameters not provided, load from database
-    if var_ids is None or skin_tone is None or is_plus_size is None:
-        try:
-            player_av = await get_player_avatar(user_id)
-            if var_ids is None:
-                var_ids = list(player_av.get("equipped_var_ids", []))
-            if skin_tone is None:
-                skin_tone = int(player_av.get("skin_tone", -1))
-            if is_plus_size is None:
-                is_plus_size = int(player_av.get("is_plus_size", 0))
-        except Exception:
-            var_ids = var_ids or []
-            skin_tone = skin_tone or -1
-            is_plus_size = is_plus_size or 0
 
-    from services import game
-
-    player = await game.load_player(user_id) if user_id else None
-    is_onboarded = bool(player and player.onboarding_completed == 1)
-
-    if (display_name is None or level is None or gender is None) and player is not None:
-        display_name = display_name or player.display_name
-        level = level or player.level
-        gender = gender or player.gender
-
-    if credits is None and user_id:
-        try:
-            credits_val, _ = await economy.balances(user_id)
-            credits = credits_val
-        except Exception:
-            credits = 0
-
+async def _customizer_owned(
+    user_id: int, var_ids: list[int]
+) -> tuple[list[int], list[dict[str, Any]]]:
+    """شناسه‌های مالکیت + ست‌های واقعی چندتکه (تک‌آیتم‌ها ست نیستند)."""
     owned_ids: list[int] = []
     owned_sets: list[dict[str, Any]] = []
     if user_id:
@@ -1514,23 +1516,82 @@ async def get_customizer_url(
                         "vars": s_vars,
                     })
         except Exception:
-            pass
+            logger.debug("customizer url: wardrobe listing failed", exc_info=True)
 
     if var_ids:
         owned_ids.extend(var_ids)
+    return list(dict.fromkeys(owned_ids)), owned_sets
 
-    owned_ids = list(dict.fromkeys(owned_ids))
 
-    is_plus = bool(is_plus_size)
+def _customizer_skin_idx(skin_tone: int, is_plus: bool) -> int:
+    """نگاشت شناسهٔ پوست داخلی به ایندکس مینی‌اپ."""
     if is_plus:
         plus_skin_map = {-7: 1, -8: 2, -9: 3, -10: 4, -11: 5, -6: 6}
-        skin_idx = plus_skin_map.get(skin_tone, 1)
-    else:
-        slim_skin_map = {-1: 1, -2: 2, -3: 3, -4: 4, -5: 5}
-        skin_idx = slim_skin_map.get(skin_tone, 1)
+        return plus_skin_map.get(skin_tone, 1)
+    slim_skin_map = {-1: 1, -2: 2, -3: 3, -4: 4, -5: 5}
+    return slim_skin_map.get(skin_tone, 1)
 
+
+def _customizer_shop_items() -> list[int]:
+    """شناسه آیتم‌های بوتیک امروز برای حالت فروشگاه (هماهنگ با بوتیک متنی)."""
+    shop_var_ids: list[int] = []
+    try:
+        from services import catalog
+
+        for cat_key in ("top", "bottom", "shoes", "acc"):
+            cat_data = catalog.get_daily_boutique_items(
+                category_key=cat_key, page=0, page_size=20
+            )
+            for it in cat_data.get("items", []):
+                vid = it.get("var_id")
+                if vid:
+                    shop_var_ids.append(int(vid))
+    except Exception as exc:
+        logger.warning("Failed to collect daily shop items: %s", exc)
+    return shop_var_ids
+
+
+async def get_customizer_url(
+    user_id: int,
+    display_name: str | None = None,
+    level: int | None = None,
+    credits: int | None = None,
+    gender: str | None = None,
+    skin_tone: int | None = None,
+    is_plus_size: int | None = None,
+    var_ids: list[int] | None = None,
+    mode: str | None = None,
+) -> str:
+    """Generate personalized Telegram Mini App URL carrying user loadout."""
+    base_url = settings.webapp_url.rstrip("/")
+
+    var_ids, skin_tone, is_plus_size = await _customizer_avatar_state(
+        user_id, var_ids, skin_tone, is_plus_size
+    )
+
+    from services import game
+
+    player = await game.load_player(user_id) if user_id else None
+    is_onboarded = bool(player and player.onboarding_completed == 1)
+
+    if (display_name is None or level is None or gender is None) and player is not None:
+        display_name = display_name or player.display_name
+        level = level or player.level
+        gender = gender or player.gender
+
+    if credits is None and user_id:
+        try:
+            credits_val, _ = await economy.balances(user_id)
+            credits = credits_val
+        except Exception:
+            logger.debug("customizer url: balance lookup failed; defaulting to 0", exc_info=True)
+            credits = 0
+
+    owned_ids, owned_sets = await _customizer_owned(user_id, var_ids)
+
+    is_plus = bool(is_plus_size)
+    skin_idx = _customizer_skin_idx(skin_tone, is_plus)
     gen_str = "female" if (gender and ("دختر" in gender or gender == "female")) else "male"
-
     active_bot = RUNTIME_BOT_USERNAME or settings.bot_username
 
     if mode is None:
@@ -1540,20 +1601,7 @@ async def get_customizer_url(
         resolved_mode = mode
 
     # If shop mode, get daily boutique items from catalog (synced with text boutique)
-    shop_var_ids: list[int] = []
-    if resolved_mode == "shop":
-        try:
-            from services import catalog
-            for cat_key in ("top", "bottom", "shoes", "acc"):
-                cat_data = catalog.get_daily_boutique_items(
-                    category_key=cat_key, page=0, page_size=20
-                )
-                for it in cat_data.get("items", []):
-                    vid = it.get("var_id")
-                    if vid:
-                        shop_var_ids.append(int(vid))
-        except Exception as exc:
-            logger.warning("Failed to collect daily shop items: %s", exc)
+    shop_var_ids = _customizer_shop_items() if resolved_mode == "shop" else []
 
     payload = {
         "u": user_id,

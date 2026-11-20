@@ -119,6 +119,7 @@ async def _try_edit(message: Message, text: str | None, photo: bytes | None,
                 await message.edit_caption(caption=text, reply_markup=reply_markup)
                 return True
             except Exception:
+                logger.debug("panel: edit_caption failed; swapping to photo media", exc_info=True)
                 pass
         # Otherwise swap to photo media
         media = InputMediaPhoto(

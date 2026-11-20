@@ -274,6 +274,7 @@ async def cb_properties_action(call: CallbackQuery) -> None:
             res = await properties.buy_asset(player, properties.KIND_PROPERTY, param)
             await call.answer(_clean_msg(res["message"]), show_alert=True)
         except Exception as exc:  # noqa: BLE001
+            logger.warning("properties buy failed: %s", exc)
             await call.answer(f"خطا در خرید: {exc}", show_alert=True)
         current_kind = properties.KIND_PROPERTY
     elif act == "buy_w":
@@ -284,6 +285,7 @@ async def cb_properties_action(call: CallbackQuery) -> None:
             res = await properties.buy_asset(player, properties.KIND_WORKER, param)
             await call.answer(_clean_msg(res["message"]), show_alert=True)
         except Exception as exc:  # noqa: BLE001
+            logger.warning("properties hire failed: %s", exc)
             await call.answer(f"خطا در استخدام: {exc}", show_alert=True)
         current_kind = properties.KIND_WORKER
     elif act == "upg":
@@ -294,6 +296,7 @@ async def cb_properties_action(call: CallbackQuery) -> None:
             res = await properties.upgrade_property(player, param)
             await call.answer(_clean_msg(res["message"]), show_alert=True)
         except Exception as exc:  # noqa: BLE001
+            logger.warning("properties upgrade failed: %s", exc)
             await call.answer(f"خطا در ارتقا: {exc}", show_alert=True)
         current_kind = properties.KIND_PROPERTY
     elif act == "collect":
@@ -304,6 +307,7 @@ async def cb_properties_action(call: CallbackQuery) -> None:
             res = await properties.collect(player)
             await call.answer(_clean_msg(res["message"]), show_alert=True)
         except Exception as exc:  # noqa: BLE001
+            logger.warning("properties collect failed: %s", exc)
             await call.answer(f"خطا در وصول درآمد: {exc}", show_alert=True)
         current_kind = (
             properties.KIND_WORKER if param == "worker" else properties.KIND_PROPERTY

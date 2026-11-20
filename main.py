@@ -80,12 +80,14 @@ async def _start_health_server() -> asyncio.Server | None:
             writer.write(resp)
             await writer.drain()
         except Exception:
+            logger.debug("health endpoint: request handling failed", exc_info=True)
             pass
         finally:
             try:
                 writer.close()
                 await writer.wait_closed()
             except Exception:
+                logger.debug("health endpoint: closing connection failed", exc_info=True)
                 pass
 
     try:

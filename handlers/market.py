@@ -194,6 +194,7 @@ async def cb_market_do_buy(call: CallbackQuery) -> None:
             with contextlib.suppress(Exception):
                 await msg.edit_text(overview_res["message"], reply_markup=_market_markup())
     except Exception as exc:  # noqa: BLE001
+        logger.warning("market action failed: %s", exc)
         await call.answer(f"❌ {exc}", show_alert=True)
 
 
@@ -245,6 +246,7 @@ async def cb_market_do_sell(call: CallbackQuery) -> None:
             with contextlib.suppress(Exception):
                 await msg.edit_text(overview_res["message"], reply_markup=_market_markup())
     except Exception as exc:  # noqa: BLE001
+        logger.warning("market action failed: %s", exc)
         await call.answer(f"❌ {exc}", show_alert=True)
 
 
@@ -293,4 +295,5 @@ async def cb_market_do_bet(call: CallbackQuery) -> None:
             with contextlib.suppress(Exception):
                 await msg.edit_text(overview_res["message"], reply_markup=_market_markup())
     except Exception as exc:  # noqa: BLE001
+        logger.warning("market action failed: %s", exc)
         await call.answer(f"❌ {exc}", show_alert=True)

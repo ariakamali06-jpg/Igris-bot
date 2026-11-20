@@ -95,9 +95,14 @@ class Database:
             raise RuntimeError("_migrate() called before the write connection was open")
         await self._write_conn.executescript(script)
         await self._widen_items_pool()
+        await self._migrate_player_columns(self._write_conn)
+        await self._backfill_players(self._write_conn)
+        await self._migrate_feature_tables(self._write_conn)
 
+    async def _migrate_player_columns(self, conn: aiosqlite.Connection) -> None:
+        """Add missing ``players`` columns for databases created by older versions."""
         # Migrate columns for players table
-        cursor = await self._write_conn.execute("PRAGMA table_info(players)")
+        cursor = await conn.execute("PRAGMA table_info(players)")
         cols = {row["name"] for row in await cursor.fetchall()}
         await cursor.close()
         for col, col_type, default_val in [
@@ -157,12 +162,14 @@ class Database:
             ("daily_streak", "INTEGER", "0"),
         ]:
             if col not in cols:
-                await self._write_conn.execute(
+                await conn.execute(
                     f"ALTER TABLE players ADD COLUMN {col} {col_type} DEFAULT {default_val}"
                 )
 
+    async def _backfill_players(self, conn: aiosqlite.Connection) -> None:
+        """Normalize legacy player rows and rebuild lifetime stats from the ledger."""
         # پاک‌سازی، هوشمندسازی و بازیابی مقادیر پروفایل‌های قدیمی
-        await self._write_conn.execute(
+        await conn.execute(
             """
             UPDATE players
             SET bank_balance = COALESCE(bank_balance, 0),
@@ -215,7 +222,7 @@ class Database:
         )
 
         # بازیابی سوابق تاریخی از روی لجر و دوئل‌ها برای اکانت‌های موجود
-        await self._write_conn.execute(
+        await conn.execute(
             """
             UPDATE players
             SET duels_won = (
@@ -241,7 +248,9 @@ class Database:
             """
         )
 
-        await self._write_conn.execute(
+    async def _migrate_feature_tables(self, conn: aiosqlite.Connection) -> None:
+        """Create auxiliary tables and indexes (achievements, settings, clans, wardrobe)."""
+        await conn.execute(
             """
             CREATE TABLE IF NOT EXISTS player_achievements (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -253,13 +262,13 @@ class Database:
             )
             """
         )
-        await self._write_conn.execute(
+        await conn.execute(
             """
             CREATE INDEX IF NOT EXISTS idx_player_achievements_user ON player_achievements (user_id)
             """
         )
 
-        await self._write_conn.execute(
+        await conn.execute(
             """
             CREATE TABLE IF NOT EXISTS player_settings (
                 user_id           INTEGER PRIMARY KEY REFERENCES players(user_id) ON DELETE CASCADE,
@@ -272,7 +281,7 @@ class Database:
             """
         )
 
-        await self._write_conn.execute(
+        await conn.execute(
             """
             CREATE TABLE IF NOT EXISTS clans (
                 clan_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -285,7 +294,7 @@ class Database:
             )
             """
         )
-        await self._write_conn.execute(
+        await conn.execute(
             """
             CREATE TABLE IF NOT EXISTS clan_members (
                 clan_id INTEGER NOT NULL,
@@ -297,7 +306,7 @@ class Database:
             )
             """
         )
-        await self._write_conn.execute(
+        await conn.execute(
             """
             CREATE TABLE IF NOT EXISTS player_avatar (
                 user_id          INTEGER PRIMARY KEY REFERENCES players (user_id) ON DELETE CASCADE,
@@ -311,10 +320,10 @@ class Database:
             """
         )
         with contextlib.suppress(Exception):
-            await self._write_conn.execute(
+            await conn.execute(
                 "ALTER TABLE player_avatar ADD COLUMN makeup_data TEXT NOT NULL DEFAULT '{}'"
             )
-        await self._write_conn.execute(
+        await conn.execute(
             """
             CREATE TABLE IF NOT EXISTS player_wardrobe (
                 id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -331,7 +340,7 @@ class Database:
             )
             """
         )
-        await self._write_conn.execute(
+        await conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_wardrobe_user ON player_wardrobe (user_id)"
         )
 
@@ -426,8 +435,8 @@ class Database:
         is atomic.  Rollback happens on *any* exception, which is exactly what
         you want for a failed balance check in the middle of a transfer.
         """
-        conn = self._require_write()
         async with self._write_lock:
+            conn = self._require_write()
             await conn.execute("BEGIN IMMEDIATE")
             try:
                 yield conn
@@ -467,8 +476,8 @@ class Database:
         implicit COMMIT first, which would make the enclosing transaction's
         own COMMIT raise ``cannot commit - no transaction is active``.
         """
-        conn = self._require_write()
         async with self._write_lock:
+            conn = self._require_write()
             await conn.executescript(script)
 
     async def fetch_setting(self, key: str, default: str | None = None) -> str | None:

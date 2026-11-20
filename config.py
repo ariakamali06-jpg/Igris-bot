@@ -9,6 +9,7 @@ startup so services can read them without worrying about mutation.
 from __future__ import annotations
 
 import json
+import logging
 from functools import lru_cache
 from pathlib import Path
 from typing import Annotated, Any
@@ -17,6 +18,8 @@ from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 ROOT_DIR = Path(__file__).resolve().parent
+
+logger = logging.getLogger(__name__)
 
 
 class Settings(BaseSettings):
@@ -419,7 +422,10 @@ class Settings(BaseSettings):
                 try:
                     return json.loads(text)
                 except Exception:
-                    pass
+                    logger.debug(
+                        "settings: value is not valid JSON; keeping raw string",
+                        exc_info=True,
+                    )
         return value
 
     @field_validator("db_path", "assets_dir", "manifest_path", "cache_dir", mode="before")

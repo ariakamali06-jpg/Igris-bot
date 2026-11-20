@@ -14,14 +14,19 @@ from typing import Any
 from aiogram import BaseMiddleware
 from aiogram.types import (
     CallbackQuery,
-    InlineKeyboardButton,
     InlineKeyboardMarkup,
     Message,
     TelegramObject,
 )
 
 from config import settings
-from handlers.common import CommandOrText, esc, hydrate, is_admin_or_owner
+from handlers.common import (
+    CommandOrText,
+    deep_link_button,
+    esc,
+    hydrate,
+    is_admin_or_owner,
+)
 from services import avatar
 
 logger = logging.getLogger(__name__)
@@ -120,7 +125,6 @@ class OnboardingGateMiddleware(BaseMiddleware):
                     )
                     return None
 
-                start_url = f"https://t.me/{bot_username}?start=new"
                 if chat_type == "private":
                     prompt_text = (
                         f"👋 سلام <b>{esc(user.full_name)}</b> عزیز!\n\n"
@@ -131,9 +135,10 @@ class OnboardingGateMiddleware(BaseMiddleware):
                     markup = InlineKeyboardMarkup(
                         inline_keyboard=[
                             [
-                                InlineKeyboardButton(
-                                    text="🚀 ساخت کاراکتر و دریافت شناسنامه",
-                                    url=start_url,
+                                deep_link_button(
+                                    "🚀 ساخت کاراکتر و دریافت شناسنامه",
+                                    "new",
+                                    username=bot_username,
                                 )
                             ]
                         ]
@@ -147,9 +152,10 @@ class OnboardingGateMiddleware(BaseMiddleware):
                     markup = InlineKeyboardMarkup(
                         inline_keyboard=[
                             [
-                                InlineKeyboardButton(
-                                    text="🚀 ساخت پروفایل و ورود به بازی (در پیوی)",
-                                    url=start_url,
+                                deep_link_button(
+                                    "🚀 ساخت پروفایل و ورود به بازی (در پیوی)",
+                                    "new",
+                                    username=bot_username,
                                 )
                             ]
                         ]

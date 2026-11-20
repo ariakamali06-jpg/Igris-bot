@@ -18,7 +18,15 @@ from aiogram.types import (
 )
 
 from config import settings
-from handlers.common import CommandOrText, answer_error, editable_message, hydrate
+from handlers.common import (
+    CommandOrText,
+    answer_error,
+    deep_link_button,
+    editable_message,
+    hydrate,
+    is_group_chat,
+    miniapp_button,
+)
 from handlers.panel import render_panel
 from models.enums import Slot
 from models.player import Player
@@ -159,22 +167,13 @@ async def cmd_shop(message: Message) -> None:
             "۲. 💬 <b>ویترین متنی داخل تلگرام:</b>\n"
             "مرور سریع کاتالوگ روزانه بر اساس دسته‌بندی (بالاتنه، پایین‌تنه، کفش) بدون مصرف نت."
         )
-        _in_group = message.chat.type in ("group", "supergroup")
+        _in_group = is_group_chat(message.chat.type)
         if _in_group:
-            from handlers.boutique import _bot_username
-
-            _uname = _bot_username() or "igrisbot"
-            shop_button = InlineKeyboardButton(
-                text="📱 باز کردن فروشگاه مد (در DM بات)",
-                url=f"https://t.me/{_uname}?start=shop",
+            shop_button = deep_link_button(
+                "📱 باز کردن فروشگاه مد (در DM بات)", "shop"
             )
         else:
-            from aiogram.types import WebAppInfo
-
-            shop_button = InlineKeyboardButton(
-                text="📱 باز کردن فروشگاه مد (مینی‌اپ)",
-                web_app=WebAppInfo(url=custom_url),
-            )
+            shop_button = miniapp_button("📱 باز کردن فروشگاه مد (مینی‌اپ)", custom_url)
         markup = InlineKeyboardMarkup(
             inline_keyboard=[
                 [shop_button],

@@ -377,6 +377,7 @@ async def cmd_affair(message: Message) -> None:
         try:
             record = await tiramix.affair_record()
         except Exception:  # noqa: BLE001
+            logger.debug("affair_record unavailable", exc_info=True)
             record = ""
         await message.reply(f"{usage}\n\n{record}".rstrip())
         return

@@ -312,6 +312,111 @@ SUTEMEO_ACCESSORY_ADJUST: dict[str, tuple[int, int, float]] = {
 }
 SUTEMEO_ACCESSORY_ADJUST_DEFAULT = (40, 0, 1.0)
 
+# --- جداول ثابت رنگ‌آمیزی و نگاشت لایه‌های سوتیمو -------------------------
+
+_SUTEMO_SKIN_TINTS: dict[str, tuple[int, int, int]] = {
+    "1": (255, 240, 232),
+    "2": (252, 224, 210),
+    "3": (240, 204, 168),
+    "4": (223, 176, 136),
+    "5": (141, 91, 76),
+}
+_SUTEMO_HAIR_TINTS: dict[str, tuple[tuple[int, int, int], tuple[int, int, int]]] = {
+    "black": ((35, 35, 40), (120, 120, 130)),
+    "silver": ((235, 235, 245), (255, 255, 255)),
+    "brown": ((140, 95, 60), (200, 160, 120)),
+}
+_SUTEMO_EYE_TINTS: dict[str, tuple[int, int, int]] = {
+    "blue": (40, 110, 220),
+    "green": (40, 150, 90),
+    "amber": (190, 120, 40),
+    "purple": (140, 60, 190),
+    "violet": (140, 60, 190),
+    "black": (45, 45, 50),
+}
+_SUTEMO_HAIR_KEYS: dict[str, tuple[str | None, str | None]] = {
+    "hair1": ("hair_short1_base.png", "hair_short1_hl.png"),
+    "hair2": ("hair_short2_base.png", "hair_short2_hl.png"),
+    "hair3": ("hair_sidebangs_base.png", "hair_sidebangs_hl.png"),
+    "hair4": ("hair_curly_base.png", "hair_curly_hl.png"),
+    "hair5": ("hair_bob_base.png", "hair_bob_hl.png"),
+}
+# Onboarding button order is 1=bright/round/friendly, 2=sharp/bold,
+# 3=calm/dignified — which does NOT match the Sutemo asset file names
+# (determined / neutral / friendly). Map button -> asset so the art
+# always matches the label the user tapped.
+_SUTEMO_EYE_KEYS: dict[str, tuple[str | None, str | None, str | None]] = {
+    "1": ("eyes_friendly_skin.png", "eyes_friendly_base.png", "eyes_friendly_static.png"),
+    "2": (
+        "eyes_determined_skin.png",
+        "eyes_determined_base.png",
+        "eyes_determined_static.png",
+    ),
+    "3": ("eyes_neutral_skin.png", "eyes_neutral_base.png", "eyes_neutral_static.png"),
+}
+_SUTEMO_MOUTH_KEYS: dict[str, tuple[str | None, str | None]] = {
+    "1": ("mouth_smile_skin.png", None),
+    "2": ("mouth_smirk_skin.png", None),
+    "3": ("mouth_open_skin.png", "mouth_open_base.png"),
+    "4": ("mouth_stoic_skin.png", None),
+}
+
+
+def _tint_layer(img: Image.Image, tint: tuple[int, int, int]) -> Image.Image:
+    """رنگ‌آمیزی لایه با ضریب RGB (کانال آلفا دست‌نخورده می‌ماند)."""
+    r, g, b, a = img.split()
+    tr = r.point(lambda p: int(p * tint[0] / 255))
+    tg = g.point(lambda p: int(p * tint[1] / 255))
+    tb = b.point(lambda p: int(p * tint[2] / 255))
+    return Image.merge("RGBA", (tr, tg, tb, a))
+
+
+@dataclass(frozen=True, slots=True)
+class _SutemoSel:
+    """انتخاب‌های نرمال‌شدهٔ ظاهر کاراکتر سوتیمو."""
+
+    skin: str
+    hair: str
+    eye_shape: str
+    mouth: str
+    eye_color: str
+    hair_color: str
+
+
+def _sutemo_selections(
+    skin_num: str,
+    eye_style: str,
+    eye_color: str,
+    hair_style: str,
+    hair_color: str,
+    mouth_style: str,
+) -> _SutemoSel:
+    """نرمال‌سازی ورودی‌های ظاهر به کلیدهای معتبر جداول سوتیمو."""
+    clean_skin = str(skin_num).split("_")[-1] if "_" in str(skin_num) else str(skin_num)
+    clean_hair = str(hair_style).lower()
+    if clean_hair not in _SUTEMO_HAIR_KEYS:
+        clean_hair = "hair2"
+    clean_eye_shape = str(eye_style).replace("eyes", "").split("_")[0]
+    if clean_eye_shape not in _SUTEMO_EYE_KEYS:
+        clean_eye_shape = "1"
+    clean_mouth = str(mouth_style).replace("mouth", "").split("_")[0]
+    if clean_mouth not in _SUTEMO_MOUTH_KEYS:
+        clean_mouth = "2"
+    clean_eye_color = str(eye_color).lower()
+    if clean_eye_color not in _SUTEMO_EYE_TINTS:
+        clean_eye_color = "blue"
+    clean_hair_color = str(hair_color).lower()
+    if clean_hair_color not in _SUTEMO_HAIR_TINTS:
+        clean_hair_color = "black"
+    return _SutemoSel(
+        skin=clean_skin,
+        hair=clean_hair,
+        eye_shape=clean_eye_shape,
+        mouth=clean_mouth,
+        eye_color=clean_eye_color,
+        hair_color=clean_hair_color,
+    )
+
 
 def _shift_layer(
     layer: Image.Image, dy: int, dx: int = 0, scale_x: float = 1.0
@@ -433,12 +538,21 @@ def _customize_figure(
     return img
 
 
-def _render_face_and_badges(plate: Image.Image, request: RenderRequest) -> None:
-    """Render anime facial features (eyebrows, eyes, mouth) and test badges on the mannequin."""
-    draw = ImageDraw.Draw(plate)
-    head_cx = 256
-    head_cy = 112
+@dataclass(frozen=True, slots=True)
+class _FaceStyle:
+    """مشتق‌های چهره: رنگ‌های پوست/ابرو/عنبیه و مدل‌های چشم و دهان."""
 
+    skin_face: RGBA
+    skin_neck: RGBA
+    brow_col: RGBA
+    iris_base: RGBA
+    iris_hl: RGBA
+    clean_eye: str
+    clean_mouth: str
+
+
+def _face_style(request: RenderRequest) -> _FaceStyle:
+    """محاسبهٔ رنگ‌ها و مدل‌های چهره از روی درخواست رندر."""
     skin_map = {
         "pale": ((255, 236, 228, 255), (235, 210, 200, 255)),
         "fair": ((248, 222, 204, 255), (225, 195, 175, 255)),
@@ -453,30 +567,6 @@ def _render_face_and_badges(plate: Image.Image, request: RenderRequest) -> None:
     }
     skin_face, skin_neck = skin_map.get(str(request.skin_tone).lower(), skin_map["fair"])
 
-    # Neck
-    draw.polygon([
-        (head_cx - 11, head_cy + 22),
-        (head_cx + 11, head_cy + 22),
-        (head_cx + 13, head_cy + 52),
-        (head_cx - 13, head_cy + 52),
-    ], fill=skin_neck)
-
-    # Head (face shape: smooth anime chin)
-    draw.pieslice(
-        ((head_cx - 28, head_cy - 36), (head_cx + 28, head_cy + 20)),
-        start=180, end=360, fill=skin_face,
-    )
-    draw.polygon([
-        (head_cx - 28, head_cy - 8),
-        (head_cx + 28, head_cy - 8),
-        (head_cx + 25, head_cy + 16),
-        (head_cx + 12, head_cy + 34),
-        (head_cx - 12, head_cy + 34),
-        (head_cx - 25, head_cy + 16),
-    ], fill=skin_face)
-    draw.ellipse((head_cx - 14, head_cy + 25, head_cx + 14, head_cy + 35), fill=skin_face)
-
-    # Eyebrows
     brow_colors = {
         "black": (30, 25, 25, 255),
         "silver": (180, 185, 195, 255),
@@ -486,17 +576,62 @@ def _render_face_and_badges(plate: Image.Image, request: RenderRequest) -> None:
         "blue": (35, 90, 170, 255),
     }
     brow_col = brow_colors.get(str(request.hair_color).lower(), (30, 25, 25, 255))
+
+    eye_palettes = {
+        "blue": ((0, 190, 255, 255), (160, 235, 255, 255)),
+        "green": ((34, 197, 94, 255), (187, 247, 208, 255)),
+        "amber": ((245, 158, 11, 255), (254, 240, 138, 255)),
+        "violet": ((168, 85, 247, 255), (233, 213, 255, 255)),
+        "black": ((50, 55, 65, 255), (160, 175, 195, 255)),
+    }
+    iris_base, iris_hl = eye_palettes.get(str(request.eye_color).lower(), eye_palettes["blue"])
+
     clean_eye = str(request.eye_style).replace("eyes", "").split("_")[0]
     clean_mouth = str(request.mouth_style).replace("mouth", "").split("_")[0]
+    return _FaceStyle(skin_face, skin_neck, brow_col, iris_base, iris_hl, clean_eye, clean_mouth)
 
+
+def _draw_head_neck(
+    draw: ImageDraw.ImageDraw, style: _FaceStyle, head_cx: int, head_cy: int
+) -> None:
+    """گردن و کله انیمه‌ای (فرم صورت با چانه نرم)."""
+    # Neck
+    draw.polygon([
+        (head_cx - 11, head_cy + 22),
+        (head_cx + 11, head_cy + 22),
+        (head_cx + 13, head_cy + 52),
+        (head_cx - 13, head_cy + 52),
+    ], fill=style.skin_neck)
+
+    # Head (face shape: smooth anime chin)
+    draw.pieslice(
+        ((head_cx - 28, head_cy - 36), (head_cx + 28, head_cy + 20)),
+        start=180, end=360, fill=style.skin_face,
+    )
+    draw.polygon([
+        (head_cx - 28, head_cy - 8),
+        (head_cx + 28, head_cy - 8),
+        (head_cx + 25, head_cy + 16),
+        (head_cx + 12, head_cy + 34),
+        (head_cx - 12, head_cy + 34),
+        (head_cx - 25, head_cy + 16),
+    ], fill=style.skin_face)
+    draw.ellipse((head_cx - 14, head_cy + 25, head_cx + 14, head_cy + 35), fill=style.skin_face)
+
+
+def _draw_eyebrows(
+    draw: ImageDraw.ImageDraw, style: _FaceStyle, head_cx: int, head_cy: int
+) -> None:
+    """ابروها بر اساس مدل چشم (تیز، افقی، قوس‌دار یا ملایم)."""
+    brow_col = style.brow_col
     by = head_cy - 15
-    if clean_eye == "2":  # Model 2: Sharp / Hunter / Slanted
+    if style.clean_eye == "2":  # Model 2: Sharp / Hunter / Slanted
         draw.line([(head_cx - 22, by + 4), (head_cx - 7, by - 2)], fill=brow_col, width=3)
         draw.line([(head_cx + 7, by - 2), (head_cx + 22, by + 4)], fill=brow_col, width=3)
-    elif clean_eye == "3":  # Model 3: Calm / Stoic Horizontal
+    elif style.clean_eye == "3":  # Model 3: Calm / Stoic Horizontal
         draw.line([(head_cx - 21, by), (head_cx - 7, by)], fill=brow_col, width=2)
         draw.line([(head_cx + 7, by), (head_cx + 21, by)], fill=brow_col, width=2)
-    elif clean_eye == "4":  # Model 4: Dramatic / Fierce High-Arched
+    elif style.clean_eye == "4":  # Model 4: Dramatic / Fierce High-Arched
         draw.line([(head_cx - 22, by - 1), (head_cx - 14, by - 5)], fill=brow_col, width=3)
         draw.line([(head_cx - 14, by - 5), (head_cx - 6, by)], fill=brow_col, width=3)
         draw.line([(head_cx + 6, by), (head_cx + 14, by - 5)], fill=brow_col, width=3)
@@ -511,15 +646,13 @@ def _render_face_and_badges(plate: Image.Image, request: RenderRequest) -> None:
             start=190, end=350, fill=brow_col, width=3,
         )
 
-    # Eyes
-    eye_palettes = {
-        "blue": ((0, 190, 255, 255), (160, 235, 255, 255)),
-        "green": ((34, 197, 94, 255), (187, 247, 208, 255)),
-        "amber": ((245, 158, 11, 255), (254, 240, 138, 255)),
-        "violet": ((168, 85, 247, 255), (233, 213, 255, 255)),
-        "black": ((50, 55, 65, 255), (160, 175, 195, 255)),
-    }
-    iris_base, iris_hl = eye_palettes.get(str(request.eye_color).lower(), eye_palettes["blue"])
+
+def _draw_eyes(
+    draw: ImageDraw.ImageDraw, style: _FaceStyle, head_cx: int, head_cy: int
+) -> None:
+    """چشم‌ها در چهار مدل: شکارچی، بادامی، بال‌دار یا گرد دوستانه."""
+    iris_base = style.iris_base
+    clean_eye = style.clean_eye
     ey = head_cy - 5
 
     if clean_eye == "2":  # Model 2: Sharp Hunter Eyes
@@ -611,14 +744,28 @@ def _render_face_and_badges(plate: Image.Image, request: RenderRequest) -> None:
         draw.point((head_cx - 15, ey - 3), fill=(255, 255, 255, 255))
         draw.point((head_cx + 11, ey - 3), fill=(255, 255, 255, 255))
 
-    # Nose
+
+def _draw_nose(
+    draw: ImageDraw.ImageDraw, style: _FaceStyle, head_cx: int, head_cy: int
+) -> None:
+    """بینی کوچک مثلثی با سایهٔ ملایم روی رنگ پوست."""
+    skin_face = style.skin_face
     draw.polygon([
         (head_cx, head_cy + 6),
         (head_cx + 2, head_cy + 9),
         (head_cx, head_cy + 9),
     ], fill=(max(0, skin_face[0] - 50), max(0, skin_face[1] - 50), max(0, skin_face[2] - 50), 255))
 
-    # Mouth
+
+def _draw_mouth(
+    draw: ImageDraw.ImageDraw,
+    request: RenderRequest,
+    style: _FaceStyle,
+    head_cx: int,
+    head_cy: int,
+) -> None:
+    """دهان در چهار مدل: پوزخند، خنده باز، خط جدی یا لبخند."""
+    clean_mouth = style.clean_mouth
     my = head_cy + 19
     lip_color = (195, 65, 75, 255) if request.gender in ("زن", "دختر") else (170, 75, 70, 255)
     if clean_mouth == "2":  # Model 2: Smirk
@@ -640,19 +787,24 @@ def _render_face_and_badges(plate: Image.Image, request: RenderRequest) -> None:
             start=20, end=160, fill=lip_color, width=3,
         )
 
-    # Face Badges on left side
+
+def _draw_face_badges(
+    draw: ImageDraw.ImageDraw, style: _FaceStyle
+) -> None:
+    """بج‌های تستی سمت چپ چهره: شماره مدل چشم، ابرو و دهان."""
     font_badge = _font(13)
+
     def _to_fa(n: str | int) -> str:
         table = str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹")
         return str(n).translate(table)
 
-    eye_num = clean_eye if clean_eye in ("1", "2", "3", "4") else "1"
-    mouth_num = clean_mouth if clean_mouth in ("1", "2", "3", "4") else "1"
+    eye_num = style.clean_eye if style.clean_eye in ("1", "2", "3", "4") else "1"
+    mouth_num = style.clean_mouth if style.clean_mouth in ("1", "2", "3", "4") else "1"
 
     # Badge 1: Eye
     draw.rounded_rectangle(
         (20, 85, 140, 120), radius=8,
-        fill=(15, 23, 42, 235), outline=iris_base, width=2,
+        fill=(15, 23, 42, 235), outline=style.iris_base, width=2,
     )
     draw.text(
         (80, 102), f"چشم {_to_fa(eye_num)}",
@@ -679,6 +831,20 @@ def _render_face_and_badges(plate: Image.Image, request: RenderRequest) -> None:
         font=font_badge, fill=(255, 255, 255, 255), anchor="mm",
     )
 
+
+def _render_face_and_badges(plate: Image.Image, request: RenderRequest) -> None:
+    """Render anime facial features (eyebrows, eyes, mouth) and test badges on the mannequin."""
+    draw = ImageDraw.Draw(plate)
+    style = _face_style(request)
+    head_cx = 256
+    head_cy = 112
+
+    _draw_head_neck(draw, style, head_cx, head_cy)
+    _draw_eyebrows(draw, style, head_cx, head_cy)
+    _draw_eyes(draw, style, head_cx, head_cy)
+    _draw_nose(draw, style, head_cx, head_cy)
+    _draw_mouth(draw, request, style, head_cx, head_cy)
+    _draw_face_badges(draw, style)
 
 # ---------------------------------------------------------------------------
 # Compositor
@@ -820,16 +986,8 @@ class Compositor:
         # per-render alpha scan (1ms) and go straight to RGB.
         return self._encode(plate, assume_opaque=plate_opaque)
 
-    def _render_sutemo_boy(
-        self,
-        skin_num: str = "2",
-        eye_style: str = "1",
-        eye_color: str = "blue",
-        hair_style: str = "hair2",
-        hair_color: str = "black",
-        mouth_style: str = "2",
-    ) -> Image.Image:
-        """Render modular Sutemo visual novel anime boy bust."""
+    def _sutemo_layers(self) -> dict[str, Image.Image]:
+        """بارگذاری یک‌بار لایه‌های سوتیمو با مقیاس کارت (کش روی نمونه)."""
         if not hasattr(self, "_sutemo_cache"):
             self._sutemo_cache: dict[str, Image.Image] = {}
             sutemo_dir = Path(__file__).resolve().parent.parent / "assets" / "layers" / "sutemo"
@@ -845,110 +1003,37 @@ class Compositor:
                             img = img.resize(SUTEMEO_PLATE, Image.Resampling.LANCZOS)
                         self._sutemo_cache[p.name] = img
                     except Exception:
-                        pass
+                        logger.debug("sutemo asset load failed", exc_info=True)
+        return self._sutemo_cache
 
-        cached = self._sutemo_cache
-        if "body_skin.png" not in cached:
-            return self._assets.get("body", "base_female") or Image.new(
-                "RGBA", (CANVAS, CANVAS), (0, 0, 0, 0)
-            )
-
-        skin_tints = {
-            "1": (255, 240, 232),
-            "2": (252, 224, 210),
-            "3": (240, 204, 168),
-            "4": (223, 176, 136),
-            "5": (141, 91, 76),
-        }
-        hair_tints = {
-            "black": ((35, 35, 40), (120, 120, 130)),
-            "silver": ((235, 235, 245), (255, 255, 255)),
-            "brown": ((140, 95, 60), (200, 160, 120)),
-        }
-        eye_tints = {
-            "blue": (40, 110, 220),
-            "green": (40, 150, 90),
-            "amber": (190, 120, 40),
-            "purple": (140, 60, 190),
-            "violet": (140, 60, 190),
-            "black": (45, 45, 50),
-        }
-        hair_keys = {
-            "hair1": ("hair_short1_base.png", "hair_short1_hl.png"),
-            "hair2": ("hair_short2_base.png", "hair_short2_hl.png"),
-            "hair3": ("hair_sidebangs_base.png", "hair_sidebangs_hl.png"),
-            "hair4": ("hair_curly_base.png", "hair_curly_hl.png"),
-            "hair5": ("hair_bob_base.png", "hair_bob_hl.png"),
-        }
-        # Onboarding button order is 1=bright/round/friendly, 2=sharp/bold,
-        # 3=calm/dignified — which does NOT match the Sutemo asset file names
-        # (determined / neutral / friendly). Map button -> asset so the art
-        # always matches the label the user tapped.
-        eye_keys = {
-            "1": ("eyes_friendly_skin.png", "eyes_friendly_base.png", "eyes_friendly_static.png"),
-            "2": (
-                "eyes_determined_skin.png",
-                "eyes_determined_base.png",
-                "eyes_determined_static.png",
-            ),
-            "3": ("eyes_neutral_skin.png", "eyes_neutral_base.png", "eyes_neutral_static.png"),
-        }
-        mouth_keys = {
-            "1": ("mouth_smile_skin.png", None),
-            "2": ("mouth_smirk_skin.png", None),
-            "3": ("mouth_open_skin.png", "mouth_open_base.png"),
-            "4": ("mouth_stoic_skin.png", None),
-        }
-
-        clean_skin = str(skin_num).split("_")[-1] if "_" in str(skin_num) else str(skin_num)
-        clean_hair = str(hair_style).lower()
-        if clean_hair not in hair_keys:
-            clean_hair = "hair2"
-        clean_eye_shape = str(eye_style).replace("eyes", "").split("_")[0]
-        if clean_eye_shape not in eye_keys:
-            clean_eye_shape = "1"
-        clean_mouth = str(mouth_style).replace("mouth", "").split("_")[0]
-        if clean_mouth not in mouth_keys:
-            clean_mouth = "2"
-        clean_eye_color = str(eye_color).lower()
-        if clean_eye_color not in eye_tints:
-            clean_eye_color = "blue"
-        clean_hair_color = str(hair_color).lower()
-        if clean_hair_color not in hair_tints:
-            clean_hair_color = "black"
-
+    def _compose_sutemo(self, cached: dict[str, Image.Image], sel: _SutemoSel) -> Image.Image:
+        """چیدن لایه‌های سوتیمو روی پالت و برش نهایی سر و شانه."""
         char = Image.new("RGBA", SUTEMEO_PLATE, (0, 0, 0, 0))
+
         # Body skin
-        skin_raw = cached["body_skin.png"]
-        r, g, b, a = skin_raw.split()
-        st = skin_tints.get(clean_skin, skin_tints["2"])
-        tr = r.point(lambda p: int(p * st[0] / 255))
-        tg = g.point(lambda p: int(p * st[1] / 255))
-        tb = b.point(lambda p: int(p * st[2] / 255))
-        char.alpha_composite(Image.merge("RGBA", (tr, tg, tb, a)))
+        st = _SUTEMO_SKIN_TINTS.get(sel.skin, _SUTEMO_SKIN_TINTS["2"])
+        char.alpha_composite(_tint_layer(cached["body_skin.png"], st))
 
         if "body_highlights.png" in cached:
             char.alpha_composite(cached["body_highlights.png"])
 
         # Mouth
-        m_skin_file, m_base_file = mouth_keys.get(clean_mouth, mouth_keys["2"])
+        m_skin_file, m_base_file = _SUTEMO_MOUTH_KEYS.get(sel.mouth, _SUTEMO_MOUTH_KEYS["2"])
         if m_skin_file and m_skin_file in cached:
             char.alpha_composite(cached[m_skin_file])
         if m_base_file and m_base_file in cached:
             char.alpha_composite(cached[m_base_file])
 
         # Eyes
-        e_skin_file, e_base_file, e_stat_file = eye_keys.get(clean_eye_shape, eye_keys["1"])
+        e_skin_file, e_base_file, e_stat_file = _SUTEMO_EYE_KEYS.get(
+            sel.eye_shape, _SUTEMO_EYE_KEYS["1"]
+        )
         if e_skin_file and e_skin_file in cached:
             char.alpha_composite(cached[e_skin_file])
         if e_base_file and e_base_file in cached:
-            e_im = cached[e_base_file]
-            er, eg, eb, ea = e_im.split()
-            ec = eye_tints[clean_eye_color]
-            ter = er.point(lambda p: int(p * ec[0] / 255))
-            teg = eg.point(lambda p: int(p * ec[1] / 255))
-            teb = eb.point(lambda p: int(p * ec[2] / 255))
-            char.alpha_composite(Image.merge("RGBA", (ter, teg, teb, ea)))
+            char.alpha_composite(
+                _tint_layer(cached[e_base_file], _SUTEMO_EYE_TINTS[sel.eye_color])
+            )
         if e_stat_file and e_stat_file in cached:
             char.alpha_composite(cached[e_stat_file])
 
@@ -957,15 +1042,11 @@ class Compositor:
             char.alpha_composite(cached["outfit_casual1_base.png"])
 
         # Hair
-        h_base_file, h_hl_file = hair_keys.get(clean_hair, hair_keys["hair2"])
+        h_base_file, h_hl_file = _SUTEMO_HAIR_KEYS.get(sel.hair, _SUTEMO_HAIR_KEYS["hair2"])
         if h_base_file and h_base_file in cached:
-            h_im = cached[h_base_file]
-            hr, hg, hb, ha = h_im.split()
-            hc = hair_tints[clean_hair_color][0]
-            thr = hr.point(lambda p: int(p * hc[0] / 255))
-            thg = hg.point(lambda p: int(p * hc[1] / 255))
-            thb = hb.point(lambda p: int(p * hc[2] / 255))
-            char.alpha_composite(Image.merge("RGBA", (thr, thg, thb, ha)))
+            char.alpha_composite(
+                _tint_layer(cached[h_base_file], _SUTEMO_HAIR_TINTS[sel.hair_color][0])
+            )
         if h_hl_file and h_hl_file in cached:
             char.alpha_composite(cached[h_hl_file])
 
@@ -973,6 +1054,27 @@ class Compositor:
         # because the load-time scale (512/1000) maps the (0,80)-(1000,1080)
         # source window onto (0,41)-(512,553).
         return char.crop(SUTEMEO_CROP)
+
+    def _render_sutemo_boy(
+        self,
+        skin_num: str = "2",
+        eye_style: str = "1",
+        eye_color: str = "blue",
+        hair_style: str = "hair2",
+        hair_color: str = "black",
+        mouth_style: str = "2",
+    ) -> Image.Image:
+        """Render modular Sutemo visual novel anime boy bust."""
+        cached = self._sutemo_layers()
+        if "body_skin.png" not in cached:
+            return self._assets.get("body", "base_female") or Image.new(
+                "RGBA", (CANVAS, CANVAS), (0, 0, 0, 0)
+            )
+
+        sel = _sutemo_selections(
+            skin_num, eye_style, eye_color, hair_style, hair_color, mouth_style
+        )
+        return self._compose_sutemo(cached, sel)
 
     def _base(
         self,

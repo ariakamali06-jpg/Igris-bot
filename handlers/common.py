@@ -19,7 +19,13 @@ from collections.abc import Callable, Collection
 from typing import ClassVar, cast
 
 from aiogram.filters import BaseFilter, CommandObject
-from aiogram.types import CallbackQuery, InaccessibleMessage, Message
+from aiogram.types import (
+    CallbackQuery,
+    InaccessibleMessage,
+    InlineKeyboardButton,
+    Message,
+    WebAppInfo,
+)
 from PIL import Image
 
 from models import Player
@@ -41,6 +47,10 @@ __all__ = [
     "message_error",
     "energy_bar",
     "editable_message",
+    "bot_username",
+    "is_group_chat",
+    "deep_link_button",
+    "miniapp_button",
     "extract_args",
     "CommandOrText",
     "is_admin_or_owner",
@@ -201,6 +211,44 @@ def editable_message(call: CallbackQuery) -> Message | None:
     if message is None or isinstance(message, InaccessibleMessage):
         return None
     return cast("Message", message)
+
+
+def bot_username() -> str:
+    """نام کاربری واقعی ربات برای ساخت دیپ‌لینک (بدون @ ابتدایی)."""
+    from config import settings
+    from services import avatar
+
+    return (avatar.RUNTIME_BOT_USERNAME or settings.bot_username or "").lstrip("@")
+
+
+def is_group_chat(chat_type: str | None) -> bool:
+    """آیا چت یک گروه/سوپرگروه است؟ (دکمه web_app در پیام گروهی مجاز نیست)."""
+    return chat_type in ("group", "supergroup")
+
+
+def deep_link_button(
+    text: str, payload: str, username: str | None = None
+) -> InlineKeyboardButton:
+    """دکمه دیپ‌لینک به پیوی ربات (مثل t.me/bot?start=customizer)."""
+    name = (username or bot_username() or "igrisbot").lstrip("@")
+    return InlineKeyboardButton(text=text, url=f"https://t.me/{name}?start={payload}")
+
+
+def miniapp_button(
+    text: str,
+    url: str,
+    in_group: bool = False,
+    payload: str = "app",
+    chat_type: str | None = None,
+) -> InlineKeyboardButton:
+    """دکمه مینی‌اپ یا دیپ‌لینک امن: در گروه → لینک به پیوی ربات، در پیوی → web_app واقعی.
+
+    این تنها سازندهٔ دکمه‌های مینی‌اپ است و همه‌جا باید از همین استفاده شود:
+    دکمه web_app در پیام گروهی، توسط تلگرام کل پیام را رد می‌کند.
+    """
+    if in_group or is_group_chat(chat_type):
+        return deep_link_button(text, payload)
+    return InlineKeyboardButton(text=text, web_app=WebAppInfo(url=url))
 
 
 def esc(text: str | None) -> str:

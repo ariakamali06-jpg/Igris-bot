@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import logging
 import time
+from typing import Any
 
 import aiosqlite
 
@@ -180,20 +181,25 @@ async def load_player(user_id: int, display_name: str | None = None) -> Player |
         return await _load_conn(conn, user_id, current, display_name)
 
 
-async def _load_conn(
-    conn: aiosqlite.Connection,
-    user_id: int,
-    current: int,
-    display_name: str | None = None,
-) -> Player:
-    cursor = await conn.execute("SELECT * FROM players WHERE user_id = ?", (user_id,))
-    row = await cursor.fetchone()
-    await cursor.close()
-    if row is None:  # pragma: no cover - callers check existence first
-        raise GameError(f"player {user_id} vanished mid-transaction")
+def _field_int(row: Any, keys: list[str], col: str, default: int) -> int:
+    """مقدار عددی ستون با الگوی ``int(row[col] or default)`` (مقدار صفر هم به default می‌رسد)."""
+    return int(row[col] or default) if col in keys else default
 
-    energy, updated_at = _regen_window(row["energy"], row["energy_updated_at"], current)
 
+def _field_str(row: Any, keys: list[str], col: str, default: str) -> str:
+    """مقدار متنی ستون با الگوی ``str(row[col] or default)``."""
+    return str(row[col] or default) if col in keys else default
+
+
+def _field_raw(row: Any, keys: list[str], col: str) -> Any:
+    """مقدار خام ستون (برای فیلدهای nullable مثل شناسه‌ها)."""
+    return row[col] if col in keys else None
+
+
+async def _load_gear(
+    conn: aiosqlite.Connection, user_id: int
+) -> tuple[StatBlock, dict[str, str | None]]:
+    """بارگذاری تجهیزات پوشیده و مجموع امتیازهای نبرد."""
     gear = StatBlock()
     loadout: dict[str, str | None] = {slot.value: None for slot in Slot}
     cursor = await conn.execute(
@@ -208,11 +214,13 @@ async def _load_conn(
         loadout[eq["slot"]] = eq["item_id"]
         gear = gear + StatBlock(eq["atk"], eq["defense"], eq["drip"])
     await cursor.close()
+    return gear, loadout
 
-    keys = row.keys()
-    level = int(row["level"] or 1)
 
-    # محاسبه و بازیابی حداقل سابقه کاری بر اساس لول کاراکتر
+def _derive_work_and_education(
+    row: Any, keys: list[str], level: int
+) -> tuple[int, int, str]:
+    """محاسبه و بازیابی حداقل سابقه کاری و مدرک تحصیلی بر اساس لول و شغل."""
     min_work = 0
     if level >= 6:
         min_work = 300
@@ -226,13 +234,8 @@ async def _load_conn(
         min_work = 10
 
     raw_work = row["work_count"] if "work_count" in keys else 0
-    work_count = (
-        int(raw_work)
-        if raw_work is not None and int(raw_work) > 0
-        else min_work
-    )
+    work_count = int(raw_work) if raw_work is not None and int(raw_work) > 0 else min_work
 
-    # محاسبه و بازیابی مدرک تحصیلی بر اساس شغل کاراکتر
     job = str(row["job"] or "بیکار") if "job" in keys else "بیکار"
     req_edu = 0
     if job in ("مدیر پروژه", "تحلیلگر ارشد بورس", "معمار ارشد"):
@@ -244,7 +247,20 @@ async def _load_conn(
 
     raw_edu = row["education_level"] if "education_level" in keys else 0
     education_level = max(int(raw_edu or 0), req_edu)
+    return work_count, education_level, job
 
+
+async def _persist_derived(
+    conn: aiosqlite.Connection,
+    user_id: int,
+    row: Any,
+    keys: list[str],
+    energy: int,
+    updated_at: int,
+    work_count: int,
+    education_level: int,
+) -> None:
+    """ثبت مقادیر بازیابی‌شده (انرژی، سابقه کاری، مدرک) در صورت تغییر."""
     updates: dict[str, int | str] = {}
     if (energy, updated_at) != (row["energy"], row["energy_updated_at"]):
         updates["energy"] = energy
@@ -261,90 +277,128 @@ async def _load_conn(
         vals = list(updates.values()) + [user_id]
         await conn.execute(f"UPDATE players SET {', '.join(set_parts)} WHERE user_id = ?", vals)
 
+
+def _build_player(
+    row: Any,
+    keys: list[str],
+    *,
+    user_id: int,
+    display_name: str | None,
+    energy: int,
+    updated_at: int,
+    gear: StatBlock,
+    loadout: dict[str, str | None],
+    work_count: int,
+    education_level: int,
+    job: str,
+) -> Player:
+    """ساخت Player از روی ردیف دیتابیس (نگاشت ستون‌ها با پیش‌فرض‌های امن)."""
+    level = int(row["level"] or 1)
     return Player(
         user_id=user_id,
         display_name=row["display_name"] if display_name is None else display_name,
-        username=row["username"],
+        username=_field_raw(row, keys, "username"),
         level=level,
-        exp=int(row["exp"] or 0),
+        exp=_field_int(row, keys, "exp", 0),
         energy=int(energy or 0),
         energy_updated_at=int(updated_at or 0),
-        base_atk=int(row["base_atk"] or 10),
-        base_def=int(row["base_def"] or 8),
-        base_drip=int(row["base_drip"] or 5),
-        last_daily=int(row["last_daily"] or 0),
-        created_at=int(row["created_at"] or 0),
-        last_seen=int(row["last_seen"] or 0),
+        base_atk=_field_int(row, keys, "base_atk", 10),
+        base_def=_field_int(row, keys, "base_def", 8),
+        base_drip=_field_int(row, keys, "base_drip", 5),
+        last_daily=_field_int(row, keys, "last_daily", 0),
+        created_at=_field_int(row, keys, "created_at", 0),
+        last_seen=_field_int(row, keys, "last_seen", 0),
         gear=gear,
         loadout=loadout,
-        gender=str(row["gender"] or "نامشخص") if "gender" in keys else "نامشخص",
-        age=int(row["age"] or 20) if "age" in keys else 20,
-        skin_tone=str(row["skin_tone"] or "fair") if "skin_tone" in keys else "fair",
-        eye_color=str(row["eye_color"] or "amber") if "eye_color" in keys else "amber",
-        body_stance=(
-            str(row["body_stance"] or "base_street")
-            if "body_stance" in keys
-            else "base_street"
-        ),
-        hair_color=str(row["hair_color"] or "black") if "hair_color" in keys else "black",
-        onboarding_completed=(
-            int(row["onboarding_completed"] or 0)
-            if "onboarding_completed" in keys
-            else 0
-        ),
+        gender=_field_str(row, keys, "gender", "نامشخص"),
+        age=_field_int(row, keys, "age", 20),
+        skin_tone=_field_str(row, keys, "skin_tone", "fair"),
+        eye_color=_field_str(row, keys, "eye_color", "amber"),
+        body_stance=_field_str(row, keys, "body_stance", "base_street"),
+        hair_color=_field_str(row, keys, "hair_color", "black"),
+        onboarding_completed=_field_int(row, keys, "onboarding_completed", 0),
         education_level=education_level,
         job=job,
-        spouse_id=row["spouse_id"] if "spouse_id" in keys else None,
-        marriage_date=int(row["marriage_date"] or 0) if "marriage_date" in keys else 0,
-        children_count=int(row["children_count"] or 0) if "children_count" in keys else 0,
-        is_pregnant_until=int(row["is_pregnant_until"] or 0) if "is_pregnant_until" in keys else 0,
-        is_jailed_until=int(row["is_jailed_until"] or 0) if "is_jailed_until" in keys else 0,
-        shield_until=int(row["shield_until"] or 0) if "shield_until" in keys else 0,
-        pet_level=int(row["pet_level"] or 0) if "pet_level" in keys else 0,
-        affair_count=int(row["affair_count"] or 0) if "affair_count" in keys else 0,
-        bank_balance=int(row["bank_balance"] or 0) if "bank_balance" in keys else 0,
-        loan_amount=int(row["loan_amount"] or 0) if "loan_amount" in keys else 0,
-        loan_due=int(row["loan_due"] or 0) if "loan_due" in keys else 0,
-        last_work_time=int(row["last_work_time"] or 0) if "last_work_time" in keys else 0,
-        last_study_time=int(row["last_study_time"] or 0) if "last_study_time" in keys else 0,
-        last_steal_time=int(row["last_steal_time"] or 0) if "last_steal_time" in keys else 0,
-        last_duel_time=int(row["last_duel_time"] or 0) if "last_duel_time" in keys else 0,
-        last_intimacy_time=(
-            int(row["last_intimacy_time"] or 0)
-            if "last_intimacy_time" in keys
-            else 0
-        ),
-        last_affair_time=int(row["last_affair_time"] or 0) if "last_affair_time" in keys else 0,
-        eye_style=str(row["eye_style"] or "eyes1_1") if "eye_style" in keys else "eyes1_1",
-        nose_style=(
-            str(row["nose_style"] or "nose_natural")
-            if "nose_style" in keys
-            else "nose_natural"
-        ),
-        mouth_style=str(row["mouth_style"] or "mouth1_1") if "mouth_style" in keys else "mouth1_1",
-        hair_style=str(row["hair_style"] or "hair1") if "hair_style" in keys else "hair1",
-        clan_id=row["clan_id"] if "clan_id" in keys else None,
-        clan_role=row["clan_role"] if "clan_role" in keys else None,
-        education_step=int(row["education_step"] or 0) if "education_step" in keys else 0,
+        spouse_id=_field_raw(row, keys, "spouse_id"),
+        marriage_date=_field_int(row, keys, "marriage_date", 0),
+        children_count=_field_int(row, keys, "children_count", 0),
+        is_pregnant_until=_field_int(row, keys, "is_pregnant_until", 0),
+        is_jailed_until=_field_int(row, keys, "is_jailed_until", 0),
+        shield_until=_field_int(row, keys, "shield_until", 0),
+        pet_level=_field_int(row, keys, "pet_level", 0),
+        affair_count=_field_int(row, keys, "affair_count", 0),
+        bank_balance=_field_int(row, keys, "bank_balance", 0),
+        loan_amount=_field_int(row, keys, "loan_amount", 0),
+        loan_due=_field_int(row, keys, "loan_due", 0),
+        last_work_time=_field_int(row, keys, "last_work_time", 0),
+        last_study_time=_field_int(row, keys, "last_study_time", 0),
+        last_steal_time=_field_int(row, keys, "last_steal_time", 0),
+        last_duel_time=_field_int(row, keys, "last_duel_time", 0),
+        last_intimacy_time=_field_int(row, keys, "last_intimacy_time", 0),
+        last_affair_time=_field_int(row, keys, "last_affair_time", 0),
+        eye_style=_field_str(row, keys, "eye_style", "eyes1_1"),
+        nose_style=_field_str(row, keys, "nose_style", "nose_natural"),
+        mouth_style=_field_str(row, keys, "mouth_style", "mouth1_1"),
+        hair_style=_field_str(row, keys, "hair_style", "hair1"),
+        clan_id=_field_raw(row, keys, "clan_id"),
+        clan_role=_field_raw(row, keys, "clan_role"),
+        education_step=_field_int(row, keys, "education_step", 0),
         work_count=work_count,
-        hp=int(row["hp"] or 100) if "hp" in keys else 100,
-        max_hp=int(row["max_hp"] or 100) if "max_hp" in keys else 100,
-        sickness=str(row["sickness"] or "healthy") if "sickness" in keys else "healthy",
-        reputation=int(row["reputation"] or 100) if "reputation" in keys else 100,
-        title=str(row["title"] or "شهروند عادی") if "title" in keys else "شهروند عادی",
-        bio=str(row["bio"] or "") if "bio" in keys else "",
-        total_earned=int(row["total_earned"] or 0) if "total_earned" in keys else 0,
-        total_spent=int(row["total_spent"] or 0) if "total_spent" in keys else 0,
-        duels_won=int(row["duels_won"] or 0) if "duels_won" in keys else 0,
-        duels_lost=int(row["duels_lost"] or 0) if "duels_lost" in keys else 0,
-        thefts_success=int(row["thefts_success"] or 0) if "thefts_success" in keys else 0,
-        thefts_failed=int(row["thefts_failed"] or 0) if "thefts_failed" in keys else 0,
-        total_stolen=int(row["total_stolen"] or 0) if "total_stolen" in keys else 0,
-        jail_count=int(row["jail_count"] or 0) if "jail_count" in keys else 0,
-        meals_eaten=int(row["meals_eaten"] or 0) if "meals_eaten" in keys else 0,
-        hospital_visits=int(row["hospital_visits"] or 0) if "hospital_visits" in keys else 0,
-        divorce_count=int(row["divorce_count"] or 0) if "divorce_count" in keys else 0,
-        daily_streak=int(row["daily_streak"] or 0) if "daily_streak" in keys else 0,
+        hp=_field_int(row, keys, "hp", 100),
+        max_hp=_field_int(row, keys, "max_hp", 100),
+        sickness=_field_str(row, keys, "sickness", "healthy"),
+        reputation=_field_int(row, keys, "reputation", 100),
+        title=_field_str(row, keys, "title", "شهروند عادی"),
+        bio=_field_str(row, keys, "bio", ""),
+        total_earned=_field_int(row, keys, "total_earned", 0),
+        total_spent=_field_int(row, keys, "total_spent", 0),
+        duels_won=_field_int(row, keys, "duels_won", 0),
+        duels_lost=_field_int(row, keys, "duels_lost", 0),
+        thefts_success=_field_int(row, keys, "thefts_success", 0),
+        thefts_failed=_field_int(row, keys, "thefts_failed", 0),
+        total_stolen=_field_int(row, keys, "total_stolen", 0),
+        jail_count=_field_int(row, keys, "jail_count", 0),
+        meals_eaten=_field_int(row, keys, "meals_eaten", 0),
+        hospital_visits=_field_int(row, keys, "hospital_visits", 0),
+        divorce_count=_field_int(row, keys, "divorce_count", 0),
+        daily_streak=_field_int(row, keys, "daily_streak", 0),
+    )
+
+
+async def _load_conn(
+    conn: aiosqlite.Connection,
+    user_id: int,
+    current: int,
+    display_name: str | None = None,
+) -> Player:
+    cursor = await conn.execute("SELECT * FROM players WHERE user_id = ?", (user_id,))
+    row = await cursor.fetchone()
+    await cursor.close()
+    if row is None:  # pragma: no cover - callers check existence first
+        raise GameError(f"player {user_id} vanished mid-transaction")
+
+    energy, updated_at = _regen_window(row["energy"], row["energy_updated_at"], current)
+    gear, loadout = await _load_gear(conn, user_id)
+
+    keys = row.keys()
+    level = int(row["level"] or 1)
+    work_count, education_level, job = _derive_work_and_education(row, keys, level)
+    await _persist_derived(
+        conn, user_id, row, keys, energy, updated_at, work_count, education_level
+    )
+
+    return _build_player(
+        row,
+        keys,
+        user_id=user_id,
+        display_name=display_name,
+        energy=energy,
+        updated_at=updated_at,
+        gear=gear,
+        loadout=loadout,
+        work_count=work_count,
+        education_level=education_level,
+        job=job,
     )
 
 

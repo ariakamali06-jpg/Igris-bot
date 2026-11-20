@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import contextlib
 import logging
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from typing import Any
 
 from aiogram import F, Router
@@ -95,15 +97,32 @@ async def _profile_markup(
     )
 
 
-async def _profile_panel(player: Player, active_tab: str = "main") -> tuple[str, bytes]:
-    """
-    تولید متن دسته‌بندی‌شده شناسنامه شهروندی و دریافت تصویر زنده آواتار کاراکتر.
-    """
-    import time
+@dataclass
+class _ProfileCtx:
+    """داده‌های مشترک بین تب‌های شناسنامه."""
 
-    from services import properties, tiramix
+    player: Player
+    p_name: str
+    credits: int
+    now: int
+    jail_status: str
+    pregnancy_status: str
+    marital_status: str
+    clan_name: str
+    pet_status: str
+    shield_status: str
+    children_str: str
+    job_wage: int
 
-    # ۱. دریافت تصویر آواتار اوراسکایز با کیفیت ۴ برابری و پس‌زمینه شفاف
+
+def _energy_str(energy: int) -> str:
+    if energy <= 100:
+        return f"<b>{energy}/100</b>"
+    return f"<b>{energy}⚡️ (سوپرشارژ 🔥)</b>"
+
+
+async def _profile_photo(player: Player) -> bytes:
+    """دریافت تصویر آواتار زنده؛ فال‌بک به کارت محلی کامپوزیتور."""
     photo: bytes | None = None
     try:
         render_url = await avatar.get_player_render_url(player.user_id)
@@ -117,13 +136,14 @@ async def _profile_panel(player: Player, active_tab: str = "main") -> tuple[str,
             player.user_id,
             exc,
         )
-
-    # ۲. فال‌بک امن: در صورت نبود عکس، از کارت محلی کامپوزیتور استفاده می‌شود
     if not photo:
         photo = await card_bytes(player)
+    return photo
 
-    credits, _ = await economy.balances(player.user_id)
-    now = int(time.time())
+
+async def _profile_ctx(player: Player, credits: int, now: int) -> _ProfileCtx:
+    """جمع‌آوری وضعیت‌های مشتق‌شده برای متن تب‌ها."""
+    from services import tiramix
 
     jail_rem = int((player.is_jailed_until - now) // 60)
     jail_status = (
@@ -146,115 +166,159 @@ async def _profile_panel(player: Player, active_tab: str = "main") -> tuple[str,
         if player.shield_until > now
         else "غیرفعال"
     )
-
     children_str = f"👶 <b>فرزندان:</b> {player.children_count} {pregnancy_status}".strip()
 
     job_info = tiramix.JOBS_CATALOG.get(player.job)
     job_wage = job_info["wage"] if job_info else 120
 
-    p_name = esc(player.username or player.display_name)
-    if active_tab == "stats":
-        energy_str = (
-            f"<b>{player.energy}/100</b>"
-            if player.energy <= 100
-            else f"<b>{player.energy}⚡️ (سوپرشارژ 🔥)</b>"
-        )
-        lines = [
-            "📊 <b>آمار مبارزه، مشخصات فیزیکی و سوابق شهری</b>",
-            "━━━━━━━━━━━━━━━━━━━━",
-            f"👤 <b>شهروند:</b> {p_name} (لول <b>{player.level}</b>)",
-            f"🎖 <b>عنوان شهروندی:</b> {player.title}",
-            f"❤️ <b>سلامت جسمانی:</b> <b>{player.hp}/{player.max_hp}</b>",
-            f"⚔️ <b>قدرت تهاجمی (ATK):</b> <b>{player.atk}</b>",
-            f"🛡 <b>دفاع و استقامت (DEF):</b> <b>{player.defense}</b>",
-            f"💎 <b>امتیاز استایل شهری (DRIP):</b> <b>{player.drip}</b>",
-            f"⚡️ <b>انرژی فعلی:</b> {energy_str}",
-            f"🏆 <b>سوابق دوئل:</b> {player.duels_won} برد / {player.duels_lost} باخت",
-            (
-                f"🥷 <b>سرقت‌های موفق:</b> {player.thefts_success} بار "
-                f"({player.total_stolen:,} رکسار)"
-            ),
-            f"🐺 <b>حیوان دست‌آموز (پت):</b> {pet_status}",
-            f"🛡 <b>سپر ضدسرقت:</b> {shield_status}",
-            f"⚖️ <b>وضعیت قضایی:</b> {jail_status}",
-            "━━━━━━━━━━━━━━━━━━━━",
-            "💡 <i>برای دیدن سایر اطلاعات، از دکمه‌های زیر استفاده کنید.</i>",
-        ]
-    elif active_tab == "job":
-        lines = [
-            "💼 <b>وضعیت شغلی و پیشرفت تحصیلی</b>",
-            "━━━━━━━━━━━━━━━━━━━━",
-            f"👤 <b>شهروند:</b> {p_name}",
-            f"💼 <b>عنوان شغل:</b> <b>{player.job}</b>",
-            f"💵 <b>دستمزد پایه:</b> <b>{job_wage:,}</b> رکسار در ساعت",
-            f"🔨 <b>شیفت‌های کاری انجام‌شده:</b> <b>{player.work_count}</b> بار",
-            f"🎓 <b>مدرک تحصیلی:</b> <b>{player.education_title}</b>",
-            f"📚 <b>وضعیت دوره:</b> {player.education_progress_text}",
-            "━━━━━━━━━━━━━━━━━━━━",
-            "💡 <i>جهت کار: <code>کار</code> · ارتقای مدرک: <code>تحصیل</code></i>",
-        ]
-    elif active_tab == "assets":
-        owned_props = await properties.owned_rows(player.user_id, properties.KIND_PROPERTY)
-        owned_workers = await properties.owned_rows(player.user_id, properties.KIND_WORKER)
-        accrued = 0
-        for r in owned_props:
-            entry = properties._entry_or_default(properties.KIND_PROPERTY, r["name"])
-            accrued += properties.pending_income(
-                entry["income"], r["level"], r["last_collect"], now
-            )
-        for r in owned_workers:
-            entry = properties._entry_or_default(properties.KIND_WORKER, r["name"])
-            accrued += properties.pending_income(
-                entry["income"], r["level"], r["last_collect"], now
-            )
+    return _ProfileCtx(
+        player=player,
+        p_name=esc(player.username or player.display_name),
+        credits=credits,
+        now=now,
+        jail_status=jail_status,
+        pregnancy_status=pregnancy_status,
+        marital_status=marital_status,
+        clan_name=clan_name,
+        pet_status=pet_status,
+        shield_status=shield_status,
+        children_str=children_str,
+        job_wage=job_wage,
+    )
 
-        prop_names = "، ".join(r["name"] for r in owned_props) if owned_props else "ندارد"
-        worker_names = "، ".join(r["name"] for r in owned_workers) if owned_workers else "ندارد"
 
-        lines = [
-            "🏠 <b>املاک، دارایی‌ها و نیروهای تحت امر</b>",
-            "━━━━━━━━━━━━━━━━━━━━",
-            f"🏢 <b>املاک شخصی ({len(owned_props)} ملک):</b> {prop_names}",
-            f"👥 <b>نیروها و نوچه‌ها ({len(owned_workers)} نفر):</b> {worker_names}",
-            f"💰 <b>درآمد منفعل انباشته:</b> <b>{accrued:,}</b> رکسار",
-            f"🏦 <b>سپرده گاوصندوق بانک:</b> <b>{player.bank_balance:,}</b> رکسار",
-            f"💵 <b>پول نقد کیف پول:</b> <b>{credits:,}</b> رکسار",
-            "━━━━━━━━━━━━━━━━━━━━",
-            "💡 <i>جهت خرید: دستور <code>املاک</code> یا <code>نوچه</code></i>",
-        ]
-    elif active_tab == "social":
-        lines = [
-            "💍 <b>زندگی اجتماعی، خانواده و سندیکا</b>",
-            "━━━━━━━━━━━━━━━━━━━━",
-            f"👤 <b>شهروند:</b> {p_name}",
-            f"💍 <b>وضعیت تأهل:</b> {marital_status}",
-            f"{children_str}",
-            f"🛡 <b>کلن و سندیکا:</b> {clan_name}",
-            f"🤫 <b>سوابق خیانت مخفی:</b> {player.affair_count} بار",
-            f"⚖️ <b>وضعیت آزادی:</b> {jail_status}",
-            "━━━━━━━━━━━━━━━━━━━━",
-            "💡 <i>دستورات ازدواج، طلاق و کلن در راهنما در دسترس است.</i>",
-        ]
-    else:  # main summary tab
-        main_energy_str = (
-            f"<b>{player.energy}/100</b>"
-            if player.energy <= 100
-            else f"<b>{player.energy}⚡️ (سوپرشارژ 🔥)</b>"
+async def _tab_stats(ctx: _ProfileCtx) -> list[str]:
+    player = ctx.player
+    return [
+        "📊 <b>آمار مبارزه، مشخصات فیزیکی و سوابق شهری</b>",
+        "━━━━━━━━━━━━━━━━━━━━",
+        f"👤 <b>شهروند:</b> {ctx.p_name} (لول <b>{player.level}</b>)",
+        f"🎖 <b>عنوان شهروندی:</b> {player.title}",
+        f"❤️ <b>سلامت جسمانی:</b> <b>{player.hp}/{player.max_hp}</b>",
+        f"⚔️ <b>قدرت تهاجمی (ATK):</b> <b>{player.atk}</b>",
+        f"🛡 <b>دفاع و استقامت (DEF):</b> <b>{player.defense}</b>",
+        f"💎 <b>امتیاز استایل شهری (DRIP):</b> <b>{player.drip}</b>",
+        f"⚡️ <b>انرژی فعلی:</b> {_energy_str(player.energy)}",
+        f"🏆 <b>سوابق دوئل:</b> {player.duels_won} برد / {player.duels_lost} باخت",
+        (
+            f"🥷 <b>سرقت‌های موفق:</b> {player.thefts_success} بار "
+            f"({player.total_stolen:,} رکسار)"
+        ),
+        f"🐺 <b>حیوان دست‌آموز (پت):</b> {ctx.pet_status}",
+        f"🛡 <b>سپر ضدسرقت:</b> {ctx.shield_status}",
+        f"⚖️ <b>وضعیت قضایی:</b> {ctx.jail_status}",
+        "━━━━━━━━━━━━━━━━━━━━",
+        "💡 <i>برای دیدن سایر اطلاعات، از دکمه‌های زیر استفاده کنید.</i>",
+    ]
+
+
+async def _tab_job(ctx: _ProfileCtx) -> list[str]:
+    player = ctx.player
+    return [
+        "💼 <b>وضعیت شغلی و پیشرفت تحصیلی</b>",
+        "━━━━━━━━━━━━━━━━━━━━",
+        f"👤 <b>شهروند:</b> {ctx.p_name}",
+        f"💼 <b>عنوان شغل:</b> <b>{player.job}</b>",
+        f"💵 <b>دستمزد پایه:</b> <b>{ctx.job_wage:,}</b> رکسار در ساعت",
+        f"🔨 <b>شیفت‌های کاری انجام‌شده:</b> <b>{player.work_count}</b> بار",
+        f"🎓 <b>مدرک تحصیلی:</b> <b>{player.education_title}</b>",
+        f"📚 <b>وضعیت دوره:</b> {player.education_progress_text}",
+        "━━━━━━━━━━━━━━━━━━━━",
+        "💡 <i>جهت کار: <code>کار</code> · ارتقای مدرک: <code>تحصیل</code></i>",
+    ]
+
+
+async def _tab_assets(ctx: _ProfileCtx) -> list[str]:
+    from services import properties
+
+    player = ctx.player
+    owned_props = await properties.owned_rows(player.user_id, properties.KIND_PROPERTY)
+    owned_workers = await properties.owned_rows(player.user_id, properties.KIND_WORKER)
+    accrued = 0
+    for r in owned_props:
+        entry = properties._entry_or_default(properties.KIND_PROPERTY, r["name"])
+        accrued += properties.pending_income(
+            entry["income"], r["level"], r["last_collect"], ctx.now
         )
-        lines = [
-            "🍁 <b>شناسنامه شهروندی شهر تیرامیکس</b>",
-            "━━━━━━━━━━━━━━━━━━━━",
-            f"👤 <b>نام:</b> {p_name} (لول <b>{player.level}</b>)",
-            f"🎂 <b>سن:</b> {player.age} سال | ⚧ <b>جنسیت:</b> {player.gender}",
-            f"⚡️ <b>سطح انرژی:</b> {main_energy_str}",
-            f"💼 <b>شغل:</b> {player.job} | 🎓 <b>مدرک:</b> {player.education_title}",
-            (
-                f"💰 <b>کیف پول:</b> <b>{credits:,}</b> رکسار | "
-                f"🏦 <b>بانک:</b> <b>{player.bank_balance:,}</b> رکسار"
-            ),
-            "━━━━━━━━━━━━━━━━━━━━",
-            "👇 <i>برای مشاهده جزئیات بیشتر، بخش مورد نظر را لمس کنید:</i>",
-        ]
+    for r in owned_workers:
+        entry = properties._entry_or_default(properties.KIND_WORKER, r["name"])
+        accrued += properties.pending_income(
+            entry["income"], r["level"], r["last_collect"], ctx.now
+        )
+
+    prop_names = "، ".join(r["name"] for r in owned_props) if owned_props else "ندارد"
+    worker_names = "، ".join(r["name"] for r in owned_workers) if owned_workers else "ندارد"
+
+    return [
+        "🏠 <b>املاک، دارایی‌ها و نیروهای تحت امر</b>",
+        "━━━━━━━━━━━━━━━━━━━━",
+        f"🏢 <b>املاک شخصی ({len(owned_props)} ملک):</b> {prop_names}",
+        f"👥 <b>نیروها و نوچه‌ها ({len(owned_workers)} نفر):</b> {worker_names}",
+        f"💰 <b>درآمد منفعل انباشته:</b> <b>{accrued:,}</b> رکسار",
+        f"🏦 <b>سپرده گاوصندوق بانک:</b> <b>{player.bank_balance:,}</b> رکسار",
+        f"💵 <b>پول نقد کیف پول:</b> <b>{ctx.credits:,}</b> رکسار",
+        "━━━━━━━━━━━━━━━━━━━━",
+        "💡 <i>جهت خرید: دستور <code>املاک</code> یا <code>نوچه</code></i>",
+    ]
+
+
+async def _tab_social(ctx: _ProfileCtx) -> list[str]:
+    player = ctx.player
+    return [
+        "💍 <b>زندگی اجتماعی، خانواده و سندیکا</b>",
+        "━━━━━━━━━━━━━━━━━━━━",
+        f"👤 <b>شهروند:</b> {ctx.p_name}",
+        f"💍 <b>وضعیت تأهل:</b> {ctx.marital_status}",
+        f"{ctx.children_str}",
+        f"🛡 <b>کلن و سندیکا:</b> {ctx.clan_name}",
+        f"🤫 <b>سوابق خیانت مخفی:</b> {player.affair_count} بار",
+        f"⚖️ <b>وضعیت آزادی:</b> {ctx.jail_status}",
+        "━━━━━━━━━━━━━━━━━━━━",
+        "💡 <i>دستورات ازدواج، طلاق و کلن در راهنما در دسترس است.</i>",
+    ]
+
+
+async def _tab_main(ctx: _ProfileCtx) -> list[str]:
+    player = ctx.player
+    return [
+        "🍁 <b>شناسنامه شهروندی شهر تیرامیکس</b>",
+        "━━━━━━━━━━━━━━━━━━━━",
+        f"👤 <b>نام:</b> {ctx.p_name} (لول <b>{player.level}</b>)",
+        f"🎂 <b>سن:</b> {player.age} سال | ⚧ <b>جنسیت:</b> {player.gender}",
+        f"⚡️ <b>سطح انرژی:</b> {_energy_str(player.energy)}",
+        f"💼 <b>شغل:</b> {player.job} | 🎓 <b>مدرک:</b> {player.education_title}",
+        (
+            f"💰 <b>کیف پول:</b> <b>{ctx.credits:,}</b> رکسار | "
+            f"🏦 <b>بانک:</b> <b>{player.bank_balance:,}</b> رکسار"
+        ),
+        "━━━━━━━━━━━━━━━━━━━━",
+        "👇 <i>برای مشاهده جزئیات بیشتر، بخش مورد نظر را لمس کنید:</i>",
+    ]
+
+
+_PROFILE_TABS: dict[str, Callable[[_ProfileCtx], Awaitable[list[str]]]] = {
+    "stats": _tab_stats,
+    "job": _tab_job,
+    "assets": _tab_assets,
+    "social": _tab_social,
+    "main": _tab_main,
+}
+
+
+async def _profile_panel(player: Player, active_tab: str = "main") -> tuple[str, bytes]:
+    """
+    تولید متن دسته‌بندی‌شده شناسنامه شهروندی و دریافت تصویر زنده آواتار کاراکتر.
+    """
+    import time
+
+    # ۱. دریافت تصویر آواتار اوراسکایز با کیفیت ۴ برابری و پس‌زمینه شفاف
+    photo = await _profile_photo(player)
+
+    credits, _ = await economy.balances(player.user_id)
+    now = int(time.time())
+    ctx = await _profile_ctx(player, credits, now)
+    tab_builder = _PROFILE_TABS.get(active_tab, _tab_main)
+    lines = await tab_builder(ctx)
 
     return "\n".join(lines), photo
 
@@ -270,6 +334,7 @@ async def _send_profile(target: Message, player: Player) -> None:
             reply_markup=markup,
         )
     except Exception:
+        logger.debug("profile: reply_photo failed; using bot.send_photo fallback", exc_info=True)
         bot = getattr(target, "bot", None)
         if bot is not None:
             await bot.send_photo(

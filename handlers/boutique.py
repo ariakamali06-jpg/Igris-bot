@@ -13,6 +13,7 @@ import contextlib
 import json
 import logging
 import time
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 from aiogram import F, Router
@@ -24,12 +25,20 @@ from aiogram.types import (
     InlineKeyboardMarkup,
     InputMediaPhoto,
     Message,
-    WebAppInfo,
 )
 
 from config import settings
 from database.connection import db
-from handlers.common import CommandOrText, answer_error, editable_message, hydrate
+from handlers.common import (
+    CommandOrText,
+    answer_error,
+    bot_username,
+    deep_link_button,
+    editable_message,
+    hydrate,
+    is_group_chat,
+    miniapp_button,
+)
 from models.enums import ActivityKind
 from models.player import Player
 from services import avatar, economy, game
@@ -37,28 +46,6 @@ from services import avatar, economy, game
 logger = logging.getLogger(__name__)
 
 router = Router(name="boutique")
-
-
-def _bot_username() -> str:
-    """نام کاربری واقعی ربات برای ساختن دیپ‌لینک در گروه‌ها (بدون @ ابتدایی)."""
-    return (avatar.RUNTIME_BOT_USERNAME or settings.bot_username or "").lstrip("@")
-
-
-def _is_group_chat(chat_type: str) -> bool:
-    """آیا چت یک گروه/سوپرگروه است؟ (توی گروه دکمه web_app ممنوع است)."""
-    return chat_type in ("group", "supergroup")
-
-
-def _mini_app_btn(
-    text: str, url: str, in_group: bool, payload: str = "app"
-) -> InlineKeyboardButton:
-    """دکمه مینی‌اپ یا دیپ‌لینک امن: در گروه → لینک به پیوی ربات، در پیوی → web_app واقعی."""
-    if in_group:
-        username = _bot_username() or "igrisbot"
-        return InlineKeyboardButton(
-            text=text, url=f"https://t.me/{username}?start={payload}"
-        )
-    return InlineKeyboardButton(text=text, web_app=WebAppInfo(url=url))
 
 BOUTIQUE_COMMANDS = {"بوتیک", "ویترین", "شاپ_لباس", "boutique", "fashion"}
 WARDROBE_COMMANDS = {"کمد", "کمد_لباس", "لباسهام", "wardrobe", "closet"}
@@ -94,66 +81,51 @@ async def _render_photo_payload(url: str, filename: str = "avatar.png") -> Any:
 # Card Builders
 # -----------------------------------------------------------------------------
 
-async def _build_boutique_card(
-    user_id: int,
-    gender: str = "female",
-    index: int = 0,
-    is_preview: bool = False,
-) -> tuple[str, str, InlineKeyboardMarkup]:
-    """Generate media URL, caption, and keyboard for a boutique set."""
-    sets = avatar.get_daily_boutique(gender=gender)
-    if not sets:
-        empty_url = avatar.get_render_url([-1])
-        empty_caption = (
-            "🛍 <b>ویترین روزانه بوتیک</b>\n"
-            "━━━━━━━━━━━━━━━━━━━━\n"
-            "امروز هیچ ستی در این دسته‌بندی موجود نیست!\n"
-            "لطفاً دسته‌بندی دیگری را امتحان کنید."
-        )
-        markup = InlineKeyboardMarkup(
-            inline_keyboard=[
-                [
-                    InlineKeyboardButton(text="🚺 زنانه", callback_data="btq:cat:female"),
-                    InlineKeyboardButton(text="🚹 مردانه", callback_data="btq:cat:male"),
-                    InlineKeyboardButton(text="⚧ اسپرت", callback_data="btq:cat:unisex"),
-                ],
-                [
-                    InlineKeyboardButton(text="🔙 راهنما", callback_data="help:main"),
-                    InlineKeyboardButton(text="🏠 کارت من", callback_data="act:me"),
-                    InlineKeyboardButton(text="🚪 بستن", callback_data="btq:close"),
-                ],
-            ]
-        )
-        return empty_url, empty_caption, markup
+def _boutique_empty_view() -> tuple[str, str, InlineKeyboardMarkup]:
+    """ویترین خالی: پیام + دکمه‌های تعویض دسته‌بندی."""
+    empty_url = avatar.get_render_url([-1])
+    empty_caption = (
+        "🛍 <b>ویترین روزانه بوتیک</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "امروز هیچ ستی در این دسته‌بندی موجود نیست!\n"
+        "لطفاً دسته‌بندی دیگری را امتحان کنید."
+    )
+    markup = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="🚺 زنانه", callback_data="btq:cat:female"),
+                InlineKeyboardButton(text="🚹 مردانه", callback_data="btq:cat:male"),
+                InlineKeyboardButton(text="⚧ اسپرت", callback_data="btq:cat:unisex"),
+            ],
+            [
+                InlineKeyboardButton(text="🔙 راهنما", callback_data="help:main"),
+                InlineKeyboardButton(text="🏠 کارت من", callback_data="act:me"),
+                InlineKeyboardButton(text="🚪 بستن", callback_data="btq:close"),
+            ],
+        ]
+    )
+    return empty_url, empty_caption, markup
 
-    total = len(sets)
-    idx = max(0, min(index, total - 1))
-    current_set = sets[idx]
-    set_id = current_set["id"]
 
-    player_av = await avatar.get_player_avatar(user_id)
-    is_owned = await avatar.owns_set(user_id, set_id)
+def _boutique_card_status(
+    player_av: dict[str, Any], current_set: dict[str, Any], is_owned: bool
+) -> str:
+    """ردیف وضعیت مالکیت/پوشیدن در کپشن کارت ست."""
+    if not is_owned:
+        return f"💰 <b>قیمت ست:</b> {current_set['price']:,} رکسار"
+    if player_av["active_set_id"] == current_set["id"]:
+        return "👕 <b>این ست هم‌اکنون بر تن شماست.</b>"
+    return "✅ <b>این ست در کمد لباس شما موجود است.</b>"
 
-    # Determine render image
-    if is_preview:
-        render_url = avatar.get_render_url(
-            current_set["var_ids"] + [player_av["skin_tone"]],
-        )
-        preview_notice = "\n<i>👤 در حال پیش‌نمایش زنده روی پوست کاراکتر شما</i>\n"
-    else:
-        render_url = current_set["render_url"]
-        preview_notice = ""
 
-    # Status / ownership notice
-    if is_owned:
-        if player_av["active_set_id"] == set_id:
-            status_text = "👕 <b>این ست هم‌اکنون بر تن شماست.</b>"
-        else:
-            status_text = "✅ <b>این ست در کمد لباس شما موجود است.</b>"
-    else:
-        status_text = f"💰 <b>قیمت ست:</b> {current_set['price']:,} رکسار"
-
-    caption = (
+def _boutique_card_caption(
+    current_set: dict[str, Any],
+    idx: int,
+    total: int,
+    status_text: str,
+    preview_notice: str,
+) -> str:
+    return (
         f"🛍 <b>بوتیک خیابانی مد و لباس روزانه</b>\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
         f"👗 <b>نام ست:</b> {current_set['name']}\n"
@@ -165,7 +137,18 @@ async def _build_boutique_card(
         f"<i>ست {idx + 1} از {total} • به‌روزرسانی خودکار ساعت ۰۰:۰۰ بامداد</i>"
     )
 
-    # Keyboard layout
+
+def _boutique_card_markup(
+    gender: str,
+    idx: int,
+    total: int,
+    set_id: int,
+    is_owned: bool,
+    is_preview: bool,
+    is_active: bool,
+    price: int,
+) -> InlineKeyboardMarkup:
+    """کیبورد کارت ست: ناوبری، خرید/پوشیدن، پرو، دسته‌بندی‌ها و پاورقی."""
     prev_idx = (idx - 1) % total
     next_idx = (idx + 1) % total
     prev_val = 1 if is_preview else 0
@@ -182,7 +165,7 @@ async def _build_boutique_card(
 
     # Action row: Buy or Equip
     if is_owned:
-        if player_av["active_set_id"] == set_id:
+        if is_active:
             action_btn = InlineKeyboardButton(
                 text="✅ در حال حاضر پوشیده‌اید", callback_data="noop"
             )
@@ -193,7 +176,7 @@ async def _build_boutique_card(
             )
     else:
         action_btn = InlineKeyboardButton(
-            text=f"🛒 خرید این ست ({current_set['price']:,} رکسار)",
+            text=f"🛒 خرید این ست ({price:,} رکسار)",
             callback_data=f"btq:buy:{gender}:{idx}:{set_id}",
         )
 
@@ -234,10 +217,149 @@ async def _build_boutique_card(
         InlineKeyboardButton(text="🚪 بستن", callback_data="btq:close"),
     ]
 
-    markup = InlineKeyboardMarkup(
+    return InlineKeyboardMarkup(
         inline_keyboard=[nav_row, act_preview_row, cat_row, extra_row, bottom_row]
     )
+
+
+async def _build_boutique_card(
+    user_id: int,
+    gender: str = "female",
+    index: int = 0,
+    is_preview: bool = False,
+) -> tuple[str, str, InlineKeyboardMarkup]:
+    """Generate media URL, caption, and keyboard for a boutique set."""
+    sets = avatar.get_daily_boutique(gender=gender)
+    if not sets:
+        return _boutique_empty_view()
+
+    total = len(sets)
+    idx = max(0, min(index, total - 1))
+    current_set = sets[idx]
+    set_id = current_set["id"]
+
+    player_av = await avatar.get_player_avatar(user_id)
+    is_owned = await avatar.owns_set(user_id, set_id)
+    is_active = player_av["active_set_id"] == set_id
+
+    # Determine render image
+    if is_preview:
+        render_url = avatar.get_render_url(
+            current_set["var_ids"] + [player_av["skin_tone"]],
+        )
+        preview_notice = "\n<i>👤 در حال پیش‌نمایش زنده روی پوست کاراکتر شما</i>\n"
+    else:
+        render_url = current_set["render_url"]
+        preview_notice = ""
+
+    status_text = _boutique_card_status(player_av, current_set, is_owned)
+    caption = _boutique_card_caption(current_set, idx, total, status_text, preview_notice)
+    markup = _boutique_card_markup(
+        gender, idx, total, set_id, is_owned, is_preview, is_active, current_set["price"]
+    )
     return render_url, caption, markup
+
+
+def _catalog_gender_notice(is_female: bool) -> str:
+    """اعلام قیمت‌گذاری جنسیتی آیتم‌های پوشاک."""
+    own_label = "دخترانه" if is_female else "پسرانه"
+    other_label = "پسرانه" if is_female else "دخترانه"
+    return (
+        f"✨ <b>امتیاز جنسیت شما:</b> هم‌جنس ({own_label}) "
+        f"<b>{settings.clothing_price_same_gender:,}</b> رکسار\n"
+        f"🔥 غیرهم‌جنس ({other_label}): "
+        f"<b>{settings.clothing_price_opposite:,}</b> رکسار"
+        f" | ⚧ اسپرت/یونیسکس: <b>{settings.clothing_price_unisex:,}</b> رکسار"
+    )
+
+
+async def _catalog_items_section(
+    items: list[dict[str, Any]],
+    player: Any,
+    user_id: int,
+    cat_key: str,
+    cur_page: int,
+) -> tuple[list[str], list[InlineKeyboardButton]]:
+    """متن آیتم‌های صفحه + دکمهٔ انتخاب هر آیتم."""
+    lines: list[str] = []
+    item_row_btns: list[InlineKeyboardButton] = []
+    digits = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣"]
+
+    for idx, it in enumerate(items):
+        vid = it["var_id"]
+        it_name = it["name"]
+        it_gen = it.get("gender", "unisex")
+        price, price_label = avatar.calculate_item_price(it_gen, player.gender)
+        is_owned = await avatar.owns_item(user_id, vid)
+
+        owned_badge = " [✅ در کمد]" if is_owned else ""
+        icon = digits[idx] if idx < len(digits) else f"[{idx+1}]"
+
+        lines.append(f"{icon} <b>{it_name}</b>{owned_badge}")
+        lines.append(f"   🏷 استایل: {it_gen} • 💰 <b>{price:,}</b> رکسار ({price_label})\n")
+
+        item_row_btns.append(
+            InlineKeyboardButton(
+                text=f"{icon} انتخاب",
+                callback_data=f"btq:view:{vid}:{cat_key}:{cur_page}",
+            )
+        )
+    return lines, item_row_btns
+
+
+def _catalog_keyboard(
+    custom_url: str,
+    in_group: bool,
+    item_row_btns: list[InlineKeyboardButton],
+    cat_key: str,
+    cur_page: int,
+    total_pages: int,
+) -> list[list[InlineKeyboardButton]]:
+    """کیبورد کاتالوگ: مینی‌اپ، آیتم‌ها، تب‌های دسته، ناوبری و پاورقی."""
+    keyboard: list[list[InlineKeyboardButton]] = [
+        [
+            miniapp_button(
+                "📱 ورود به مینی‌اپ فروشگاه (Shop Mode)",
+                custom_url,
+                in_group,
+                payload="shop",
+            )
+        ]
+    ]
+    if item_row_btns:
+        keyboard.append(item_row_btns)
+
+    # Category tabs
+    t_top = "• 👕 بالاتنه •" if cat_key == "top" else "👕 بالاتنه"
+    t_bot = "• 👖 پایین‌تنه •" if cat_key == "bottom" else "👖 پایین‌تنه"
+    t_sh = "• 👟 کفش •" if cat_key == "shoes" else "👟 کفش"
+    t_acc = "• 🎒 اکسسوری •" if cat_key == "acc" else "🎒 اکسسوری"
+
+    keyboard.append([
+        InlineKeyboardButton(text=t_top, callback_data="btq:cat:top"),
+        InlineKeyboardButton(text=t_bot, callback_data="btq:cat:bottom"),
+    ])
+    keyboard.append([
+        InlineKeyboardButton(text=t_sh, callback_data="btq:cat:shoes"),
+        InlineKeyboardButton(text=t_acc, callback_data="btq:cat:acc"),
+    ])
+
+    # Navigation row
+    prev_page = (cur_page - 1) % total_pages
+    next_page = (cur_page + 1) % total_pages
+    keyboard.append([
+        InlineKeyboardButton(text="⬅️ قبلی", callback_data=f"btq:page:{cat_key}:{prev_page}"),
+        InlineKeyboardButton(text=f"[{cur_page + 1} / {total_pages}]", callback_data="noop"),
+        InlineKeyboardButton(text="بعدی ➡️", callback_data=f"btq:page:{cat_key}:{next_page}"),
+    ])
+
+    # Footer row
+    keyboard.append([
+        InlineKeyboardButton(text="🔙 منوی فروشگاه", callback_data="btq:hub"),
+        InlineKeyboardButton(text="👕 کمد من", callback_data="wdr:view:0"),
+        InlineKeyboardButton(text="🚪 بستن", callback_data="btq:close"),
+    ])
+    return keyboard
 
 
 async def _build_boutique_catalog(
@@ -271,50 +393,22 @@ async def _build_boutique_catalog(
     total_pages = cat_data["total_pages"]
     cat_title = cat_data["title"]
 
-    own_label = "دخترانه" if is_female else "پسرانه"
-    other_label = "پسرانه" if is_female else "دخترانه"
-    gender_notice = (
-        f"✨ <b>امتیاز جنسیت شما:</b> هم‌جنس ({own_label}) "
-        f"<b>{settings.clothing_price_same_gender:,}</b> رکسار\n"
-        f"🔥 غیرهم‌جنس ({other_label}): "
-        f"<b>{settings.clothing_price_opposite:,}</b> رکسار"
-        f" | ⚧ اسپرت/یونیسکس: <b>{settings.clothing_price_unisex:,}</b> رکسار"
-    )
-
     lines = [
         "🛍 <b>بوتیک خیابانی مد و لباس ایگریس (تک‌آیتم‌ها)</b>",
         "━━━━━━━━━━━━━━━━━━━━",
         f"👤 <b>خریدار:</b> {player.display_name} ({gender_badge})",
         f"💰 <b>موجودی شما:</b> <code>{credits_bal:,}</code> رکسار",
-        gender_notice,
+        _catalog_gender_notice(is_female),
         "━━━━━━━━━━━━━━━━━━━━",
         f"📂 <b>دسته‌بندی:</b> {cat_title}",
         f"📄 <b>صفحه {cur_page + 1} از {total_pages}</b> ({cat_data['total_items']} آیتم)",
         "",
     ]
 
-    item_row_btns: list[InlineKeyboardButton] = []
-    digits = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣"]
-
-    for idx, it in enumerate(items):
-        vid = it["var_id"]
-        it_name = it["name"]
-        it_gen = it.get("gender", "unisex")
-        price, price_label = avatar.calculate_item_price(it_gen, player.gender)
-        is_owned = await avatar.owns_item(user_id, vid)
-
-        owned_badge = " [✅ در کمد]" if is_owned else ""
-        icon = digits[idx] if idx < len(digits) else f"[{idx+1}]"
-
-        lines.append(f"{icon} <b>{it_name}</b>{owned_badge}")
-        lines.append(f"   🏷 استایل: {it_gen} • 💰 <b>{price:,}</b> رکسار ({price_label})\n")
-
-        item_row_btns.append(
-            InlineKeyboardButton(
-                text=f"{icon} انتخاب",
-                callback_data=f"btq:view:{vid}:{cat_key}:{cur_page}",
-            )
-        )
+    item_lines, item_row_btns = await _catalog_items_section(
+        items, player, user_id, cat_key, cur_page
+    )
+    lines.extend(item_lines)
 
     if not items:
         lines.append("<i>امروز آیتمی در این دسته‌بندی یافت نشد.</i>")
@@ -324,50 +418,9 @@ async def _build_boutique_catalog(
 
     # Keyboard layout
     custom_url = await avatar.get_customizer_url(user_id, mode="shop")
-    keyboard: list[list[InlineKeyboardButton]] = [
-        [
-            _mini_app_btn(
-                "📱 ورود به مینی‌اپ فروشگاه (Shop Mode)",
-                custom_url,
-                in_group,
-                payload="shop",
-            )
-        ]
-    ]
-    if item_row_btns:
-        keyboard.append(item_row_btns)
-
-    # Category tabs
-    t_top = "• 👕 بالاتنه •" if cat_key == "top" else "👕 بالاتنه"
-    t_bot = "• 👖 پایین‌تنه •" if cat_key == "bottom" else "👖 پایین‌تنه"
-    t_sh = "• 👟 کفش •" if cat_key == "shoes" else "👟 کفش"
-    t_acc = "• 🎒 اکسسوری •" if cat_key == "acc" else "🎒 اکسسوری"
-
-    keyboard.append([
-        InlineKeyboardButton(text=t_top, callback_data="btq:cat:top"),
-        InlineKeyboardButton(text=t_bot, callback_data="btq:cat:bottom"),
-    ])
-    keyboard.append([
-        InlineKeyboardButton(text=t_sh, callback_data="btq:cat:shoes"),
-        InlineKeyboardButton(text=t_acc, callback_data="btq:cat:acc"),
-    ])
-
-    # Navigation row
-    prev_page = (cur_page - 1) % total_pages
-    next_page = (cur_page + 1) % total_pages
-    nav_row = [
-        InlineKeyboardButton(text="⬅️ قبلی", callback_data=f"btq:page:{cat_key}:{prev_page}"),
-        InlineKeyboardButton(text=f"[{cur_page + 1} / {total_pages}]", callback_data="noop"),
-        InlineKeyboardButton(text="بعدی ➡️", callback_data=f"btq:page:{cat_key}:{next_page}"),
-    ]
-    keyboard.append(nav_row)
-
-    # Footer row
-    keyboard.append([
-        InlineKeyboardButton(text="🔙 منوی فروشگاه", callback_data="btq:hub"),
-        InlineKeyboardButton(text="👕 کمد من", callback_data="wdr:view:0"),
-        InlineKeyboardButton(text="🚪 بستن", callback_data="btq:close"),
-    ])
+    keyboard = _catalog_keyboard(
+        custom_url, in_group, item_row_btns, cat_key, cur_page, total_pages
+    )
 
     player_av = await avatar.get_player_avatar(user_id)
     render_url = avatar.get_render_url(
@@ -376,80 +429,25 @@ async def _build_boutique_catalog(
     return render_url, "\n".join(lines), InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 
-async def _build_boutique_item_detail(
-    user_id: int,
-    var_id: int,
-    category: str = "top",
-    page: int = 0,
-    is_preview: bool = False,
-) -> tuple[str, str, InlineKeyboardMarkup]:
-    """Generate item detail card with optional on-demand avatar preview."""
-    from services import catalog
-
-    player = await game.load_player(user_id)
-    if not player:
-        player = await game.ensure_player(
-            user_id=user_id,
-            username="",
-            display_name="مسافر",
-        )
-
-    it = catalog.get_catalog_item_by_var_id(var_id)
-    if not it:
-        return (
-            "",
-            "❌ آیتم مورد نظر یافت نشد.",
-            InlineKeyboardMarkup(
-                inline_keyboard=[[
-                    InlineKeyboardButton(
-                        text="🔙 بازگشت به فهرست", callback_data=f"btq:page:{category}:{page}"
-                    )
-                ]]
-            ),
-        )
-
-    it_name = it["name"]
-    it_gen = it.get("gender", "unisex")
-    cat_title = catalog.BOUTIQUE_CATEGORY_TITLES.get(category, it.get("category", "پوشاک"))
-    price, price_label = avatar.calculate_item_price(it_gen, player.gender)
-    is_owned = await avatar.owns_item(user_id, var_id)
-
-    av = await avatar.get_player_avatar(user_id)
-    cur_eq = av.get("equipped_var_ids", [])
-    is_equipped = var_id in cur_eq
-
+def _item_detail_status(is_equipped: bool, is_owned: bool, price: int) -> str:
+    """ردیف وضعیت پوشیدن/مالکیت در کارت جزئیات آیتم."""
     if is_equipped:
-        status_str = "👕 <b>این لباس هم‌اکنون بر تن کاراکتر شماست.</b>"
-    elif is_owned:
-        status_str = "✅ <b>این لباس در کمد شما موجود است.</b>"
-    else:
-        status_str = f"💰 <b>قیمت نهایی برای شما:</b> {price:,} رکسار"
+        return "👕 <b>این لباس هم‌اکنون بر تن کاراکتر شماست.</b>"
+    if is_owned:
+        return "✅ <b>این لباس در کمد شما موجود است.</b>"
+    return f"💰 <b>قیمت نهایی برای شما:</b> {price:,} رکسار"
 
-    if is_preview:
-        preview_note = "\n<i>👁 تصویر استودیویی محصول</i>\n"
-    else:
-        preview_note = ""
 
-    lines = [
-        "🛍 <b>مشخصات و خرید آیتم بوتیک</b>",
-        "━━━━━━━━━━━━━━━━━━━━",
-        f"👗 <b>نام لباس:</b> {it_name}",
-        f"📂 <b>دسته‌بندی:</b> {cat_title}",
-        f"⚧ <b>استایل:</b> {it_gen}",
-        f"📦 <b>شناسه اختصاصی:</b> #{var_id}",
-        f"🏷 <b>تعرفه قیمت:</b> {price_label}",
-        status_str,
-        preview_note,
-        "━━━━━━━━━━━━━━━━━━━━",
-    ]
-
-    render_url = ""
-    if is_preview:
-        # فقط عکس standalone خودِ آیتم (بدون کاراکتر)
-        render_url = avatar.get_render_url([var_id])
-    else:
-        render_url = avatar.get_render_url(cur_eq + [av.get("skin_tone", -1)])
-
+def _item_detail_markup(
+    var_id: int,
+    category: str,
+    page: int,
+    is_owned: bool,
+    is_equipped: bool,
+    is_preview: bool,
+    price: int,
+) -> InlineKeyboardMarkup:
+    """کیبورد جزئیات آیتم: خرید/پوشیدن، پرو و بازگشت."""
     keyboard: list[list[InlineKeyboardButton]] = []
 
     # Action row (Buy or Equip/Unequip)
@@ -498,7 +496,77 @@ async def _build_boutique_item_detail(
         )
     ])
 
-    return render_url, "\n".join(lines), InlineKeyboardMarkup(inline_keyboard=keyboard)
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+async def _build_boutique_item_detail(
+    user_id: int,
+    var_id: int,
+    category: str = "top",
+    page: int = 0,
+    is_preview: bool = False,
+) -> tuple[str, str, InlineKeyboardMarkup]:
+    """Generate item detail card with optional on-demand avatar preview."""
+    from services import catalog
+
+    player = await game.load_player(user_id)
+    if not player:
+        player = await game.ensure_player(
+            user_id=user_id,
+            username="",
+            display_name="مسافر",
+        )
+
+    it = catalog.get_catalog_item_by_var_id(var_id)
+    if not it:
+        return (
+            "",
+            "❌ آیتم مورد نظر یافت نشد.",
+            InlineKeyboardMarkup(
+                inline_keyboard=[[
+                    InlineKeyboardButton(
+                        text="🔙 بازگشت به فهرست", callback_data=f"btq:page:{category}:{page}"
+                    )
+                ]]
+            ),
+        )
+
+    it_name = it["name"]
+    it_gen = it.get("gender", "unisex")
+    cat_title = catalog.BOUTIQUE_CATEGORY_TITLES.get(category, it.get("category", "پوشاک"))
+    price, price_label = avatar.calculate_item_price(it_gen, player.gender)
+    is_owned = await avatar.owns_item(user_id, var_id)
+
+    av = await avatar.get_player_avatar(user_id)
+    cur_eq = av.get("equipped_var_ids", [])
+    is_equipped = var_id in cur_eq
+
+    status_str = _item_detail_status(is_equipped, is_owned, price)
+    preview_note = "\n<i>👁 تصویر استودیویی محصول</i>\n" if is_preview else ""
+
+    lines = [
+        "🛍 <b>مشخصات و خرید آیتم بوتیک</b>",
+        "━━━━━━━━━━━━━━━━━━━━",
+        f"👗 <b>نام لباس:</b> {it_name}",
+        f"📂 <b>دسته‌بندی:</b> {cat_title}",
+        f"⚧ <b>استایل:</b> {it_gen}",
+        f"📦 <b>شناسه اختصاصی:</b> #{var_id}",
+        f"🏷 <b>تعرفه قیمت:</b> {price_label}",
+        status_str,
+        preview_note,
+        "━━━━━━━━━━━━━━━━━━━━",
+    ]
+
+    if is_preview:
+        # فقط عکس standalone خودِ آیتم (بدون کاراکتر)
+        render_url = avatar.get_render_url([var_id])
+    else:
+        render_url = avatar.get_render_url(cur_eq + [av.get("skin_tone", -1)])
+
+    markup = _item_detail_markup(
+        var_id, category, page, is_owned, is_equipped, is_preview, price
+    )
+    return render_url, "\n".join(lines), markup
 
 
 async def _update_boutique_view(
@@ -530,6 +598,116 @@ async def _update_boutique_view(
         await message.edit_text(text=caption, reply_markup=markup, parse_mode="HTML")
 
 
+async def _wardrobe_empty_view(
+    user_id: int,
+    in_group: bool,
+    equipped_count: int,
+    owned_count: int,
+) -> tuple[str, InlineKeyboardMarkup]:
+    """کمد بدون ست کامل: مدیریت مستقیم تک‌آیتم‌ها."""
+    caption = (
+        "🧥 <b>کمد لباس شخصی شما</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        f"👤 <b>اقلام بر تن کاراکتر:</b> {equipped_count} تکه\n"
+        f"👕 <b>تک‌آیتم‌های کمد شما:</b> {owned_count} قلم لباس\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "💡 از دکمه <b>«👕 آیتم‌های کمد من»</b> برای مدیریت لباس‌های خود استفاده کنید."
+    )
+    custom_url = await avatar.get_customizer_url(user_id) if settings.webapp_url else ""
+    buttons: list[list[InlineKeyboardButton]] = [
+        [
+            InlineKeyboardButton(
+                text=f"👕 آیتم‌های کمد من ({owned_count})",
+                callback_data="wdr:items:0",
+            ),
+        ],
+        [
+            InlineKeyboardButton(text="🎨 انتخاب رنگ پوست", callback_data="wdr:skin_menu"),
+            InlineKeyboardButton(text="💇‍♀️ آرایشگاه و چهره", callback_data="sal:menu"),
+        ],
+    ]
+    if custom_url:
+        buttons.insert(
+            0,
+            [
+                miniapp_button(
+                    "📱 مینی‌اپ شخصی‌سازی و طراحی لباس",
+                    custom_url,
+                    in_group,
+                    payload="wardrobe",
+                )
+            ],
+        )
+    buttons.append([
+        InlineKeyboardButton(text="🛍 ویترین بوتیک مد", callback_data="btq:open"),
+        InlineKeyboardButton(text="🚪 بستن کمد", callback_data="btq:close"),
+    ])
+    return caption, InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+async def _wardrobe_card_markup(
+    user_id: int,
+    in_group: bool,
+    set_id: int,
+    idx: int,
+    total: int,
+    is_active: bool,
+    owned_count: int,
+) -> InlineKeyboardMarkup:
+    """کیبورد کارت ست کمد: ناوبری، پوشیدن، گزینه‌ها و پاورقی."""
+    if total > 1:
+        prev_idx = (idx - 1) % total
+        next_idx = (idx + 1) % total
+        nav_row = [
+            InlineKeyboardButton(text="⬅️ قبلی", callback_data=f"wdr:nav:{prev_idx}"),
+            InlineKeyboardButton(text=f"[{idx + 1} / {total}]", callback_data="noop"),
+            InlineKeyboardButton(text="بعدی ➡️", callback_data=f"wdr:nav:{next_idx}"),
+        ]
+    else:
+        nav_row = [InlineKeyboardButton(text=f"✨ {total} ست آماده موجود", callback_data="noop")]
+
+    action_row: list[InlineKeyboardButton] = [
+        InlineKeyboardButton(
+            text=f"👕 آیتم‌های کمد من ({owned_count})",
+            callback_data="wdr:items:0",
+        )
+    ]
+    if not is_active:
+        action_row.insert(
+            0,
+            InlineKeyboardButton(
+                text="👗 پوشیدن این ست",
+                callback_data=f"wdr:equip:{set_id}:{idx}",
+            ),
+        )
+
+    options_row = [
+        InlineKeyboardButton(text="🔄 انتخاب سریع ست", callback_data="wdr:sets_list:0"),
+        InlineKeyboardButton(text="💇‍♀️ آرایشگاه و چهره", callback_data="sal:menu"),
+    ]
+
+    if settings.webapp_url:
+        custom_url = await avatar.get_customizer_url(user_id)
+        options_row.insert(
+            0,
+            miniapp_button(
+                "📱 مینی‌اپ شخصی‌سازی",
+                custom_url,
+                in_group,
+                payload="wardrobe",
+            ),
+        )
+
+    bottom_row = [
+        InlineKeyboardButton(text="🛍 رفتن به بوتیک", callback_data="btq:open"),
+        InlineKeyboardButton(text="🚪 بستن کمد", callback_data="btq:close"),
+    ]
+
+    return InlineKeyboardMarkup(
+        inline_keyboard=[nav_row, action_row, options_row, bottom_row]
+    )
+
+
 async def _build_wardrobe_card(
     user_id: int,
     index: int = 0,
@@ -545,44 +723,10 @@ async def _build_wardrobe_card(
 
     if not all_sets:
         # No full sets, display character avatar with direct item management
-        caption = (
-            "🧥 <b>کمد لباس شخصی شما</b>\n"
-            "━━━━━━━━━━━━━━━━━━━━\n"
-            f"👤 <b>اقلام بر تن کاراکتر:</b> {len(equipped_vars)} تکه\n"
-            f"👕 <b>تک‌آیتم‌های کمد شما:</b> {len(owned_items)} قلم لباس\n"
-            "━━━━━━━━━━━━━━━━━━━━\n"
-            "💡 از دکمه <b>«👕 آیتم‌های کمد من»</b> برای مدیریت لباس‌های خود استفاده کنید."
+        caption, markup = await _wardrobe_empty_view(
+            user_id, in_group, len(equipped_vars), len(owned_items)
         )
-        custom_url = await avatar.get_customizer_url(user_id) if settings.webapp_url else ""
-        buttons: list[list[InlineKeyboardButton]] = [
-            [
-                InlineKeyboardButton(
-                    text=f"👕 آیتم‌های کمد من ({len(owned_items)})",
-                    callback_data="wdr:items:0",
-                ),
-            ],
-            [
-                InlineKeyboardButton(text="🎨 انتخاب رنگ پوست", callback_data="wdr:skin_menu"),
-                InlineKeyboardButton(text="💇‍♀️ آرایشگاه و چهره", callback_data="sal:menu"),
-            ],
-        ]
-        if custom_url:
-            buttons.insert(
-                0,
-                [
-                    _mini_app_btn(
-                        "📱 مینی‌اپ شخصی‌سازی و طراحی لباس",
-                        custom_url,
-                        in_group,
-                        payload="wardrobe",
-                    )
-                ],
-            )
-        buttons.append([
-            InlineKeyboardButton(text="🛍 ویترین بوتیک مد", callback_data="btq:open"),
-            InlineKeyboardButton(text="🚪 بستن کمد", callback_data="btq:close"),
-        ])
-        return render_url, caption, InlineKeyboardMarkup(inline_keyboard=buttons)
+        return render_url, caption, markup
 
     total = len(all_sets)
     idx = max(0, min(index, total - 1))
@@ -619,56 +763,8 @@ async def _build_wardrobe_card(
         f"<i>ست {idx + 1} از {total}</i>"
     )
 
-    if total > 1:
-        prev_idx = (idx - 1) % total
-        next_idx = (idx + 1) % total
-        nav_row = [
-            InlineKeyboardButton(text="⬅️ قبلی", callback_data=f"wdr:nav:{prev_idx}"),
-            InlineKeyboardButton(text=f"[{idx + 1} / {total}]", callback_data="noop"),
-            InlineKeyboardButton(text="بعدی ➡️", callback_data=f"wdr:nav:{next_idx}"),
-        ]
-    else:
-        nav_row = [InlineKeyboardButton(text=f"✨ {total} ست آماده موجود", callback_data="noop")]
-
-    action_row: list[InlineKeyboardButton] = [
-        InlineKeyboardButton(
-            text=f"👕 آیتم‌های کمد من ({len(owned_items)})",
-            callback_data="wdr:items:0",
-        )
-    ]
-    if not is_active:
-        action_row.insert(
-            0,
-            InlineKeyboardButton(
-                text="👗 پوشیدن این ست",
-                callback_data=f"wdr:equip:{set_id}:{idx}",
-            ),
-        )
-
-    options_row = [
-        InlineKeyboardButton(text="🔄 انتخاب سریع ست", callback_data="wdr:sets_list:0"),
-        InlineKeyboardButton(text="💇‍♀️ آرایشگاه و چهره", callback_data="sal:menu"),
-    ]
-
-    if settings.webapp_url:
-        custom_url = await avatar.get_customizer_url(user_id)
-        options_row.insert(
-            0,
-            _mini_app_btn(
-                "📱 مینی‌اپ شخصی‌سازی",
-                custom_url,
-                in_group,
-                payload="wardrobe",
-            ),
-        )
-
-    bottom_row = [
-        InlineKeyboardButton(text="🛍 رفتن به بوتیک", callback_data="btq:open"),
-        InlineKeyboardButton(text="🚪 بستن کمد", callback_data="btq:close"),
-    ]
-
-    markup = InlineKeyboardMarkup(
-        inline_keyboard=[nav_row, action_row, options_row, bottom_row]
+    markup = await _wardrobe_card_markup(
+        user_id, in_group, set_id, idx, total, is_active, len(owned_items)
     )
     return render_url, caption, markup
 
@@ -789,7 +885,7 @@ async def _build_outfit_switch_menu(
         custom_url = await avatar.get_customizer_url(user_id)
         buttons.append(
             [
-                _mini_app_btn(
+                miniapp_button(
                     "📱 طراحی و شخصی‌سازی در مینی‌اپ",
                     custom_url,
                     in_group,
@@ -846,7 +942,7 @@ async def handle_boutique_command(message: Message) -> None:
         return
     user_id = message.from_user.id
     user = message.from_user
-    is_group = _is_group_chat(message.chat.type)
+    is_group = is_group_chat(message.chat.type)
     try:
         player = await hydrate(user_id, user.full_name, user.username)
         custom_url = await avatar.get_customizer_url(user_id, mode="shop")
@@ -865,7 +961,7 @@ async def handle_boutique_command(message: Message) -> None:
         markup = InlineKeyboardMarkup(
             inline_keyboard=[
                 [
-                    _mini_app_btn(
+                    miniapp_button(
                         "📱 باز کردن فروشگاه مد (مینی‌اپ)",
                         custom_url,
                         is_group,
@@ -910,7 +1006,7 @@ async def handle_boutique_showcase_command(message: Message) -> None:
             user_id=user_id,
             category="top",
             page=0,
-            in_group=_is_group_chat(message.chat.type),
+            in_group=is_group_chat(message.chat.type),
         )
         photo_payload = await _render_photo_payload(render_url, "boutique.png")
         await message.reply_photo(photo=photo_payload, caption=caption, reply_markup=markup)
@@ -930,7 +1026,7 @@ async def handle_wardrobe_command(message: Message) -> None:
         display_name=message.from_user.full_name or "مسافر",
     )
     render_url, caption, markup = await _build_wardrobe_card(
-        user_id=user_id, index=0, in_group=_is_group_chat(message.chat.type)
+        user_id=user_id, index=0, in_group=is_group_chat(message.chat.type)
     )
     photo_payload = await _render_photo_payload(render_url, "wardrobe.png")
     sent = await message.reply_photo(photo=photo_payload, caption=caption, reply_markup=markup)
@@ -979,10 +1075,10 @@ async def handle_avatar_command(message: Message) -> None:
         markup.inline_keyboard.insert(
             0,
             [
-                _mini_app_btn(
+                miniapp_button(
                     "📱 مینی‌اپ شخصی‌سازی کاراکتر",
                     custom_url,
-                    _is_group_chat(message.chat.type),
+                    is_group_chat(message.chat.type),
                     payload="customizer",
                 )
             ],
@@ -1017,16 +1113,9 @@ async def handle_customizer_command(message: Message) -> None:
             "(سر، بالاتنه، پایین‌تنه، کفش و اکسسوری) به صورت زنده طراحی و ست کنید."
         )
         buttons: list[list[InlineKeyboardButton]] = []
-        username = _bot_username()
-        if username:
-            deep_link = f"https://t.me/{username}?start=customizer"
+        if bot_username():
             buttons.append(
-                [
-                    InlineKeyboardButton(
-                        text="🎨 رفتن به کاستومایز (در DM بات)",
-                        url=deep_link,
-                    )
-                ]
+                [deep_link_button("🎨 رفتن به کاستومایز (در DM بات)", "customizer")]
             )
     else:
         # In DM: show webapp button
@@ -1043,7 +1132,7 @@ async def handle_customizer_command(message: Message) -> None:
             custom_url = await avatar.get_customizer_url(user_id)
             buttons.append(
                 [
-                    _mini_app_btn(
+                    miniapp_button(
                         "📱 باز کردن مینی‌اپ شخصی‌سازی",
                         custom_url,
                         False,
@@ -1064,6 +1153,207 @@ async def handle_customizer_command(message: Message) -> None:
     await message.reply_photo(photo=photo_payload, caption=caption, reply_markup=markup)
 
 
+def _skin_tone_id(skin_idx: int, is_plus: int) -> int:
+    """Skin tone ID: slim 1..5 -> -1..-5، plus 1..6 -> -7..-12 یا -6."""
+    if is_plus:
+        skin_map = {1: -7, 2: -8, 3: -9, 4: -10, 5: -11, 6: -6}
+        return skin_map.get(skin_idx, -7)
+    skin_map = {1: -1, 2: -2, 3: -3, 4: -4, 5: -5}
+    return skin_map.get(skin_idx, -1)
+
+
+async def _purchase_unowned_items(
+    message: Message, user_id: int, player: Player, var_ids: list[int]
+) -> tuple[list[int], int] | None:
+    """خرید آیتم‌های انتخابیِ متعلق‌نشده؛ ``None`` یعنی موجودی کم بود (پیام خطا رفت)."""
+    unowned = [v for v in var_ids if not await avatar.owns_item(user_id, v)]
+    if not unowned:
+        return [], 0
+
+    from services import catalog
+
+    items_to_add = []
+    total_bought_price = 0
+    for v in unowned:
+        it = catalog.get_catalog_item_by_var_id(v)
+        g = it.get("gender", "unisex") if it else "unisex"
+        p, _ = avatar.calculate_item_price(g, player.gender)
+        items_to_add.append((v, it, p))
+        total_bought_price += p
+
+    creds, _ = await economy.balances(user_id)
+    if creds < total_bought_price:
+        await message.reply(
+            f"❌ <b>موجودی رکسار شما برای خرید لباس‌های جدید کافی نیست!</b>\n\n"
+            f"مبلغ کل اقلام انتخابی: <b>{total_bought_price:,}</b> رکسار\n"
+            f"موجودی کیف پول شما: <b>{creds:,}</b> رکسار\n\n"
+            "با دستور <code>کار</code> یا برداشت از بانک موجودی خود را افزایش دهید."
+        )
+        return None
+
+    await economy.spend(user_id, credits=total_bought_price, kind=ActivityKind.SHOP_BUY)
+    now_ts = int(time.time())
+    async with db.write() as conn:
+        for v, it, p in items_to_add:
+            v_set_id = 1000000 + v
+            title = f"✨ {it['name']}" if it else f"✨ لباس #{v}"
+            it_gen = it.get("gender", "unisex") if it else "unisex"
+            await conn.execute(
+                """
+                INSERT INTO player_wardrobe
+                    (user_id, set_id, set_name, gender, item_count,
+                     var_ids, is_plus_size, price_paid, acquired_at)
+                VALUES (?, ?, ?, ?, 1, ?, 0, ?, ?)
+                ON CONFLICT(user_id, set_id) DO UPDATE SET
+                    var_ids = excluded.var_ids,
+                    acquired_at = excluded.acquired_at
+                """,
+                (user_id, v_set_id, title, it_gen, json.dumps([v]), p, now_ts),
+            )
+    return unowned, total_bought_price
+
+
+async def _complete_customizer_new_player(
+    player: Player, user_id: int, data: dict[str, Any], skin_idx: int, skin_tone_id: int
+) -> Player:
+    """تکمیل شناسنامهٔ بازیکن تازه با مشخصات انتخاب‌شده در مینی‌اپ."""
+    payload_gen = data.get("gen")
+    if payload_gen:
+        gender_fa = "دختر" if (payload_gen == "female" or "دختر" in payload_gen) else "پسر"
+    else:
+        gender_fa = player.gender if player.gender != "نامشخص" else "پسر"
+    gender_key = "female" if gender_fa == "دختر" else "male"
+    body_stance = (
+        f"base_vn_{skin_idx}" if gender_key == "female" else f"base_boy_{skin_idx}"
+    )
+    return await game.complete_character_creation(
+        user_id=user_id,
+        display_name=player.display_name,
+        gender=gender_fa,
+        age=player.age,
+        skin_tone=str(skin_tone_id),
+        eye_color="amber",
+        body_stance=body_stance,
+        hair_style="hair1",
+        hair_color="black",
+    )
+
+
+async def _refresh_wardrobe_message(message: Message, user_id: int) -> None:
+    """اگر پیام کمد باز باشد، درجا با عکس جدید ویرایش می‌شود."""
+    bot_instance = getattr(message, "bot", None)
+    wdr_msg = avatar.get_user_wardrobe_message(user_id)
+    if not (wdr_msg and bot_instance):
+        return
+    w_chat_id, w_msg_id = wdr_msg
+    with contextlib.suppress(Exception):
+        w_url, w_cap, w_mark = await _build_wardrobe_card(
+            user_id=user_id, index=0, in_group=is_group_chat(message.chat.type)
+        )
+        w_photo = await _render_photo_payload(w_url, "wardrobe.png")
+        await bot_instance.edit_message_media(
+            chat_id=w_chat_id,
+            message_id=w_msg_id,
+            media=InputMediaPhoto(media=w_photo, caption=w_cap, parse_mode="HTML"),
+            reply_markup=w_mark,
+        )
+
+
+def _customizer_welcome_view(
+    player: Player,
+    var_ids: list[int],
+    is_plus: int,
+    custom_url: str,
+    in_group: bool,
+) -> tuple[str, InlineKeyboardMarkup]:
+    """کپشن و دکمه‌های پیام شناسنامه پس از ساخت کاراکتر."""
+    caption = (
+        f"🎉 <b>شناسنامه شهروندی تیرامیکس صادر شد!</b> 🍁\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        f"👤 <b>نام:</b> {player.display_name}\n"
+        f"🎂 <b>سن:</b> {player.age} سال | ⚧ <b>جنسیت:</b> {player.gender}\n"
+        f"🧍 <b>فرم بدنه:</b> {'پلاس' if is_plus else 'اسلیم'}\n"
+        f"👕 <b>پوشش اولیه:</b> {len(var_ids)} قلم لباس انتخابی خودت\n"
+        f"💰 <b>سرمایه اولیه:</b> ۲۵۰ رکسار هدیه ورود به شهر\n\n"
+        "✨ <b>کاراکتر شما با موفقیت ساخته شد و آماده زندگی در تیرامیکس است!</b>\n\n"
+        "🚀 <b>گام‌های بعدی برای شروع بازی:</b>\n"
+        "• برای کسب اولین درآمد شهری، روی <b>«💼 رفتن سر کار»</b> بزنید.\n"
+        "• برای آشنایی با تمام قابلیت‌های بازی، <b>«📜 راهنمای کامل»</b> را ببینید.\n"
+        "• برای خرید ست‌های جدید لباس، به <b>«🛍 بوتیک مد»</b> سر بزنید."
+    )
+    markup = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="💼 رفتن سر کار (شروع درآمد)", callback_data="act:work"
+                ),
+                InlineKeyboardButton(
+                    text="📜 راهنمای کامل شهر", callback_data="help:main"
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🛍 ویترین بوتیک و مد",
+                    callback_data="btq:open",
+                ),
+                InlineKeyboardButton(text="🎒 کمد لباس من", callback_data="wdr:view:0"),
+            ],
+            [
+                miniapp_button(
+                    "🎨 ویرایش مجدد در مینی‌اپ",
+                    custom_url,
+                    in_group,
+                    payload="customizer",
+                )
+            ],
+        ]
+    )
+    return caption, markup
+
+
+def _customizer_saved_view(
+    unowned_vars: list[int],
+    total_bought_price: int,
+    var_ids: list[int],
+    is_plus: int,
+    custom_url: str,
+    in_group: bool,
+) -> tuple[str, InlineKeyboardMarkup]:
+    """کپشن و دکمه‌های پیام پس از ذخیرهٔ استایل بازیکن فعلی."""
+    if total_bought_price > 0:
+        caption = (
+            "🎉 <b>خرید موفق از مینی‌اپ فروشگاه و بوتیک مد تیرامیکس!</b> 🛍✨\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            f"تعداد <b>{len(unowned_vars)} قلم</b> لباس جدید با موفقیت خریداری شد.\n"
+            f"💰 کل مبلغ پرداختی: <b>{total_bought_price:,}</b> رکسار\n"
+            "👕 تمامی لباس‌ها به کمد دائمی شما اضافه شدند و بر تن نشستند!"
+        )
+    else:
+        caption = (
+            "✨ <b>استایل جدید کاراکتر شما با موفقیت ثبت شد!</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            f"👕 <b>تعداد قطعات بر تن:</b> {len(var_ids)} قلم\n"
+            f"🧍 <b>فرم بدنه:</b> {'پلاس' if is_plus else 'اسلیم'}\n\n"
+            "استایل شما در تمامی مبارزات، رویدادها و پروفایل عمومی بازی "
+            "با این ظاهر نمایش داده می‌شود."
+        )
+    markup = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                miniapp_button(
+                    "🎨 ویرایش مجدد در مینی‌اپ",
+                    custom_url,
+                    in_group,
+                    payload="customizer",
+                )
+            ],
+            [InlineKeyboardButton(text="👕 کمد لباس", callback_data="wdr:view:0")],
+            [InlineKeyboardButton(text="🚪 بستن", callback_data="btq:close")],
+        ]
+    )
+    return caption, markup
+
+
 @router.message(F.web_app_data)
 async def handle_customizer_webapp_data(message: Message) -> None:
     """Handle character customizer Mini App submission."""
@@ -1075,16 +1365,8 @@ async def handle_customizer_webapp_data(message: Message) -> None:
         data = json.loads(raw_data)
         var_ids = [int(x) for x in data.get("items", [])]
         skin_idx = int(data.get("skin", 1))
-        body = str(data.get("body", "slim"))
-        is_plus = 1 if body == "plus" else 0
-
-        # Skin tone ID: slim 1..5 -> -1..-5, plus 1..6 -> -7..-12 or -6
-        if is_plus:
-            skin_map = {1: -7, 2: -8, 3: -9, 4: -10, 5: -11, 6: -6}
-            skin_tone_id = skin_map.get(skin_idx, -7)
-        else:
-            skin_map = {1: -1, 2: -2, 3: -3, 4: -4, 5: -5}
-            skin_tone_id = skin_map.get(skin_idx, -1)
+        is_plus = 1 if str(data.get("body", "slim")) == "plus" else 0
+        skin_tone_id = _skin_tone_id(skin_idx, is_plus)
 
         raw_name = getattr(message.from_user, "full_name", None)
         full_name = raw_name if isinstance(raw_name, str) else "مسافر"
@@ -1094,176 +1376,39 @@ async def handle_customizer_webapp_data(message: Message) -> None:
         is_new_player = player.onboarding_completed == 0
 
         total_bought_price = 0
-        unowned_vars = []
+        unowned_vars: list[int] = []
         if not is_new_player:
-            unowned_vars = [v for v in var_ids if not await avatar.owns_item(user_id, v)]
-            if unowned_vars:
-                from services import catalog
-                items_to_add = []
-                for v in unowned_vars:
-                    it = catalog.get_catalog_item_by_var_id(v)
-                    g = it.get("gender", "unisex") if it else "unisex"
-                    p, _ = avatar.calculate_item_price(g, player.gender)
-                    items_to_add.append((v, it, p))
-                    total_bought_price += p
+            bought = await _purchase_unowned_items(message, user_id, player, var_ids)
+            if bought is None:
+                return
+            unowned_vars, total_bought_price = bought
 
-                creds, _ = await economy.balances(user_id)
-                if creds < total_bought_price:
-                    await message.reply(
-                        f"❌ <b>موجودی رکسار شما برای خرید لباس‌های جدید کافی نیست!</b>\n\n"
-                        f"مبلغ کل اقلام انتخابی: <b>{total_bought_price:,}</b> رکسار\n"
-                        f"موجودی کیف پول شما: <b>{creds:,}</b> رکسار\n\n"
-                        "با دستور <code>کار</code> یا برداشت از بانک موجودی خود را افزایش دهید."
-                    )
-                    return
-
-                await economy.spend(
-                    user_id, credits=total_bought_price, kind=ActivityKind.SHOP_BUY
-                )
-                now_ts = int(time.time())
-                async with db.write() as conn:
-                    for v, it, p in items_to_add:
-                        v_set_id = 1000000 + v
-                        title = f"✨ {it['name']}" if it else f"✨ لباس #{v}"
-                        it_gen = it.get("gender", "unisex") if it else "unisex"
-                        await conn.execute(
-                            """
-                            INSERT INTO player_wardrobe
-                                (user_id, set_id, set_name, gender, item_count,
-                                 var_ids, is_plus_size, price_paid, acquired_at)
-                            VALUES (?, ?, ?, ?, 1, ?, 0, ?, ?)
-                            ON CONFLICT(user_id, set_id) DO UPDATE SET
-                                var_ids = excluded.var_ids,
-                                acquired_at = excluded.acquired_at
-                            """,
-                            (user_id, v_set_id, title, it_gen, json.dumps([v]), p, now_ts),
-                        )
-
-        custom_set = data.get("custom_set")
         await avatar.save_custom_avatar(
             user_id=user_id,
             var_ids=var_ids,
             skin_tone=skin_tone_id,
             is_plus_size=is_plus,
-            custom_set=custom_set,
+            custom_set=data.get("custom_set"),
         )
 
         if is_new_player:
-            payload_gen = data.get("gen")
-            if payload_gen:
-                gender_fa = "دختر" if (payload_gen == "female" or "دختر" in payload_gen) else "پسر"
-            else:
-                gender_fa = player.gender if player.gender != "نامشخص" else "پسر"
-            gender_key = "female" if gender_fa == "دختر" else "male"
-            body_stance = (
-                f"base_vn_{skin_idx}" if gender_key == "female" else f"base_boy_{skin_idx}"
-            )
-            player = await game.complete_character_creation(
-                user_id=user_id,
-                display_name=player.display_name,
-                gender=gender_fa,
-                age=player.age,
-                skin_tone=str(skin_tone_id),
-                eye_color="amber",
-                body_stance=body_stance,
-                hair_style="hair1",
-                hair_color="black",
+            player = await _complete_customizer_new_player(
+                player, user_id, data, skin_idx, skin_tone_id
             )
 
         render_url = await avatar.get_player_render_url(user_id)
         photo_payload = await _render_photo_payload(render_url, "custom_avatar.png")
-
-        # اگر کاربر پیام کمد بازی داشت، آن پیام را درجا با عکس جدید ویرایش کن
-        bot_instance = getattr(message, "bot", None)
-        wdr_msg = avatar.get_user_wardrobe_message(user_id)
-        if wdr_msg and bot_instance:
-            w_chat_id, w_msg_id = wdr_msg
-            with contextlib.suppress(Exception):
-                w_url, w_cap, w_mark = await _build_wardrobe_card(
-                    user_id=user_id, index=0, in_group=_is_group_chat(message.chat.type)
-                )
-                w_photo = await _render_photo_payload(w_url, "wardrobe.png")
-                await bot_instance.edit_message_media(
-                    chat_id=w_chat_id,
-                    message_id=w_msg_id,
-                    media=InputMediaPhoto(media=w_photo, caption=w_cap, parse_mode="HTML"),
-                    reply_markup=w_mark,
-                )
+        await _refresh_wardrobe_message(message, user_id)
 
         custom_url = await avatar.get_customizer_url(user_id)
+        in_group = is_group_chat(message.chat.type)
         if is_new_player:
-            caption = (
-                f"🎉 <b>شناسنامه شهروندی تیرامیکس صادر شد!</b> 🍁\n"
-                "━━━━━━━━━━━━━━━━━━━━\n"
-                f"👤 <b>نام:</b> {player.display_name}\n"
-                f"🎂 <b>سن:</b> {player.age} سال | ⚧ <b>جنسیت:</b> {player.gender}\n"
-                f"🧍 <b>فرم بدنه:</b> {'پلاس' if is_plus else 'اسلیم'}\n"
-                f"👕 <b>پوشش اولیه:</b> {len(var_ids)} قلم لباس انتخابی خودت\n"
-                f"💰 <b>سرمایه اولیه:</b> ۲۵۰ رکسار هدیه ورود به شهر\n\n"
-                "✨ <b>کاراکتر شما با موفقیت ساخته شد و آماده زندگی در تیرامیکس است!</b>\n\n"
-                "🚀 <b>گام‌های بعدی برای شروع بازی:</b>\n"
-                "• برای کسب اولین درآمد شهری، روی <b>«💼 رفتن سر کار»</b> بزنید.\n"
-                "• برای آشنایی با تمام قابلیت‌های بازی، <b>«📜 راهنمای کامل»</b> را ببینید.\n"
-                "• برای خرید ست‌های جدید لباس، به <b>«🛍 بوتیک مد»</b> سر بزنید."
-            )
-            markup = InlineKeyboardMarkup(
-                inline_keyboard=[
-                    [
-                        InlineKeyboardButton(
-                            text="💼 رفتن سر کار (شروع درآمد)", callback_data="act:work"
-                        ),
-                        InlineKeyboardButton(
-                            text="📜 راهنمای کامل شهر", callback_data="help:main"
-                        ),
-                    ],
-                    [
-                        InlineKeyboardButton(
-                            text="🛍 ویترین بوتیک و مد",
-                            callback_data="btq:open",
-                        ),
-                        InlineKeyboardButton(text="🎒 کمد لباس من", callback_data="wdr:view:0"),
-                    ],
-                    [
-                        _mini_app_btn(
-                            "🎨 ویرایش مجدد در مینی‌اپ",
-                            custom_url,
-                            _is_group_chat(message.chat.type),
-                            payload="customizer",
-                        )
-                    ],
-                ]
+            caption, markup = _customizer_welcome_view(
+                player, var_ids, is_plus, custom_url, in_group
             )
         else:
-            if total_bought_price > 0:
-                caption = (
-                    "🎉 <b>خرید موفق از مینی‌اپ فروشگاه و بوتیک مد تیرامیکس!</b> 🛍✨\n"
-                    "━━━━━━━━━━━━━━━━━━━━\n"
-                    f"تعداد <b>{len(unowned_vars)} قلم</b> لباس جدید با موفقیت خریداری شد.\n"
-                    f"💰 کل مبلغ پرداختی: <b>{total_bought_price:,}</b> رکسار\n"
-                    "👕 تمامی لباس‌ها به کمد دائمی شما اضافه شدند و بر تن نشستند!"
-                )
-            else:
-                caption = (
-                    "✨ <b>استایل جدید کاراکتر شما با موفقیت ثبت شد!</b>\n"
-                    "━━━━━━━━━━━━━━━━━━━━\n"
-                    f"👕 <b>تعداد قطعات بر تن:</b> {len(var_ids)} قلم\n"
-                    f"🧍 <b>فرم بدنه:</b> {'پلاس' if is_plus else 'اسلیم'}\n\n"
-                    "استایل شما در تمامی مبارزات، رویدادها و پروفایل عمومی بازی "
-                    "با این ظاهر نمایش داده می‌شود."
-                )
-            markup = InlineKeyboardMarkup(
-                inline_keyboard=[
-                    [
-                        _mini_app_btn(
-                            "🎨 ویرایش مجدد در مینی‌اپ",
-                            custom_url,
-                            _is_group_chat(message.chat.type),
-                            payload="customizer",
-                        )
-                    ],
-                    [InlineKeyboardButton(text="👕 کمد لباس", callback_data="wdr:view:0")],
-                    [InlineKeyboardButton(text="🚪 بستن", callback_data="btq:close")],
-                ]
+            caption, markup = _customizer_saved_view(
+                unowned_vars, total_bought_price, var_ids, is_plus, custom_url, in_group
             )
         await message.reply_photo(photo=photo_payload, caption=caption, reply_markup=markup)
     except Exception as exc:
@@ -1288,7 +1433,7 @@ async def open_boutique_from_callback(call: CallbackQuery) -> None:
 
     user_id = call.from_user.id
     user = call.from_user
-    is_group = _is_group_chat(message.chat.type)
+    is_group = is_group_chat(message.chat.type)
 
     try:
         player = await hydrate(user_id, user.full_name, user.username)
@@ -1308,7 +1453,7 @@ async def open_boutique_from_callback(call: CallbackQuery) -> None:
         markup = InlineKeyboardMarkup(
             inline_keyboard=[
                 [
-                    _mini_app_btn(
+                    miniapp_button(
                         "📱 باز کردن فروشگاه مد (مینی‌اپ)",
                         custom_url,
                         is_group,
@@ -1371,268 +1516,449 @@ async def handle_boutique_callback(call: CallbackQuery) -> None:
     parts = call.data.split(":")
     action = parts[1] if len(parts) > 1 else ""
 
-    if action in ("open", "main", "hub"):
-        await open_boutique_from_callback(call)
+    handler = _BTQ_ACTIONS.get(action)
+    if handler is None:
+        await call.answer()
         return
+    await handler(call, message, user_id, parts)
 
-    if action in ("catalog", "showcase"):
-        cat_key = parts[2] if len(parts) > 2 else "top"
-        page = int(parts[3]) if len(parts) > 3 else 0
-        render_url, caption, markup = await _build_boutique_catalog(
-            user_id=user_id,
-            category=cat_key,
-            page=page,
-            in_group=_is_group_chat(message.chat.type),
+
+# ---------------------------------------------------------------------------
+# اکشن‌های کال‌بک بوتیک: هر اکشن یک تابع کوچک + جدول dispatch؛ بدون زنجیره if/elif
+# ---------------------------------------------------------------------------
+
+_BtqHandler = Callable[[CallbackQuery, Message, int, list[str]], Awaitable[None]]
+
+
+def _item_args(parts: list[str]) -> tuple[int, str, int]:
+    """استخراج (شناسه قطعه، دسته، صفحه) از پی‌لود کال‌بک‌های آیتمی."""
+    var_id = int(parts[2]) if len(parts) > 2 else 0
+    cat_key = parts[3] if len(parts) > 3 else "top"
+    page = int(parts[4]) if len(parts) > 4 else 0
+    return var_id, cat_key, page
+
+
+def _set_args(parts: list[str]) -> tuple[str, int, int]:
+    """استخراج (جنسیت، ایندکس، شناسه ست) از پی‌لود کال‌بک‌های ست‌ها."""
+    gender = parts[2] if len(parts) > 2 else "female"
+    idx = int(parts[3]) if len(parts) > 3 else 0
+    set_id = int(parts[4]) if len(parts) > 4 else 0
+    return gender, idx, set_id
+
+
+async def _edit_card(
+    message: Message,
+    render_url: str,
+    caption: str,
+    markup: InlineKeyboardMarkup,
+    log_ctx: str,
+) -> None:
+    """ویرایش کارت تصویری فعلی؛ خطای «محتوای تکراری» تلگرام بی‌صدا رد می‌شود."""
+    try:
+        await message.edit_media(
+            media=InputMediaPhoto(media=render_url, caption=caption, parse_mode="HTML"),
+            reply_markup=markup,
         )
-        if message.photo:
-            await _update_boutique_view(call, caption=caption, markup=markup, media_url=None)
-        else:
-            photo_payload = await _render_photo_payload(render_url, "boutique.png")
-            with contextlib.suppress(Exception):
-                await message.delete()
-            await message.answer_photo(
-                photo=photo_payload,
-                caption=caption,
-                reply_markup=markup,
-            )
-        await call.answer()
-        return
+    except TelegramBadRequest as exc:
+        logger.debug("edit_media error on %s: %s", log_ctx, exc)
 
-    if action == "close":
-        avatar.clear_user_wardrobe_message(user_id)
-        await call.answer()
-        with contextlib.suppress(TelegramBadRequest):
+
+async def _btq_open(
+    call: CallbackQuery, message: Message, user_id: int, parts: list[str]
+) -> None:
+    """باز کردن هاب اصلی بوتیک از کال‌بک."""
+    await open_boutique_from_callback(call)
+
+
+async def _btq_catalog(
+    call: CallbackQuery, message: Message, user_id: int, parts: list[str]
+) -> None:
+    """نمایش ویترین/کاتالوگ؛ در نبود کارت فعلی، عکس تازه ارسال می‌شود."""
+    cat_key = parts[2] if len(parts) > 2 else "top"
+    page = int(parts[3]) if len(parts) > 3 else 0
+    render_url, caption, markup = await _build_boutique_catalog(
+        user_id=user_id,
+        category=cat_key,
+        page=page,
+        in_group=is_group_chat(message.chat.type),
+    )
+    if message.photo:
+        await _update_boutique_view(call, caption=caption, markup=markup, media_url=None)
+    else:
+        photo_payload = await _render_photo_payload(render_url, "boutique.png")
+        with contextlib.suppress(Exception):
             await message.delete()
-        return
-
-    if action == "cat":
-        cat_key = parts[2] if len(parts) > 2 else "top"
-        if cat_key in ("top", "bottom", "shoes", "acc"):
-            _, caption, markup = await _build_boutique_catalog(
-                user_id=user_id,
-                category=cat_key,
-                page=0,
-                in_group=_is_group_chat(message.chat.type),
-            )
-            await _update_boutique_view(call, caption=caption, markup=markup, media_url=None)
-            await call.answer()
-            return
-
-        # Legacy category support for test suites
-        render_url, caption, markup = await _build_boutique_card(
-            user_id=user_id,
-            gender=cat_key,
-            index=0,
-            is_preview=False,
+        await message.answer_photo(
+            photo=photo_payload,
+            caption=caption,
+            reply_markup=markup,
         )
-        try:
-            await message.edit_media(
-                media=InputMediaPhoto(media=render_url, caption=caption, parse_mode="HTML"),
-                reply_markup=markup,
-            )
-        except TelegramBadRequest as exc:
-            logger.debug("edit_media error on cat switch: %s", exc)
-        await call.answer()
-        return
+    await call.answer()
 
-    if action == "page":
-        cat_key = parts[2] if len(parts) > 2 else "top"
-        page = int(parts[3]) if len(parts) > 3 else 0
+
+async def _btq_close(
+    call: CallbackQuery, message: Message, user_id: int, parts: list[str]
+) -> None:
+    """بستن کارت بوتیک و پاک‌سازی پیام ثبت‌شدهٔ کمد."""
+    avatar.clear_user_wardrobe_message(user_id)
+    await call.answer()
+    with contextlib.suppress(TelegramBadRequest):
+        await message.delete()
+
+
+async def _btq_cat(
+    call: CallbackQuery, message: Message, user_id: int, parts: list[str]
+) -> None:
+    """جابجایی دسته‌بندی کاتالوگ (با پشتیبانی قدیمی دسته‌های تست)."""
+    cat_key = parts[2] if len(parts) > 2 else "top"
+    if cat_key in ("top", "bottom", "shoes", "acc"):
         _, caption, markup = await _build_boutique_catalog(
             user_id=user_id,
             category=cat_key,
-            page=page,
-            in_group=_is_group_chat(message.chat.type),
+            page=0,
+            in_group=is_group_chat(message.chat.type),
         )
         await _update_boutique_view(call, caption=caption, markup=markup, media_url=None)
         await call.answer()
         return
 
-    if action == "view":
-        var_id = int(parts[2]) if len(parts) > 2 else 0
-        cat_key = parts[3] if len(parts) > 3 else "top"
-        page = int(parts[4]) if len(parts) > 4 else 0
-        _, caption, markup = await _build_boutique_item_detail(
-            user_id=user_id, var_id=var_id, category=cat_key, page=page, is_preview=False
-        )
-        await _update_boutique_view(call, caption=caption, markup=markup, media_url=None)
-        await call.answer()
-        return
-
-    if action == "prev_it":
-        var_id = int(parts[2]) if len(parts) > 2 else 0
-        cat_key = parts[3] if len(parts) > 3 else "top"
-        page = int(parts[4]) if len(parts) > 4 else 0
-        render_url, caption, markup = await _build_boutique_item_detail(
-            user_id=user_id, var_id=var_id, category=cat_key, page=page, is_preview=True
-        )
-        await _update_boutique_view(call, caption=caption, markup=markup, media_url=render_url)
-        await call.answer("👁 عکس استودیویی محصول بارگذاری شد!")
-        return
-
-    if action == "buy_it":
-        var_id = int(parts[2]) if len(parts) > 2 else 0
-        cat_key = parts[3] if len(parts) > 3 else "top"
-        page = int(parts[4]) if len(parts) > 4 else 0
-        player = await game.load_player(user_id)
-        if not player:
-            player = await game.ensure_player(
-                user_id=user_id, username="", display_name="مسافر"
-            )
-
-        try:
-            price, it_info = await avatar.buy_boutique_item(
-                user_id=user_id,
-                var_id=var_id,
-                player_gender=player.gender,
-                player_drip=player.drip,
-            )
-            await call.answer(
-                f"🎉 لباس «{it_info['name']}» با {price:,} رکسار خریداری شد و به کمد رفت!",
-                show_alert=True,
-            )
-        except avatar.AlreadyOwned:
-            await call.answer("شما قبلاً این لباس را خریده‌اید!", show_alert=True)
-        except Exception as exc:
-            await call.answer(f"خطا در خرید: {exc}", show_alert=True)
-
-        _, caption, markup = await _build_boutique_item_detail(
-            user_id=user_id, var_id=var_id, category=cat_key, page=page, is_preview=False
-        )
-        await _update_boutique_view(call, caption=caption, markup=markup, media_url=None)
-        return
-
-    if action == "equip_it":
-        var_id = int(parts[2]) if len(parts) > 2 else 0
-        cat_key = parts[3] if len(parts) > 3 else "top"
-        page = int(parts[4]) if len(parts) > 4 else 0
-        res = await avatar.equip_single_item(user_id, var_id)
-        await call.answer(res["message"], show_alert=True)
-        render_url, caption, markup = await _build_boutique_item_detail(
-            user_id=user_id, var_id=var_id, category=cat_key, page=page, is_preview=True
-        )
-        await _update_boutique_view(call, caption=caption, markup=markup, media_url=render_url)
-        return
-
-    if action == "unequip_it":
-        var_id = int(parts[2]) if len(parts) > 2 else 0
-        cat_key = parts[3] if len(parts) > 3 else "top"
-        page = int(parts[4]) if len(parts) > 4 else 0
-        res = await avatar.unequip_single_item(user_id, var_id)
-        await call.answer(res["message"], show_alert=True)
-        render_url, caption, markup = await _build_boutique_item_detail(
-            user_id=user_id, var_id=var_id, category=cat_key, page=page, is_preview=True
-        )
-        await _update_boutique_view(call, caption=caption, markup=markup, media_url=render_url)
-        return
-
-    if action == "nav":
-        # Slide through sets
-        gender = parts[2] if len(parts) > 2 else "female"
-        idx = int(parts[3]) if len(parts) > 3 else 0
-        is_preview = bool(int(parts[4])) if len(parts) > 4 else False
-        render_url, caption, markup = await _build_boutique_card(
-            user_id=user_id,
-            gender=gender,
-            index=idx,
-            is_preview=is_preview,
-        )
-        try:
-            await message.edit_media(
-                media=InputMediaPhoto(media=render_url, caption=caption, parse_mode="HTML"),
-                reply_markup=markup,
-            )
-        except TelegramBadRequest as exc:
-            logger.debug("edit_media error on nav: %s", exc)
-        await call.answer()
-        return
-
-    if action == "prev":
-        # Toggle preview on player's avatar
-        gender = parts[2] if len(parts) > 2 else "female"
-        idx = int(parts[3]) if len(parts) > 3 else 0
-        is_preview = bool(int(parts[4])) if len(parts) > 4 else False
-        render_url, caption, markup = await _build_boutique_card(
-            user_id=user_id,
-            gender=gender,
-            index=idx,
-            is_preview=is_preview,
-        )
-        try:
-            await message.edit_media(
-                media=InputMediaPhoto(media=render_url, caption=caption, parse_mode="HTML"),
-                reply_markup=markup,
-            )
-        except TelegramBadRequest as exc:
-            logger.debug("edit_media error on preview toggle: %s", exc)
-        await call.answer()
-        return
-
-    if action == "buy":
-        # Purchase set
-        gender = parts[2] if len(parts) > 2 else "female"
-        idx = int(parts[3]) if len(parts) > 3 else 0
-        set_id = int(parts[4]) if len(parts) > 4 else 0
-
-        player = await game.ensure_player(
-            user_id=user_id,
-            username=call.from_user.username or "",
-            display_name=call.from_user.full_name or "مسافر",
-        )
-
-        try:
-            price, s_info = await avatar.buy_boutique_set(
-                user_id=user_id,
-                set_id=set_id,
-                player_drip=player.drip,
-            )
-            await call.answer(
-                f"🎉 ست «{s_info['name']}» با {price:,} رکسار خریداری شد و به کمد شما رفت!",
-                show_alert=True,
-            )
-        except avatar.AlreadyOwned:
-            await call.answer("شما قبلاً این ست را خریده‌اید!", show_alert=True)
-        except Exception as exc:
-            await call.answer(f"خطا در خرید: {exc}", show_alert=True)
-
-        # Refresh current card
-        render_url, caption, markup = await _build_boutique_card(
-            user_id=user_id,
-            gender=gender,
-            index=idx,
-            is_preview=False,
-        )
-        with contextlib.suppress(TelegramBadRequest):
-            await message.edit_media(
-                media=InputMediaPhoto(media=render_url, caption=caption, parse_mode="HTML"),
-                reply_markup=markup,
-            )
-        return
-
-    if action == "equip":
-        gender = parts[2] if len(parts) > 2 else "female"
-        idx = int(parts[3]) if len(parts) > 3 else 0
-        set_id = int(parts[4]) if len(parts) > 4 else 0
-        try:
-            await avatar.equip_set(user_id, set_id)
-            await call.answer("👕 ست مورد نظر با موفقیت بر تن کاراکتر شما نشست!", show_alert=True)
-        except Exception as exc:
-            await call.answer(f"خطا: {exc}", show_alert=True)
-
-        render_url, caption, markup = await _build_boutique_card(
-            user_id=user_id,
-            gender=gender,
-            index=idx,
-            is_preview=True,
-        )
-        with contextlib.suppress(TelegramBadRequest):
-            await message.edit_media(
-                media=InputMediaPhoto(media=render_url, caption=caption, parse_mode="HTML"),
-                reply_markup=markup,
-            )
-        return
-
+    # Legacy category support for test suites
+    render_url, caption, markup = await _build_boutique_card(
+        user_id=user_id,
+        gender=cat_key,
+        index=0,
+        is_preview=False,
+    )
+    await _edit_card(message, render_url, caption, markup, "cat switch")
     await call.answer()
+
+
+async def _btq_page(
+    call: CallbackQuery, message: Message, user_id: int, parts: list[str]
+) -> None:
+    """جابجایی صفحهٔ کاتالوگ."""
+    cat_key = parts[2] if len(parts) > 2 else "top"
+    page = int(parts[3]) if len(parts) > 3 else 0
+    _, caption, markup = await _build_boutique_catalog(
+        user_id=user_id,
+        category=cat_key,
+        page=page,
+        in_group=is_group_chat(message.chat.type),
+    )
+    await _update_boutique_view(call, caption=caption, markup=markup, media_url=None)
+    await call.answer()
+
+
+async def _btq_view(
+    call: CallbackQuery, message: Message, user_id: int, parts: list[str]
+) -> None:
+    """نمایش جزئیات یک قطعه لباس."""
+    var_id, cat_key, page = _item_args(parts)
+    _, caption, markup = await _build_boutique_item_detail(
+        user_id=user_id, var_id=var_id, category=cat_key, page=page, is_preview=False
+    )
+    await _update_boutique_view(call, caption=caption, markup=markup, media_url=None)
+    await call.answer()
+
+
+async def _btq_prev_item(
+    call: CallbackQuery, message: Message, user_id: int, parts: list[str]
+) -> None:
+    """پیش‌نمایش استودیویی قطعه روی آواتار."""
+    var_id, cat_key, page = _item_args(parts)
+    render_url, caption, markup = await _build_boutique_item_detail(
+        user_id=user_id, var_id=var_id, category=cat_key, page=page, is_preview=True
+    )
+    await _update_boutique_view(call, caption=caption, markup=markup, media_url=render_url)
+    await call.answer("👁 عکس استودیویی محصول بارگذاری شد!")
+
+
+async def _btq_buy_item(
+    call: CallbackQuery, message: Message, user_id: int, parts: list[str]
+) -> None:
+    """خرید یک قطعه لباس و بازخوانی کارت جزئیات."""
+    var_id, cat_key, page = _item_args(parts)
+    player = await game.load_player(user_id)
+    if not player:
+        player = await game.ensure_player(
+            user_id=user_id, username="", display_name="مسافر"
+        )
+
+    try:
+        price, it_info = await avatar.buy_boutique_item(
+            user_id=user_id,
+            var_id=var_id,
+            player_gender=player.gender,
+            player_drip=player.drip,
+        )
+        await call.answer(
+            f"🎉 لباس «{it_info['name']}» با {price:,} رکسار خریداری شد و به کمد رفت!",
+            show_alert=True,
+        )
+    except avatar.AlreadyOwned:
+        await call.answer("شما قبلاً این لباس را خریده‌اید!", show_alert=True)
+    except Exception as exc:
+        logger.warning("boutique item buy failed: %s", exc)
+        await call.answer(f"خطا در خرید: {exc}", show_alert=True)
+
+    _, caption, markup = await _build_boutique_item_detail(
+        user_id=user_id, var_id=var_id, category=cat_key, page=page, is_preview=False
+    )
+    await _update_boutique_view(call, caption=caption, markup=markup, media_url=None)
+
+
+async def _btq_equip_item(
+    call: CallbackQuery, message: Message, user_id: int, parts: list[str]
+) -> None:
+    """پوشیدن یک قطعه و نمایش پیش‌نمایش تازه."""
+    var_id, cat_key, page = _item_args(parts)
+    res = await avatar.equip_single_item(user_id, var_id)
+    await call.answer(res["message"], show_alert=True)
+    render_url, caption, markup = await _build_boutique_item_detail(
+        user_id=user_id, var_id=var_id, category=cat_key, page=page, is_preview=True
+    )
+    await _update_boutique_view(call, caption=caption, markup=markup, media_url=render_url)
+
+
+async def _btq_unequip_item(
+    call: CallbackQuery, message: Message, user_id: int, parts: list[str]
+) -> None:
+    """درآوردن یک قطعه و نمایش پیش‌نمایش تازه."""
+    var_id, cat_key, page = _item_args(parts)
+    res = await avatar.unequip_single_item(user_id, var_id)
+    await call.answer(res["message"], show_alert=True)
+    render_url, caption, markup = await _build_boutique_item_detail(
+        user_id=user_id, var_id=var_id, category=cat_key, page=page, is_preview=True
+    )
+    await _update_boutique_view(call, caption=caption, markup=markup, media_url=render_url)
+
+
+async def _btq_nav(
+    call: CallbackQuery, message: Message, user_id: int, parts: list[str]
+) -> None:
+    """پیمایش ست‌ها یا روشن/خاموش کردن پیش‌نمایش روی آواتار."""
+    gender, idx, _set_id = _set_args(parts)
+    is_preview = bool(int(parts[4])) if len(parts) > 4 else False
+    render_url, caption, markup = await _build_boutique_card(
+        user_id=user_id,
+        gender=gender,
+        index=idx,
+        is_preview=is_preview,
+    )
+    await _edit_card(message, render_url, caption, markup, "nav")
+    await call.answer()
+
+
+async def _btq_buy(
+    call: CallbackQuery, message: Message, user_id: int, parts: list[str]
+) -> None:
+    """خرید ست لباس و بازخوانی کارت فعلی."""
+    gender, idx, set_id = _set_args(parts)
+    player = await game.ensure_player(
+        user_id=user_id,
+        username=call.from_user.username if call.from_user else "",
+        display_name=(call.from_user.full_name if call.from_user else "") or "مسافر",
+    )
+
+    try:
+        price, s_info = await avatar.buy_boutique_set(
+            user_id=user_id,
+            set_id=set_id,
+            player_drip=player.drip,
+        )
+        await call.answer(
+            f"🎉 ست «{s_info['name']}» با {price:,} رکسار خریداری شد و به کمد شما رفت!",
+            show_alert=True,
+        )
+    except avatar.AlreadyOwned:
+        await call.answer("شما قبلاً این ست را خریده‌اید!", show_alert=True)
+    except Exception as exc:
+        logger.warning("boutique set buy failed: %s", exc)
+        await call.answer(f"خطا در خرید: {exc}", show_alert=True)
+
+    # Refresh current card
+    render_url, caption, markup = await _build_boutique_card(
+        user_id=user_id,
+        gender=gender,
+        index=idx,
+        is_preview=False,
+    )
+    await _edit_card(message, render_url, caption, markup, "buy")
+
+
+async def _btq_equip(
+    call: CallbackQuery, message: Message, user_id: int, parts: list[str]
+) -> None:
+    """پوشیدن ست انتخابی و نمایش پیش‌نمایش تازه."""
+    gender, idx, set_id = _set_args(parts)
+    try:
+        await avatar.equip_set(user_id, set_id)
+        await call.answer("👕 ست مورد نظر با موفقیت بر تن کاراکتر شما نشست!", show_alert=True)
+    except Exception as exc:
+        logger.warning("boutique set equip failed: %s", exc)
+        await call.answer(f"خطا: {exc}", show_alert=True)
+
+    render_url, caption, markup = await _build_boutique_card(
+        user_id=user_id,
+        gender=gender,
+        index=idx,
+        is_preview=True,
+    )
+    await _edit_card(message, render_url, caption, markup, "equip")
+
+
+_BTQ_ACTIONS: dict[str, _BtqHandler] = {
+    **dict.fromkeys(("open", "main", "hub"), _btq_open),
+    **dict.fromkeys(("catalog", "showcase"), _btq_catalog),
+    "close": _btq_close,
+    "cat": _btq_cat,
+    "page": _btq_page,
+    "view": _btq_view,
+    "prev_it": _btq_prev_item,
+    "buy_it": _btq_buy_item,
+    "equip_it": _btq_equip_item,
+    "unequip_it": _btq_unequip_item,
+    **dict.fromkeys(("nav", "prev"), _btq_nav),
+    "buy": _btq_buy,
+    "equip": _btq_equip,
+}
+
+
+
+async def _edit_wardrobe_media(
+    message: Message, media: Any, caption: str, markup: InlineKeyboardMarkup
+) -> None:
+    """ویرایش رسانه‌ای پیام کمد (بی‌سروصدا در صورت TelegramBadRequest)."""
+    with contextlib.suppress(TelegramBadRequest):
+        await message.edit_media(
+            media=InputMediaPhoto(media=media, caption=caption, parse_mode="HTML"),
+            reply_markup=markup,
+        )
+
+
+async def _show_wardrobe_view(
+    message: Message, view: tuple[str, str, InlineKeyboardMarkup]
+) -> None:
+    """دریافت عکس رندر و نمایش نتیجهٔ سازنده‌های کارت کمد."""
+    render_url, caption, markup = view
+    photo_payload = await _render_photo_payload(render_url, "wardrobe.png")
+    await _edit_wardrobe_media(message, photo_payload, caption, markup)
+
+
+async def _wdr_sets_list(
+    call: CallbackQuery, message: Message, user_id: int, parts: list[str]
+) -> None:
+    view = await _build_outfit_switch_menu(
+        user_id=user_id, in_group=is_group_chat(message.chat.type)
+    )
+    await _show_wardrobe_view(message, view)
+    await call.answer()
+
+
+async def _wdr_items(
+    call: CallbackQuery, message: Message, user_id: int, parts: list[str]
+) -> None:
+    page = int(parts[2]) if len(parts) > 2 else 0
+    view = await _build_wardrobe_items_menu(user_id=user_id, page=page)
+    await _show_wardrobe_view(message, view)
+    await call.answer()
+
+
+async def _wdr_item_on(
+    call: CallbackQuery, message: Message, user_id: int, parts: list[str]
+) -> None:
+    vid = int(parts[2]) if len(parts) > 2 else 0
+    page = int(parts[3]) if len(parts) > 3 else 0
+    res = await avatar.equip_single_item(user_id, vid)
+    await call.answer(res["message"], show_alert=True)
+    view = await _build_wardrobe_items_menu(user_id=user_id, page=page)
+    await _show_wardrobe_view(message, view)
+
+
+async def _wdr_item_off(
+    call: CallbackQuery, message: Message, user_id: int, parts: list[str]
+) -> None:
+    vid = int(parts[2]) if len(parts) > 2 else 0
+    page = int(parts[3]) if len(parts) > 3 else 0
+    res = await avatar.unequip_single_item(user_id, vid)
+    await call.answer(res["message"], show_alert=True)
+    view = await _build_wardrobe_items_menu(user_id=user_id, page=page)
+    await _show_wardrobe_view(message, view)
+
+
+async def _wdr_card(
+    call: CallbackQuery, message: Message, user_id: int, parts: list[str]
+) -> None:
+    avatar.set_user_wardrobe_message(user_id, message.chat.id, message.message_id)
+    idx = int(parts[2]) if len(parts) > 2 else 0
+    view = await _build_wardrobe_card(
+        user_id=user_id, index=idx, in_group=is_group_chat(message.chat.type)
+    )
+    await _show_wardrobe_view(message, view)
+    await call.answer()
+
+
+async def _wdr_equip(
+    call: CallbackQuery, message: Message, user_id: int, parts: list[str]
+) -> None:
+    avatar.set_user_wardrobe_message(user_id, message.chat.id, message.message_id)
+    set_id = int(parts[2]) if len(parts) > 2 else 0
+    try:
+        if set_id >= 1000000:
+            vid = set_id - 1000000
+            res = await avatar.equip_single_item(user_id, vid)
+            await call.answer(res["message"], show_alert=True)
+        else:
+            await avatar.equip_set(user_id, set_id)
+            await call.answer("👗 ست لباس با موفقیت بر تن کاراکتر شما نشست!", show_alert=True)
+    except Exception as exc:
+        logger.warning("wardrobe set equip failed: %s", exc)
+        await call.answer(f"خطا: {exc}", show_alert=True)
+
+    view = await _build_wardrobe_card(
+        user_id=user_id, index=0, in_group=is_group_chat(message.chat.type)
+    )
+    await _show_wardrobe_view(message, view)
+
+
+async def _wdr_unequip(
+    call: CallbackQuery, message: Message, user_id: int, parts: list[str]
+) -> None:
+    avatar.set_user_wardrobe_message(user_id, message.chat.id, message.message_id)
+    idx = int(parts[2]) if len(parts) > 2 else 0
+    await avatar.unequip(user_id)
+    await call.answer("لباس‌های کاراکتر درآورده شد.", show_alert=True)
+    render_url, caption, markup = await _build_wardrobe_card(
+        user_id=user_id, index=idx, in_group=is_group_chat(message.chat.type)
+    )
+    # مثل رفتار قبلی: media مستقیم از رندر (بدون fetch دوباره)
+    await _edit_wardrobe_media(message, render_url, caption, markup)
+
+
+async def _wdr_skin(
+    call: CallbackQuery, message: Message, user_id: int, parts: list[str]
+) -> None:
+    avatar.set_user_wardrobe_message(user_id, message.chat.id, message.message_id)
+    from handlers import salon as salon_h
+
+    render_url, caption, markup = await salon_h._build_solarium_menu(user_id)
+    await _edit_wardrobe_media(message, render_url, caption, markup)
+    await call.answer()
+
+
+_WDR_ACTIONS: dict[str, Callable[[CallbackQuery, Message, int, list[str]], Awaitable[None]]] = {
+    "sets_list": _wdr_sets_list,
+    "items": _wdr_items,
+    "it_on": _wdr_item_on,
+    "it_off": _wdr_item_off,
+    "open": _wdr_card,
+    "nav": _wdr_card,
+    "view": _wdr_card,
+    "equip": _wdr_equip,
+    "unequip": _wdr_unequip,
+    "skin_menu": _wdr_skin,
+    "set_skin": _wdr_skin,
+}
 
 
 @router.callback_query(F.data.startswith("wdr:"))
@@ -1650,129 +1976,11 @@ async def handle_wardrobe_callback(call: CallbackQuery) -> None:
     parts = call.data.split(":")
     action = parts[1] if len(parts) > 1 else ""
 
-    if action == "sets_list":
-        render_url, caption, markup = await _build_outfit_switch_menu(
-            user_id=user_id, in_group=_is_group_chat(message.chat.type)
-        )
-        photo_payload = await _render_photo_payload(render_url, "wardrobe.png")
-        with contextlib.suppress(TelegramBadRequest):
-            await message.edit_media(
-                media=InputMediaPhoto(media=photo_payload, caption=caption, parse_mode="HTML"),
-                reply_markup=markup,
-            )
+    handler = _WDR_ACTIONS.get(action)
+    if handler is not None:
+        await handler(call, message, user_id, parts)
+    else:
         await call.answer()
-        return
-
-    if action == "items":
-        page = int(parts[2]) if len(parts) > 2 else 0
-        render_url, caption, markup = await _build_wardrobe_items_menu(user_id=user_id, page=page)
-        photo_payload = await _render_photo_payload(render_url, "wardrobe.png")
-        with contextlib.suppress(TelegramBadRequest):
-            await message.edit_media(
-                media=InputMediaPhoto(media=photo_payload, caption=caption, parse_mode="HTML"),
-                reply_markup=markup,
-            )
-        await call.answer()
-        return
-
-    if action == "it_on":
-        vid = int(parts[2]) if len(parts) > 2 else 0
-        page = int(parts[3]) if len(parts) > 3 else 0
-        res = await avatar.equip_single_item(user_id, vid)
-        await call.answer(res["message"], show_alert=True)
-        render_url, caption, markup = await _build_wardrobe_items_menu(user_id=user_id, page=page)
-        photo_payload = await _render_photo_payload(render_url, "wardrobe.png")
-        with contextlib.suppress(TelegramBadRequest):
-            await message.edit_media(
-                media=InputMediaPhoto(media=photo_payload, caption=caption, parse_mode="HTML"),
-                reply_markup=markup,
-            )
-        return
-
-    if action == "it_off":
-        vid = int(parts[2]) if len(parts) > 2 else 0
-        page = int(parts[3]) if len(parts) > 3 else 0
-        res = await avatar.unequip_single_item(user_id, vid)
-        await call.answer(res["message"], show_alert=True)
-        render_url, caption, markup = await _build_wardrobe_items_menu(user_id=user_id, page=page)
-        photo_payload = await _render_photo_payload(render_url, "wardrobe.png")
-        with contextlib.suppress(TelegramBadRequest):
-            await message.edit_media(
-                media=InputMediaPhoto(media=photo_payload, caption=caption, parse_mode="HTML"),
-                reply_markup=markup,
-            )
-        return
-
-    avatar.set_user_wardrobe_message(user_id, message.chat.id, message.message_id)
-
-    if action in ("open", "nav", "view"):
-        idx = int(parts[2]) if len(parts) > 2 else 0
-        render_url, caption, markup = await _build_wardrobe_card(
-            user_id=user_id, index=idx, in_group=_is_group_chat(message.chat.type)
-        )
-        photo_payload = await _render_photo_payload(render_url, "wardrobe.png")
-        with contextlib.suppress(TelegramBadRequest):
-            await message.edit_media(
-                media=InputMediaPhoto(media=photo_payload, caption=caption, parse_mode="HTML"),
-                reply_markup=markup,
-            )
-        await call.answer()
-        return
-
-    if action == "equip":
-        set_id = int(parts[2]) if len(parts) > 2 else 0
-        idx = int(parts[3]) if len(parts) > 3 else 0
-        try:
-            if set_id >= 1000000:
-                vid = set_id - 1000000
-                res = await avatar.equip_single_item(user_id, vid)
-                await call.answer(res["message"], show_alert=True)
-            else:
-                await avatar.equip_set(user_id, set_id)
-                await call.answer("👗 ست لباس با موفقیت بر تن کاراکتر شما نشست!", show_alert=True)
-        except Exception as exc:
-            await call.answer(f"خطا: {exc}", show_alert=True)
-
-        render_url, caption, markup = await _build_wardrobe_card(
-            user_id=user_id, index=0, in_group=_is_group_chat(message.chat.type)
-        )
-        photo_payload = await _render_photo_payload(render_url, "wardrobe.png")
-        with contextlib.suppress(TelegramBadRequest):
-            await message.edit_media(
-                media=InputMediaPhoto(media=photo_payload, caption=caption, parse_mode="HTML"),
-                reply_markup=markup,
-            )
-        return
-
-    if action == "unequip":
-        idx = int(parts[2]) if len(parts) > 2 else 0
-        await avatar.unequip(user_id)
-        await call.answer("لباس‌های کاراکتر درآورده شد.", show_alert=True)
-        render_url, caption, markup = await _build_wardrobe_card(
-            user_id=user_id, index=idx, in_group=_is_group_chat(message.chat.type)
-        )
-        with contextlib.suppress(TelegramBadRequest):
-            await message.edit_media(
-                media=InputMediaPhoto(media=render_url, caption=caption, parse_mode="HTML"),
-                reply_markup=markup,
-            )
-        return
-
-    if action in ("skin_menu", "set_skin"):
-        from handlers import salon as salon_h
-
-        render_url, caption, markup = await salon_h._build_solarium_menu(user_id)
-        with contextlib.suppress(TelegramBadRequest):
-            await message.edit_media(
-                media=InputMediaPhoto(
-                    media=render_url, caption=caption, parse_mode="HTML"
-                ),
-                reply_markup=markup,
-            )
-        await call.answer()
-        return
-
-    await call.answer()
 
 
 @router.callback_query(F.data == "noop")

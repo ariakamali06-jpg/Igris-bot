@@ -575,9 +575,10 @@ async def transfer_credits(
 # Crime: Theft, Jail & Penalties
 # ---------------------------------------------------------------------------
 
-async def attempt_theft(thief: Player, victim: Player) -> dict[str, Any]:
-    """Attempt pickpocketing/burglary against another citizen in group."""
-    now = int(time.time())
+def _theft_preconditions(
+    thief: Player, victim: Player, now: int
+) -> dict[str, Any] | None:
+    """گاردهای سرقت؛ نتیجهٔ شکست آماده برمی‌گرداند یا None یعنی ادامه بده."""
     if thief.user_id == victim.user_id:
         return {"success": False, "message": "❌ نمی‌توانید از خودتان دزدی کنید!"}
 
@@ -610,6 +611,106 @@ async def attempt_theft(thief: Player, victim: Player) -> dict[str, Any]:
             "message": f"🛡️ <b>سپر ضدسرقت {victim.display_name} کار کرد!</b>\n\n"
                        "دستت به جیب نرسید و بی‌سر و صدا عقب کشیدی؛ نه زندان، نه جریمه.",
         }
+    return None
+
+
+async def _theft_success(
+    thief: Player, victim: Player, target_loot: int, steal_pct: float
+) -> dict[str, Any]:
+    """انتقال غنیمت از قربانی به دزد و ثبت آمار سرقت موفق."""
+    await economy.spend(victim.user_id, credits=target_loot, kind=ActivityKind.THEFT)
+    await economy.grant(thief.user_id, credits=target_loot, kind=ActivityKind.THEFT)
+    async with db.write() as conn:
+        await conn.execute(
+            """
+            UPDATE players
+            SET thefts_success = thefts_success + 1,
+                total_stolen = total_stolen + ?
+            WHERE user_id = ?
+            """,
+            (target_loot, thief.user_id),
+        )
+    return {
+        "success": True,
+        "stolen": target_loot,
+        "percentage": int(steal_pct * 100),
+        "message": f"🥷 <b>سرقت موفقیت‌آمیز در کوچه پس‌کوچه‌های تیرامیکس!</b>\n\n"
+                   f"دزد حرفه‌ای ({thief.display_name}) موفق شد <b>{target_loot:,}</b> رکسار "
+                   f"({int(steal_pct * 100)}٪ از دارایی نقد) از جیب "
+                   f"{victim.display_name} به جیب بزند!",
+    }
+
+
+async def _theft_fine(
+    thief: Player,
+    victim: Player,
+    fine_amount: int,
+) -> dict[str, Any]:
+    """جریمهٔ نقدی ۵ برابری: نصف به قربانی، نصف به صندوق شهر."""
+    await economy.spend(thief.user_id, credits=fine_amount, kind=ActivityKind.THEFT)
+    # 50% of fine to victim compensation, 50% to city court
+    compensation = fine_amount // 2
+    await economy.grant(victim.user_id, credits=compensation, kind=ActivityKind.THEFT)
+    async with db.write() as conn:
+        await conn.execute(
+            "UPDATE players SET thefts_failed = thefts_failed + 1 WHERE user_id = ?",
+            (thief.user_id,),
+        )
+
+    return {
+        "success": False,
+        "punishment": "fine",
+        "fine": fine_amount,
+        "compensation": compensation,
+        "message": f"🚨 <b>دستگیری دزد ناشی توسط پلیس تیرامیکس!</b>\n\n"
+                   f"سارق ({thief.display_name}) حین اقدام به سرقت از "
+                   f"{victim.display_name} به دام افتاد!\n"
+                   f"⚖️ حکم دادگاه: پرداخت <b>۵ برابر مبلغ سرقت</b> معادل "
+                   f"<b>{fine_amount:,}</b> رکسار جریمه نقدی.\n"
+                   f"💵 مبلغ <b>{compensation:,}</b> رکسار به عنوان غرامت "
+                   "به جیب مال‌باخته واریز شد!",
+    }
+
+
+async def _theft_jail(
+    thief: Player, victim: Player, thief_cash: int, now: int
+) -> dict[str, Any]:
+    """حبس ۳۰ دقیقه‌ای به‌جای جریمه + ضبط نقدی باقی‌مانده به عنوان وثیقه."""
+    jail_until = now + JAIL_DURATION
+    async with db.write() as conn:
+        await conn.execute(
+            """
+            UPDATE players
+            SET is_jailed_until = ?,
+                thefts_failed = thefts_failed + 1,
+                jail_count = jail_count + 1
+            WHERE user_id = ?
+            """,
+            (jail_until, thief.user_id),
+        )
+    # Confiscate all remaining cash as bail
+    if thief_cash > 0:
+        await economy.spend(thief.user_id, credits=thief_cash, kind=ActivityKind.THEFT)
+        await economy.grant(victim.user_id, credits=thief_cash, kind=ActivityKind.THEFT)
+
+    return {
+        "success": False,
+        "punishment": "jail",
+        "jail_minutes": int(JAIL_DURATION // 60),
+        "message": f"🚨 <b>دستگیری و محکومیت به حبس تعزیری!</b>\n\n"
+                   f"سارق ({thief.display_name}) توانایی پرداخت جریمه ۵ برابری را نداشت!\n"
+                   f"🔒 به دستور قاضی، او به مدت <b>۳۰ دقیقه</b> به "
+                   "بازداشتگاه مرکزی تیرامیکس منتقل شد.\n"
+                   f"⚠️ در طول مدت حبس هیچ دستوری برای این بازیکن کار نخواهد کرد!",
+    }
+
+
+async def attempt_theft(thief: Player, victim: Player) -> dict[str, Any]:
+    """Attempt pickpocketing/burglary against another citizen in group."""
+    now = int(time.time())
+    blocked = _theft_preconditions(thief, victim, now)
+    if blocked is not None:
+        return blocked
 
     victim_cash, _ = await economy.balances(victim.user_id)
     if victim_cash < 50:
@@ -637,88 +738,14 @@ async def attempt_theft(thief: Player, victim: Player) -> dict[str, Any]:
         )
 
     if roll <= chance:
-        # Success! Loot transferred
-        await economy.spend(victim.user_id, credits=target_loot, kind=ActivityKind.THEFT)
-        await economy.grant(thief.user_id, credits=target_loot, kind=ActivityKind.THEFT)
-        async with db.write() as conn:
-            await conn.execute(
-                """
-                UPDATE players
-                SET thefts_success = thefts_success + 1,
-                    total_stolen = total_stolen + ?
-                WHERE user_id = ?
-                """,
-                (target_loot, thief.user_id),
-            )
-        return {
-            "success": True,
-            "stolen": target_loot,
-            "percentage": int(steal_pct * 100),
-            "message": f"🥷 <b>سرقت موفقیت‌آمیز در کوچه پس‌کوچه‌های تیرامیکس!</b>\n\n"
-                       f"دزد حرفه‌ای ({thief.display_name}) موفق شد <b>{target_loot:,}</b> رکسار "
-                       f"({int(steal_pct * 100)}٪ از دارایی نقد) از جیب "
-                       f"{victim.display_name} به جیب بزند!",
-        }
-    else:
-        # Caught by police!
-        # Penalty: 5x the intended loot amount or jail time!
-        fine_amount = target_loot * 5
-        thief_cash, _ = await economy.balances(thief.user_id)
+        return await _theft_success(thief, victim, target_loot, steal_pct)
 
-        if thief_cash >= fine_amount:
-            # Pay 5x fine to victim & court
-            await economy.spend(thief.user_id, credits=fine_amount, kind=ActivityKind.THEFT)
-            # 50% of fine to victim compensation, 50% to city court
-            compensation = fine_amount // 2
-            await economy.grant(victim.user_id, credits=compensation, kind=ActivityKind.THEFT)
-            async with db.write() as conn:
-                await conn.execute(
-                    "UPDATE players SET thefts_failed = thefts_failed + 1 WHERE user_id = ?",
-                    (thief.user_id,),
-                )
-
-            return {
-                "success": False,
-                "punishment": "fine",
-                "fine": fine_amount,
-                "compensation": compensation,
-                "message": f"🚨 <b>دستگیری دزد ناشی توسط پلیس تیرامیکس!</b>\n\n"
-                           f"سارق ({thief.display_name}) حین اقدام به سرقت از "
-                           f"{victim.display_name} به دام افتاد!\n"
-                           f"⚖️ حکم دادگاه: پرداخت <b>۵ برابر مبلغ سرقت</b> معادل "
-                           f"<b>{fine_amount:,}</b> رکسار جریمه نقدی.\n"
-                           f"💵 مبلغ <b>{compensation:,}</b> رکسار به عنوان غرامت "
-                           "به جیب مال‌باخته واریز شد!",
-            }
-        else:
-            # Cannot pay full fine -> Jailed for 30 minutes!
-            jail_until = now + JAIL_DURATION
-            async with db.write() as conn:
-                await conn.execute(
-                    """
-                    UPDATE players
-                    SET is_jailed_until = ?,
-                        thefts_failed = thefts_failed + 1,
-                        jail_count = jail_count + 1
-                    WHERE user_id = ?
-                    """,
-                    (jail_until, thief.user_id),
-                )
-            # Confiscate all remaining cash as bail
-            if thief_cash > 0:
-                await economy.spend(thief.user_id, credits=thief_cash, kind=ActivityKind.THEFT)
-                await economy.grant(victim.user_id, credits=thief_cash, kind=ActivityKind.THEFT)
-
-            return {
-                "success": False,
-                "punishment": "jail",
-                "jail_minutes": int(JAIL_DURATION // 60),
-                "message": f"🚨 <b>دستگیری و محکومیت به حبس تعزیری!</b>\n\n"
-                           f"سارق ({thief.display_name}) توانایی پرداخت جریمه ۵ برابری را نداشت!\n"
-                           f"🔒 به دستور قاضی، او به مدت <b>۳۰ دقیقه</b> به "
-                           "بازداشتگاه مرکزی تیرامیکس منتقل شد.\n"
-                           f"⚠️ در طول مدت حبس هیچ دستوری برای این بازیکن کار نخواهد کرد!",
-            }
+    # Caught by police! Penalty: 5x the intended loot amount or jail time!
+    fine_amount = target_loot * 5
+    thief_cash, _ = await economy.balances(thief.user_id)
+    if thief_cash >= fine_amount:
+        return await _theft_fine(thief, victim, fine_amount)
+    return await _theft_jail(thief, victim, thief_cash, now)
 
 
 # ---------------------------------------------------------------------------

@@ -11,6 +11,8 @@ import contextlib
 import logging
 import tempfile
 import time
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from pathlib import Path
 
 from aiogram import F, Router
@@ -217,32 +219,14 @@ async def cmd_cheat(message: Message, command: CommandObject | None = None) -> N
     if not is_admin_or_owner(user.id):
         return
 
-    raw_text = (command.args if command and command.args else (message.text or "")).strip()
+    parts = _cheat_tokens(message, command)
 
-    # پاکسازی پیشوندها و کلمات کلیدی اولیه
-    parts = raw_text.split()
-    cmd_prefixes = ("/", "چیت", "تقلب", "ادمین", "cheat", "admin", "set")
-    if parts and parts[0].lower().startswith(cmd_prefixes):
-        parts = parts[1:]
+    # دستورات سراسری و همگانی (پاداش همگانی به تمام بازیکنان)
+    if parts and parts[0].lower() in _GLOBAL_AIRDROP_WORDS:
+        await _cheat_airdrop(message, parts)
+        return
 
-    # بررسی دستورات سراسری و همگانی (پاداش همگانی به تمام بازیکنان)
-    if parts:
-        first_act = parts[0].lower()
-        if first_act in (
-            "پاداش", "عیدی", "ایردراپ", "airdrop", "giveall",
-            "پاداش_همگانی", "پاداش‌همگانی", "جایزه_همگانی", "همگانی"
-        ):
-            val_str = parts[1] if len(parts) > 1 else ""
-            parsed = _parse_amount(val_str)
-            if not parsed:
-                await message.reply(
-                    "⚠️ لطفاً مبلغ پاداش همگانی را مشخص کنید.\n"
-                    "مثال: <code>چیت پاداش 50000</code> یا <code>چیت عیدی 100k</code>"
-                )
-                return
-            await _execute_global_airdrop(message, parsed)
-            return
-
+    # شناسایی هدف: خود ادمین، ریپلای روی پیام هدف یا آیدی/یوزرنیم
     target_id, tokens = await _resolve_target(message, parts, user.id)
     target_player = await game.load_player(target_id)
     if target_player is None:
@@ -258,277 +242,16 @@ async def cmd_cheat(message: Message, command: CommandObject | None = None) -> N
 
     action = tokens[0].lower()
     val_str = tokens[1] if len(tokens) > 1 else ""
+    ctx = _CheatContext(message, target_id, target_player.display_tag)
 
     try:
-        # ۱. تنظیم سطح (Level)
-        if action in ("لول", "سطح", "level", "lvl"):
-            if not val_str.isdigit():
-                await message.reply("⚠️ لطفاً عدد لول را مشخص کنید. مثال: <code>چیت لول 10</code>")
-                return
-            new_val = max(1, int(val_str))
-            async with db.write() as conn:
-                await conn.execute(
-                    "UPDATE players SET level = ? WHERE user_id = ?",
-                    (new_val, target_id),
-                )
-            await message.reply(
-                f"⚡ <b>کد تقلب با موفقیت اجرا شد!</b> 🛠\n\n"
-                f"👤 <b>هدف:</b> {esc(target_player.display_tag)} (<code>{target_id}</code>)\n"
-                f"📊 <b>تغییر:</b> لول به <b>{new_val:,}</b> تغییر یافت."
-            )
+        spec = _FIELD_CHEATS.get(action)
+        if spec is not None:
+            await _cheat_set_field(ctx, val_str, spec)
             return
-
-        # ۲. تنظیم مدرک تحصیلی (Education)
-        if action in ("سواد", "تحصیلات", "مدرک", "edu", "education"):
-            if not val_str.isdigit():
-                await message.reply(
-                    "⚠️ لطفاً سطح سواد را بین ۰ تا ۵ مشخص کنید. مثال: <code>چیت سواد 3</code>"
-                )
-                return
-            new_val = max(0, min(5, int(val_str)))
-            async with db.write() as conn:
-                await conn.execute(
-                    "UPDATE players SET education_level = ? WHERE user_id = ?",
-                    (new_val, target_id),
-                )
-            edu_name = _EDU_LABELS.get(new_val, str(new_val))
-            await message.reply(
-                f"⚡ <b>کد تقلب با موفقیت اجرا شد!</b> 🛠\n\n"
-                f"👤 <b>هدف:</b> {esc(target_player.display_tag)} (<code>{target_id}</code>)\n"
-                f"🎓 <b>تغییر:</b> مدرک تحصیلی به <b>{edu_name}</b> تنظیم شد."
-            )
-            return
-
-        # ۳. تنظیم موجودی نقد کیف پول (Credits)
-        if action in ("پول", "سکه", "نقد", "money", "cash", "credits", "coin", "coins"):
-            parsed = _parse_amount(val_str)
-            if not parsed and val_str != "0":
-                await message.reply(
-                    "⚠️ لطفاً مبلغ رکسار را مشخص کنید. مثال: <code>چیت پول 100000</code>"
-                )
-                return
-            new_val = parsed if parsed is not None else 0
-            async with db.write() as conn:
-                await conn.execute(
-                    "UPDATE wallets SET credits = ? WHERE user_id = ?",
-                    (new_val, target_id),
-                )
-            await message.reply(
-                f"⚡ <b>کد تقلب با موفقیت اجرا شد!</b> 🛠\n\n"
-                f"👤 <b>هدف:</b> {esc(target_player.display_tag)} (<code>{target_id}</code>)\n"
-                f"💰 <b>تغییر:</b> موجودی کیف پول به <b>{new_val:,}</b> رکسار تنظیم شد."
-            )
-            return
-
-        # ۴. تنظیم سپرده بانکی (Bank Balance)
-        if action in ("بانک", "سپرده", "bank"):
-            parsed = _parse_amount(val_str)
-            if not parsed and val_str != "0":
-                await message.reply(
-                    "⚠️ لطفاً مبلغ بانک را مشخص کنید. مثال: <code>چیت بانک 500000</code>"
-                )
-                return
-            new_val = parsed if parsed is not None else 0
-            async with db.write() as conn:
-                await conn.execute(
-                    "UPDATE players SET bank_balance = ? WHERE user_id = ?",
-                    (new_val, target_id),
-                )
-            await message.reply(
-                f"⚡ <b>کد تقلب با موفقیت اجرا شد!</b> 🛠\n\n"
-                f"👤 <b>هدف:</b> {esc(target_player.display_tag)} (<code>{target_id}</code>)\n"
-                f"🏛 <b>تغییر:</b> موجودی حساب بانکی به <b>{new_val:,}</b> رکسار تنظیم شد."
-            )
-            return
-
-        # ۵. تنظیم انرژی کاراکتر (Energy)
-        if action in ("انرژی", "energy"):
-            if not val_str.isdigit():
-                await message.reply(
-                    "⚠️ لطفاً مقدار انرژی را مشخص کنید. مثال: <code>چیت انرژی 100</code>"
-                )
-                return
-            new_val = max(0, int(val_str))
-            now_ts = int(time.time())
-            async with db.write() as conn:
-                await conn.execute(
-                    "UPDATE players SET energy = ?, energy_updated_at = ? WHERE user_id = ?",
-                    (new_val, now_ts, target_id),
-                )
-            await message.reply(
-                f"⚡ <b>کد تقلب با موفقیت اجرا شد!</b> 🛠\n\n"
-                f"👤 <b>هدف:</b> {esc(target_player.display_tag)} (<code>{target_id}</code>)\n"
-                f"⚡ <b>تغییر:</b> انرژی به <b>{new_val:,}</b> واحد تنظیم شد."
-            )
-            return
-
-        # ۶. تنظیم قدرت حمله پایه (ATK)
-        if action in ("اتک", "حمله", "atk", "attack"):
-            if not val_str.isdigit():
-                await message.reply("⚠️ لطفاً مقدار حمله را مشخص کنید. مثال: <code>چیت اتک 50</code>")
-                return
-            new_val = max(1, int(val_str))
-            async with db.write() as conn:
-                await conn.execute(
-                    "UPDATE players SET base_atk = ? WHERE user_id = ?",
-                    (new_val, target_id),
-                )
-            await message.reply(
-                f"⚡ <b>کد تقلب با موفقیت اجرا شد!</b> 🛠\n\n"
-                f"👤 <b>هدف:</b> {esc(target_player.display_tag)} (<code>{target_id}</code>)\n"
-                f"⚔️ <b>تغییر:</b> حمله پایه به <b>{new_val:,}</b> واحد تنظیم شد."
-            )
-            return
-
-        # ۷. تنظیم قدرت دفاع پایه (DEF)
-        if action in ("دفاع", "def", "defense"):
-            if not val_str.isdigit():
-                await message.reply(
-                    "⚠️ لطفاً مقدار دفاع را مشخص کنید. مثال: <code>چیت دفاع 50</code>"
-                )
-                return
-            new_val = max(1, int(val_str))
-            async with db.write() as conn:
-                await conn.execute(
-                    "UPDATE players SET base_def = ? WHERE user_id = ?",
-                    (new_val, target_id),
-                )
-            await message.reply(
-                f"⚡ <b>کد تقلب با موفقیت اجرا شد!</b> 🛠\n\n"
-                f"👤 <b>هدف:</b> {esc(target_player.display_tag)} (<code>{target_id}</code>)\n"
-                f"🛡 <b>تغییر:</b> دفاع پایه به <b>{new_val:,}</b> واحد تنظیم شد."
-            )
-            return
-
-        # ۸. تنظیم استایل و تیپ پایه (DRIP)
-        if action in ("دریپ", "تیپ", "استایل", "drip", "style"):
-            if not val_str.isdigit():
-                await message.reply(
-                    "⚠️ لطفاً مقدار دریپ را مشخص کنید. مثال: <code>چیت دریپ 50</code>"
-                )
-                return
-            new_val = max(0, int(val_str))
-            async with db.write() as conn:
-                await conn.execute(
-                    "UPDATE players SET base_drip = ? WHERE user_id = ?",
-                    (new_val, target_id),
-                )
-            await message.reply(
-                f"⚡ <b>کد تقلب با موفقیت اجرا شد!</b> 🛠\n\n"
-                f"👤 <b>هدف:</b> {esc(target_player.display_tag)} (<code>{target_id}</code>)\n"
-                f"✨ <b>تغییر:</b> استایل/دریپ پایه به <b>{new_val:,}</b> واحد تنظیم شد."
-            )
-            return
-
-        # ۹. تغییر موقعیت شغلی (Job)
-        if action in ("شغل", "job"):
-            job_name = " ".join(tokens[1:]).strip() if len(tokens) > 1 else "بیکار"
-            async with db.write() as conn:
-                await conn.execute(
-                    "UPDATE players SET job = ? WHERE user_id = ?",
-                    (job_name, target_id),
-                )
-            await message.reply(
-                f"⚡ <b>کد تقلب با موفقیت اجرا شد!</b> 🛠\n\n"
-                f"👤 <b>هدف:</b> {esc(target_player.display_tag)} (<code>{target_id}</code>)\n"
-                f"💼 <b>تغییر:</b> عنوان شغلی به <b>«{esc(job_name)}»</b> تغییر یافت."
-            )
-            return
-
-        # ۱۰. آزادی فوری از بازداشتگاه (Jail Release)
-        if action in ("ازادی", "آزادی", "زندان", "free", "jail"):
-            async with db.write() as conn:
-                await conn.execute(
-                    "UPDATE players SET is_jailed_until = 0 WHERE user_id = ?",
-                    (target_id,),
-                )
-            await message.reply(
-                f"⚡ <b>کد تقلب با موفقیت اجرا شد!</b> 🛠\n\n"
-                f"👤 <b>هدف:</b> {esc(target_player.display_tag)} (<code>{target_id}</code>)\n"
-                f"🕊 <b>تغییر:</b> بازیکن فوراً از زندان آزاد شد و سابقه بازداشت پاک گردید!"
-            )
-            return
-
-        # ۱۱. فعال‌سازی حالت خدا و ارتقای کامل (God Mode / Max)
-        if action in ("مکس", "max", "god"):
-            async with db.write() as conn:
-                await conn.execute(
-                    """
-                    UPDATE players
-                    SET level = 50,
-                        education_level = 5,
-                        base_atk = 100,
-                        base_def = 100,
-                        base_drip = 50,
-                        energy = 200,
-                        is_jailed_until = 0,
-                        bank_balance = 5000000
-                    WHERE user_id = ?
-                    """,
-                    (target_id,),
-                )
-                await conn.execute(
-                    "UPDATE wallets SET credits = 1000000 WHERE user_id = ?",
-                    (target_id,),
-                )
-            await message.reply(
-                f"⚡ <b>حالت خدا (God Mode / Max) فعال شد!</b> 👑🔥\n\n"
-                f"👤 <b>هدف:</b> {esc(target_player.display_tag)} (<code>{target_id}</code>)\n"
-                f"🔹 لول: <b>50</b>\n"
-                f"🎓 مدرک: <b>دکتری / پروفسور (۵)</b>\n"
-                f"💰 کیف پول: <b>1,000,000</b> سکه\n"
-                f"🏛 بانک: <b>5,000,000</b> سکه\n"
-                f"⚡ انرژی: <b>200 / 200</b>\n"
-                f"⚔️ قدرت حمله: <b>100</b>\n"
-                f"🛡 قدرت دفاع: <b>100</b>\n"
-                f"✨ دریپ / استایل: <b>50</b>\n"
-                f"🕊 وضعیت زندان: <b>آزاد</b>"
-            )
-            return
-
-        # ۱۲. بازنشانی وضعیت ویزارد ثبت‌نام و حذف کامل کاراکتر (Reset Character)
-        if action in ("ریست", "reset", "reset_char"):
-            async with db.write() as conn:
-                await conn.execute("DELETE FROM player_avatar WHERE user_id = ?", (target_id,))
-                await conn.execute("DELETE FROM player_wardrobe WHERE user_id = ?", (target_id,))
-                await conn.execute("DELETE FROM loadout WHERE user_id = ?", (target_id,))
-                await conn.execute("DELETE FROM inventory WHERE user_id = ?", (target_id,))
-                await conn.execute("DELETE FROM contracts WHERE user_id = ?", (target_id,))
-                await conn.execute("DELETE FROM properties WHERE owner_id = ?", (target_id,))
-                await conn.execute("DELETE FROM holdings WHERE user_id = ?", (target_id,))
-                await conn.execute("DELETE FROM safe_locks WHERE user_id = ?", (target_id,))
-                await conn.execute("DELETE FROM wallets WHERE user_id = ?", (target_id,))
-                await conn.execute("DELETE FROM players WHERE user_id = ?", (target_id,))
-            await message.reply(
-                f"⚡ <b>حساب کاربری و پروفایل به طور کامل ریست شد!</b> 🛠\n\n"
-                f"👤 <b>هدف:</b> {esc(target_player.display_tag)} (<code>{target_id}</code>)\n"
-                "🔄 <b>تغییر:</b> تمام سوابق، شناسنامه و کمد لباس کاراکتر کاملاً صفر شد.\n"
-                "اکنون می‌توانید با ارسال <code>/start</code> کاراکتر جدید خود را از ابتدا بسازید."
-            )
-            return
-
-        # ۱۳. استعلام فنی اطلاعات دیتابیس (Status Info)
-        if action in ("وضعیت", "status", "info"):
-            updated = await game.load_player(target_id)
-            c, d = await economy.balances(target_id)
-            edu_title = _EDU_LABELS.get(updated.education_level if updated else 0, "نامشخص")
-            is_completed = updated and updated.onboarding_completed == 1
-            await message.reply(
-                f"📋 <b>مشخصات فنی کاراکتر در دیتابیس:</b>\n\n"
-                f"👤 نام: <b>{esc(updated.display_name if updated else 'نامشخص')}</b> "
-                f"(<code>{target_id}</code>)\n"
-                f"🔹 لول: <b>{updated.level if updated else 1}</b> "
-                f"(تجربه: {updated.exp if updated else 0})\n"
-                f"🎓 سطح سواد: <b>{edu_title}</b>\n"
-                f"💼 شغل: <b>{esc(updated.job if updated else 'بیکار')}</b>\n"
-                f"💰 موجودی نقد: <b>{c:,}</b> سکه\n"
-                f"🏛 موجودی بانک: <b>{updated.bank_balance if updated else 0:,}</b> سکه\n"
-                f"⚡ انرژی: <b>{updated.energy if updated else 100} / 200</b>\n"
-                f"⚔️ اتک پایه: <b>{updated.base_atk if updated else 10}</b>\n"
-                f"🛡 دفاع پایه: <b>{updated.base_def if updated else 8}</b>\n"
-                f"✨ دریپ پایه: <b>{updated.base_drip if updated else 5}</b>\n"
-                f"🆔 وضعیت آنبوردینگ: <b>{'تکمیل‌شده' if is_completed else 'تکمیل‌نشده'}</b>"
-            )
+        special = _SPECIAL_CHEATS.get(action)
+        if special is not None:
+            await special(ctx, tokens)
             return
 
         # دستور نامعتبر
@@ -539,6 +262,316 @@ async def cmd_cheat(message: Message, command: CommandObject | None = None) -> N
     except Exception as exc:  # noqa: BLE001
         logger.exception("Admin cheat failed for user %s: %s", user.id, exc)
         await message.reply(f"❌ خطا در اجرای کد تقلب: <code>{esc(str(exc))}</code>")
+
+
+# ---------------------------------------------------------------------------
+# زیرساخت کدهای تقلب: هر کد، یک رکورد کوچک + جدول dispatch؛ بدون زنجیره if/elif
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class _CheatContext:
+    """بافت اجرای کد تقلب: پیام، شناسه هدف و برچسب نمایشی او."""
+
+    message: Message
+    target_id: int
+    tag: str
+
+
+@dataclass(frozen=True)
+class _FieldCheat:
+    """مشخصات یک کد تقلب تنظیم فیلد: ستون دیتابیس، محدوده و پیام‌های استاندارد."""
+
+    column: str
+    usage: str
+    change: Callable[[int], str]
+    kind: str = "int"
+    minimum: int | None = None
+    maximum: int | None = None
+    table: str = "players"
+    timestamp_col: str | None = None
+
+
+def _cheat_tokens(message: Message, command: CommandObject | None) -> list[str]:
+    """جدا کردن پیشوند فرمان (چیت/تقلب/ادمین/...) و برگرداندن توکن‌های باقی‌مانده."""
+    raw_text = (command.args if command and command.args else (message.text or "")).strip()
+    parts = raw_text.split()
+    cmd_prefixes = ("/", "چیت", "تقلب", "ادمین", "cheat", "admin", "set")
+    if parts and parts[0].lower().startswith(cmd_prefixes):
+        parts = parts[1:]
+    return parts
+
+
+_GLOBAL_AIRDROP_WORDS = frozenset(
+    {
+        "پاداش", "عیدی", "ایردراپ", "airdrop", "giveall",
+        "پاداش_همگانی", "پاداش‌همگانی", "جایزه_همگانی", "همگانی",
+    }
+)
+
+
+async def _cheat_airdrop(message: Message, parts: list[str]) -> None:
+    """پاداش همگانی: واریز رکسار به حساب تمام بازیکنان بازی."""
+    val_str = parts[1] if len(parts) > 1 else ""
+    parsed = _parse_amount(val_str)
+    if not parsed:
+        await message.reply(
+            "⚠️ لطفاً مبلغ پاداش همگانی را مشخص کنید.\n"
+            "مثال: <code>چیت پاداش 50000</code> یا <code>چیت عیدی 100k</code>"
+        )
+        return
+    await _execute_global_airdrop(message, parsed)
+
+
+async def _reply_cheat_ok(ctx: _CheatContext, change_line: str) -> None:
+    """گزارش استاندارد موفقیت کد تقلب به‌همراه هدف و تغییر اعمال‌شده."""
+    await ctx.message.reply(
+        f"⚡ <b>کد تقلب با موفقیت اجرا شد!</b> 🛠\n\n"
+        f"👤 <b>هدف:</b> {esc(ctx.tag)} (<code>{ctx.target_id}</code>)\n"
+        f"{change_line}"
+    )
+
+
+async def _cheat_set_field(ctx: _CheatContext, val_str: str, spec: _FieldCheat) -> None:
+    """اعتبارسنجی مقدار، نوشتن در دیتابیس و گزارش استاندارد تغییر فیلد عددی."""
+    if spec.kind == "int":
+        if not val_str.isdigit():
+            await ctx.message.reply(spec.usage)
+            return
+        new_val: int = int(val_str)
+    else:
+        parsed = _parse_amount(val_str)
+        if not parsed and val_str != "0":
+            await ctx.message.reply(spec.usage)
+            return
+        new_val = parsed if parsed is not None else 0
+
+    if spec.minimum is not None:
+        new_val = max(spec.minimum, new_val)
+    if spec.maximum is not None:
+        new_val = min(spec.maximum, new_val)
+
+    async with db.write() as conn:
+        if spec.timestamp_col:
+            await conn.execute(
+                f"UPDATE {spec.table} SET {spec.column} = ?, {spec.timestamp_col} = ? "
+                "WHERE user_id = ?",
+                (new_val, int(time.time()), ctx.target_id),
+            )
+        else:
+            await conn.execute(
+                f"UPDATE {spec.table} SET {spec.column} = ? WHERE user_id = ?",
+                (new_val, ctx.target_id),
+            )
+    await _reply_cheat_ok(ctx, spec.change(new_val))
+
+
+async def _cheat_job(ctx: _CheatContext, tokens: list[str]) -> None:
+    """تغییر موقعیت شغلی (Job)."""
+    job_name = " ".join(tokens[1:]).strip() if len(tokens) > 1 else "بیکار"
+    async with db.write() as conn:
+        await conn.execute(
+            "UPDATE players SET job = ? WHERE user_id = ?",
+            (job_name, ctx.target_id),
+        )
+    await _reply_cheat_ok(
+        ctx, f"💼 <b>تغییر:</b> عنوان شغلی به <b>«{esc(job_name)}»</b> تغییر یافت."
+    )
+
+
+async def _cheat_free(ctx: _CheatContext, tokens: list[str]) -> None:
+    """آزادی فوری از بازداشتگاه (Jail Release)."""
+    async with db.write() as conn:
+        await conn.execute(
+            "UPDATE players SET is_jailed_until = 0 WHERE user_id = ?",
+            (ctx.target_id,),
+        )
+    await _reply_cheat_ok(
+        ctx,
+        "🕊 <b>تغییر:</b> بازیکن فوراً از زندان آزاد شد و سابقه بازداشت پاک گردید!",
+    )
+
+
+async def _cheat_god(ctx: _CheatContext, tokens: list[str]) -> None:
+    """فعال‌سازی حالت خدا و ارتقای کامل (God Mode / Max)."""
+    async with db.write() as conn:
+        await conn.execute(
+            """
+            UPDATE players
+            SET level = 50,
+                education_level = 5,
+                base_atk = 100,
+                base_def = 100,
+                base_drip = 50,
+                energy = 200,
+                is_jailed_until = 0,
+                bank_balance = 5000000
+            WHERE user_id = ?
+            """,
+            (ctx.target_id,),
+        )
+        await conn.execute(
+            "UPDATE wallets SET credits = 1000000 WHERE user_id = ?",
+            (ctx.target_id,),
+        )
+    await ctx.message.reply(
+        f"⚡ <b>حالت خدا (God Mode / Max) فعال شد!</b> 👑🔥\n\n"
+        f"👤 <b>هدف:</b> {esc(ctx.tag)} (<code>{ctx.target_id}</code>)\n"
+        f"🔹 لول: <b>50</b>\n"
+        f"🎓 مدرک: <b>دکتری / پروفسور (۵)</b>\n"
+        f"💰 کیف پول: <b>1,000,000</b> سکه\n"
+        f"🏛 بانک: <b>5,000,000</b> سکه\n"
+        f"⚡ انرژی: <b>200 / 200</b>\n"
+        f"⚔️ قدرت حمله: <b>100</b>\n"
+        f"🛡 قدرت دفاع: <b>100</b>\n"
+        f"✨ دریپ / استایل: <b>50</b>\n"
+        f"🕊 وضعیت زندان: <b>آزاد</b>"
+    )
+
+
+async def _cheat_reset(ctx: _CheatContext, tokens: list[str]) -> None:
+    """بازنشانی وضعیت ویزارد ثبت‌نام و حذف کامل کاراکتر (Reset Character)."""
+    async with db.write() as conn:
+        await conn.execute("DELETE FROM player_avatar WHERE user_id = ?", (ctx.target_id,))
+        await conn.execute("DELETE FROM player_wardrobe WHERE user_id = ?", (ctx.target_id,))
+        await conn.execute("DELETE FROM loadout WHERE user_id = ?", (ctx.target_id,))
+        await conn.execute("DELETE FROM inventory WHERE user_id = ?", (ctx.target_id,))
+        await conn.execute("DELETE FROM contracts WHERE user_id = ?", (ctx.target_id,))
+        await conn.execute("DELETE FROM properties WHERE owner_id = ?", (ctx.target_id,))
+        await conn.execute("DELETE FROM holdings WHERE user_id = ?", (ctx.target_id,))
+        await conn.execute("DELETE FROM safe_locks WHERE user_id = ?", (ctx.target_id,))
+        await conn.execute("DELETE FROM wallets WHERE user_id = ?", (ctx.target_id,))
+        await conn.execute("DELETE FROM players WHERE user_id = ?", (ctx.target_id,))
+    await ctx.message.reply(
+        f"⚡ <b>حساب کاربری و پروفایل به طور کامل ریست شد!</b> 🛠\n\n"
+        f"👤 <b>هدف:</b> {esc(ctx.tag)} (<code>{ctx.target_id}</code>)\n"
+        "🔄 <b>تغییر:</b> تمام سوابق، شناسنامه و کمد لباس کاراکتر کاملاً صفر شد.\n"
+        "اکنون می‌توانید با ارسال <code>/start</code> کاراکتر جدید خود را از ابتدا بسازید."
+    )
+
+
+async def _cheat_status(ctx: _CheatContext, tokens: list[str]) -> None:
+    """استعلام فنی اطلاعات دیتابیس (Status Info)."""
+    updated = await game.load_player(ctx.target_id)
+    c, d = await economy.balances(ctx.target_id)
+    edu_title = _EDU_LABELS.get(updated.education_level if updated else 0, "نامشخص")
+    is_completed = updated and updated.onboarding_completed == 1
+    await ctx.message.reply(
+        f"📋 <b>مشخصات فنی کاراکتر در دیتابیس:</b>\n\n"
+        f"👤 نام: <b>{esc(updated.display_name if updated else 'نامشخص')}</b> "
+        f"(<code>{ctx.target_id}</code>)\n"
+        f"🔹 لول: <b>{updated.level if updated else 1}</b> "
+        f"(تجربه: {updated.exp if updated else 0})\n"
+        f"🎓 سطح سواد: <b>{edu_title}</b>\n"
+        f"💼 شغل: <b>{esc(updated.job if updated else 'بیکار')}</b>\n"
+        f"💰 موجودی نقد: <b>{c:,}</b> سکه\n"
+        f"🏛 موجودی بانک: <b>{updated.bank_balance if updated else 0:,}</b> سکه\n"
+        f"⚡ انرژی: <b>{updated.energy if updated else 100} / 200</b>\n"
+        f"⚔️ اتک پایه: <b>{updated.base_atk if updated else 10}</b>\n"
+        f"🛡 دفاع پایه: <b>{updated.base_def if updated else 8}</b>\n"
+        f"✨ دریپ پایه: <b>{updated.base_drip if updated else 5}</b>\n"
+        f"🆔 وضعیت آنبوردینگ: <b>{'تکمیل‌شده' if is_completed else 'تکمیل‌نشده'}</b>"
+    )
+
+
+def _register(spec: _FieldCheat, *keys: str) -> dict[str, _FieldCheat]:
+    """نگاشت همهٔ کلیدهای یک کد تقلب به رکورد مشخصاتش."""
+    return dict.fromkeys(keys, spec)
+
+
+_FIELD_CHEATS: dict[str, _FieldCheat] = {
+    **_register(
+        _FieldCheat(
+            column="level",
+            usage="⚠️ لطفاً عدد لول را مشخص کنید. مثال: <code>چیت لول 10</code>",
+            change=lambda v: f"📊 <b>تغییر:</b> لول به <b>{v:,}</b> تغییر یافت.",
+            minimum=1,
+        ),
+        "لول", "سطح", "level", "lvl",
+    ),
+    **_register(
+        _FieldCheat(
+            column="education_level",
+            usage=(
+                "⚠️ لطفاً سطح سواد را بین ۰ تا ۵ مشخص کنید. "
+                "مثال: <code>چیت سواد 3</code>"
+            ),
+            change=lambda v: (
+                f"🎓 <b>تغییر:</b> مدرک تحصیلی به <b>{_EDU_LABELS.get(v, str(v))}</b> تنظیم شد."
+            ),
+            minimum=0,
+            maximum=5,
+        ),
+        "سواد", "تحصیلات", "مدرک", "edu", "education",
+    ),
+    **_register(
+        _FieldCheat(
+            column="credits",
+            usage="⚠️ لطفاً مبلغ رکسار را مشخص کنید. مثال: <code>چیت پول 100000</code>",
+            change=lambda v: f"💰 <b>تغییر:</b> موجودی کیف پول به <b>{v:,}</b> رکسار تنظیم شد.",
+            kind="amount",
+            table="wallets",
+        ),
+        "پول", "سکه", "نقد", "money", "cash", "credits", "coin", "coins",
+    ),
+    **_register(
+        _FieldCheat(
+            column="bank_balance",
+            usage="⚠️ لطفاً مبلغ بانک را مشخص کنید. مثال: <code>چیت بانک 500000</code>",
+            change=lambda v: (
+                f"🏛 <b>تغییر:</b> موجودی حساب بانکی به <b>{v:,}</b> رکسار تنظیم شد."
+            ),
+            kind="amount",
+        ),
+        "بانک", "سپرده", "bank",
+    ),
+    **_register(
+        _FieldCheat(
+            column="energy",
+            usage="⚠️ لطفاً مقدار انرژی را مشخص کنید. مثال: <code>چیت انرژی 100</code>",
+            change=lambda v: f"⚡ <b>تغییر:</b> انرژی به <b>{v:,}</b> واحد تنظیم شد.",
+            minimum=0,
+            timestamp_col="energy_updated_at",
+        ),
+        "انرژی", "energy",
+    ),
+    **_register(
+        _FieldCheat(
+            column="base_atk",
+            usage="⚠️ لطفاً مقدار حمله را مشخص کنید. مثال: <code>چیت اتک 50</code>",
+            change=lambda v: f"⚔️ <b>تغییر:</b> حمله پایه به <b>{v:,}</b> واحد تنظیم شد.",
+            minimum=1,
+        ),
+        "اتک", "حمله", "atk", "attack",
+    ),
+    **_register(
+        _FieldCheat(
+            column="base_def",
+            usage="⚠️ لطفاً مقدار دفاع را مشخص کنید. مثال: <code>چیت دفاع 50</code>",
+            change=lambda v: f"🛡 <b>تغییر:</b> دفاع پایه به <b>{v:,}</b> واحد تنظیم شد.",
+            minimum=1,
+        ),
+        "دفاع", "def", "defense",
+    ),
+    **_register(
+        _FieldCheat(
+            column="base_drip",
+            usage="⚠️ لطفاً مقدار دریپ را مشخص کنید. مثال: <code>چیت دریپ 50</code>",
+            change=lambda v: f"✨ <b>تغییر:</b> استایل/دریپ پایه به <b>{v:,}</b> واحد تنظیم شد.",
+            minimum=0,
+        ),
+        "دریپ", "تیپ", "استایل", "drip", "style",
+    ),
+}
+
+_SPECIAL_CHEATS: dict[str, Callable[[_CheatContext, list[str]], Awaitable[None]]] = {
+    **dict.fromkeys(("شغل", "job"), _cheat_job),
+    **dict.fromkeys(("ازادی", "آزادی", "زندان", "free", "jail"), _cheat_free),
+    **dict.fromkeys(("مکس", "max", "god"), _cheat_god),
+    **dict.fromkeys(("ریست", "reset", "reset_char"), _cheat_reset),
+    **dict.fromkeys(("وضعیت", "status", "info"), _cheat_status),
+}
+
 
 
 @router.message(

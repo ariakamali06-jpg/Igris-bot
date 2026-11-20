@@ -993,6 +993,7 @@ async def cb_help_main(call: CallbackQuery) -> None:
             else:
                 await message.edit_text(_HELP_MAIN_TEXT, reply_markup=_help_markup())
         except Exception:
+            logger.debug("help: edit_text failed; sending fresh message", exc_info=True)
             await message.answer(_HELP_MAIN_TEXT, reply_markup=_help_markup())
 
 
@@ -1020,6 +1021,7 @@ async def cb_help_cmds(call: CallbackQuery) -> None:
             else:
                 await message.edit_text(_HELP_CMDS_TEXT, reply_markup=back_markup)
         except Exception:
+            logger.debug("help: edit_text failed; sending fresh message", exc_info=True)
             await message.answer(_HELP_CMDS_TEXT, reply_markup=back_markup)
 
 
@@ -1047,4 +1049,5 @@ async def cb_help_combat(call: CallbackQuery) -> None:
             else:
                 await message.edit_text(_HELP_COMBAT_TEXT, reply_markup=back_markup)
         except Exception:
+            logger.debug("help: edit_text failed; sending fresh message", exc_info=True)
             await message.answer(_HELP_COMBAT_TEXT, reply_markup=back_markup)
