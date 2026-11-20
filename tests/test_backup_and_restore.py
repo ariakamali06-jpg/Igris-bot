@@ -87,3 +87,36 @@ async def test_restore_rejects_corrupted_or_invalid_file():
         assert "خطا" in reason or "خراب" in reason
     finally:
         await asyncio.to_thread(fake_path.unlink)
+
+
+@pytest.mark.asyncio
+async def test_created_backup_always_passes_verification():
+    """هر بکاپ تولیدشده باید verify_backup_file را پاس کند (قرارداد verify-before-send)."""
+    from services.backup import verify_backup_file
+
+    backup_file = await create_backup_file()
+    assert backup_file is not None, "backup must be created"
+    assert backup_file.exists()
+    try:
+        ok, reason, player_count = await verify_backup_file(backup_file)
+        assert ok is True, f"fresh backup failed verification: {reason}"
+        assert player_count >= 0
+    finally:
+        if backup_file.exists():
+            await asyncio.to_thread(backup_file.unlink)
+
+
+@pytest.mark.asyncio
+async def test_verify_backup_file_rejects_garbage():
+    """verify_backup_file نباید فایل غیر-SQLite را سالم اعلام کند."""
+    from services.backup import verify_backup_file
+
+    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+        f.write(b"TOTAL GARBAGE - NOT A DATABASE")
+        fake_path = Path(f.name)
+    try:
+        ok, reason, _ = await verify_backup_file(fake_path)
+        assert ok is False
+        assert reason  # پیام خطا باید پر باشد
+    finally:
+        await asyncio.to_thread(fake_path.unlink)
