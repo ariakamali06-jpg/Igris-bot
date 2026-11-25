@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import logging
 import tempfile
@@ -16,8 +17,14 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from aiogram import F, Router
+from aiogram.exceptions import TelegramForbiddenError, TelegramRetryAfter
 from aiogram.filters import CommandObject
-from aiogram.types import Message
+from aiogram.types import (
+    CallbackQuery,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    Message,
+)
 
 from database.connection import db
 from handlers.common import (
@@ -830,3 +837,160 @@ async def cmd_direct_airdrop(message: Message, command: CommandObject | None = N
         return
 
     await _execute_global_airdrop(message, parsed)
+
+
+# ---------------------------------------------------------------------------
+# پیام همگانی (Broadcast): ارسال پیام دلخواه ادمین به پیوی تمام بازیکنان
+# ---------------------------------------------------------------------------
+
+_BROADCAST_WORDS = {
+    "پیام همگانی",
+    "پیام سراسری",
+    "پیام عمومی",
+    "اطلاعیه همگانی",
+    "اعلان همگانی",
+}
+
+# متن در انتظار تأیید برای هر ادمین: admin_id -> متن پیام
+_PENDING_BROADCAST: dict[int, str] = {}
+
+
+def _broadcast_keyboard(total: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=f"✅ ارسال به {total} بازیکن", callback_data="bc:send"
+                ),
+                InlineKeyboardButton(text="❌ لغو", callback_data="bc:cancel"),
+            ]
+        ]
+    )
+
+
+async def _try_edit(query: CallbackQuery, text: str) -> None:
+    """ویرایش پیام کالبک‌کوئری؛ اگر پیام حذف/غیرقابل‌دسترس شده بود بی‌صدا رد شو."""
+    msg = query.message
+    if msg is not None and hasattr(msg, "edit_text"):
+        with contextlib.suppress(Exception):
+            await msg.edit_text(text)
+
+
+@router.message(
+    CommandOrText(
+        ["broadcast", "announce"],
+        words=_BROADCAST_WORDS,
+        # هر متنی به‌عنوان بدنهٔ پیام مجاز است (برخلاف بقیه فرمان‌ها)
+        arg_pattern=r".+",
+    )
+)
+async def cmd_broadcast(message: Message, command: CommandObject | None = None) -> None:
+    """آماده‌سازی پیام همگانی و گرفتن تأیید نهایی از ادمین پیش از ارسال."""
+    user = message.from_user
+    if user is None or not is_admin_or_owner(user.id):
+        return
+
+    body = " ".join(extract_args(message, command)).strip()
+    if not body:
+        await message.reply(
+            "📢 <b>ارسال پیام همگانی</b>\n\n"
+            "متن پیام را بعد از دستور بنویس:\n"
+            "• <code>پیام همگانی فردا ساعت ۹ رویداد شهری داریم!</code>\n"
+            "• <code>/broadcast سرور جدید راه افتاد 🎉</code>\n\n"
+            "⚠️ پیام به پیوی همهٔ بازیکنان ثبت‌شده ارسال می‌شود "
+            "(کسانی که ربات را بلاک کرده باشند دریافت نمی‌کنند)."
+        )
+        return
+
+    async with db.read() as conn:
+        cur = await conn.execute("SELECT COUNT(*) FROM players")
+        row = await cur.fetchone()
+    total = int(row[0]) if row else 0
+
+    _PENDING_BROADCAST[user.id] = body
+    await message.reply(
+        f"📢 <b>پیش‌نمایش پیام همگانی</b>\n\n{esc(body)}\n\n"
+        f"👥 مخاطبان: <b>{total}</b> بازیکن\n"
+        "ارسال شود؟",
+        reply_markup=_broadcast_keyboard(total),
+    )
+
+
+@router.callback_query(F.data == "bc:cancel")
+async def cb_broadcast_cancel(query: CallbackQuery) -> None:
+    """لغو ارسال پیام همگانی در انتظار تأیید."""
+    user = query.from_user
+    if user is None or not is_admin_or_owner(user.id):
+        await query.answer("⛔ دسترسی ندارید.", show_alert=True)
+        return
+    _PENDING_BROADCAST.pop(user.id, None)
+    await query.answer("لغو شد.")
+    await _try_edit(query, "❌ ارسال پیام همگانی لغو شد.")
+
+
+@router.callback_query(F.data == "bc:send")
+async def cb_broadcast_send(query: CallbackQuery) -> None:
+    """ارسال واقعی پیام همگانی به پیوی تمام بازیکنان با گزارش موفق/ناموفق."""
+    user = query.from_user
+    if user is None or not is_admin_or_owner(user.id):
+        await query.answer("⛔ دسترسی ندارید.", show_alert=True)
+        return
+
+    body = _PENDING_BROADCAST.pop(user.id, None)
+    if not body:
+        await query.answer(
+            "⚠️ پیامی برای ارسال موجود نیست. دستور را دوباره بزن.",
+            show_alert=True,
+        )
+        return
+
+    await query.answer("⏳ در حال ارسال…")
+
+    async with db.read() as conn:
+        cur = await conn.execute(
+            "SELECT user_id FROM players ORDER BY last_seen DESC"
+        )
+        targets = [int(r[0]) for r in await cur.fetchall()]
+
+    bot = query.bot
+    sent = 0
+    blocked = 0
+    failed = 0
+    for uid in targets:
+        try:
+            await bot.send_message(uid, body, parse_mode=None)
+            sent += 1
+        except TelegramRetryAfter as exc:
+            await asyncio.sleep(exc.retry_after + 1)
+            try:
+                await bot.send_message(uid, body, parse_mode=None)
+                sent += 1
+            except Exception:  # noqa: BLE001
+                failed += 1
+        except TelegramForbiddenError:
+            blocked += 1
+        except Exception as exc:  # noqa: BLE001
+            failed += 1
+            logger.debug("broadcast to %s failed: %s", uid, exc)
+        # احترام به محدودیت نرخ تلگرام (~۳۰ پیام در ثانیه)
+        await asyncio.sleep(0.05)
+
+    report = (
+        "📢 <b>ارسال پیام همگانی پایان یافت</b>\n\n"
+        f"✅ ارسال موفق: <b>{sent}</b>\n"
+        f"🚫 بلاک کرده‌اند: <b>{blocked}</b>\n"
+        f"⚠️ ناموفق: <b>{failed}</b>\n"
+        f"👥 کل مخاطبان: <b>{len(targets)}</b>"
+    )
+    logger.info(
+        "broadcast by %s: sent=%s blocked=%s failed=%s total=%s",
+        user.id,
+        sent,
+        blocked,
+        failed,
+        len(targets),
+    )
+    if query.message is not None:
+        await _try_edit(query, report)
+    else:
+        await query.bot.send_message(user.id, report)
