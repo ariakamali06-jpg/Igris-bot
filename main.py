@@ -114,6 +114,12 @@ async def on_startup(bot: Bot) -> None:
         with contextlib.suppress(Exception):
             from services.backup import auto_restore_on_startup
             await auto_restore_on_startup(bot)
+            # Safety net: if auto-restore left the connection closed (a raise
+            # between close() and connect()), bring it back up so the bot never
+            # polls with a dead database.
+            if db._closed:
+                logger.error("auto_restore left the database closed; reconnecting")
+                await db.connect()
 
     if settings.dry_run:
         logger.info("DRY_RUN=1 — boot checks passed, skipping get_me()")

@@ -111,8 +111,8 @@ async def verify_backup_file(backup_path: Path) -> tuple[bool, str, int]:
             cur = conn.cursor()
             cur.execute("PRAGMA integrity_check")
             row = cur.fetchone()
-            if not row or row[0].lower() != "ok":
-                return False, f"فایل پشتیبان خراب است ({row[0] if row else 'ناشناخته'})", 0
+            if not row or str(row[0]).lower() != "ok":
+                return False, f"فایل پشتیبان خراب است ({row[0] if row else 'ناشناخته'}).", 0
 
             # بررسی وجود جدول‌های حیاتی
             cur.execute("SELECT name FROM sqlite_master WHERE type='table'")
@@ -134,6 +134,63 @@ async def verify_backup_file(backup_path: Path) -> tuple[bool, str, int]:
                     conn.close()
 
     return await asyncio.to_thread(_verify)
+
+
+def _retry_backup_on_corruption(db_path: Path, backup_path: Path) -> None:
+    """اگر فایل پشتیبان ناقص نوشته شده باشد، یک بار دیگر از نو آن را می‌سازد.
+
+    علت خرابی معمول: WAL نیمه‌کاره یا کپی شدن فایل هنگام نوشتن. پس از حذف فایل
+    معیوب، چک‌پوینت FULL اجرا می‌شود تا همه‌ی تراکنش‌ها به فایل اصلی منتقل شوند
+    و سپس بکاپ دوباره گرفته شود.
+    """
+    if backup_path.exists():
+        backup_path.unlink()
+    src = sqlite3.connect(db_path)
+    dst = sqlite3.connect(backup_path)
+    try:
+        cur = src.cursor()
+        cur.execute("PRAGMA wal_checkpoint(FULL)")
+        cur.close()
+        with dst:
+            src.backup(dst)
+    finally:
+        dst.close()
+        src.close()
+
+
+async def create_verified_backup() -> tuple[Path | None, str, int]:
+    """تهیه پشتیبان + تأیید سلامت؛ اگر ناقص بود یک بار دوباره ساخته می‌شود.
+
+    خروجی: (مسیر فایل یا None، پیام وضعیت، تعداد بازیکنان)
+    """
+    db_path = settings.db_path
+    backup_file = await create_backup_file()
+    if not backup_file or not backup_file.exists():
+        return None, "ساخت فایل پشتیبان ناموفق بود.", 0
+
+    ok, reason, player_count = await verify_backup_file(backup_file)
+    if ok:
+        return backup_file, reason, player_count
+
+    logger.warning(
+        "Backup failed verification (%s); rebuilding with FULL WAL checkpoint...", reason
+    )
+    try:
+        await asyncio.to_thread(_retry_backup_on_corruption, db_path, backup_file)
+    except Exception as exc:
+        logger.error("Rebuild of corrupted backup failed: %s", exc)
+        with contextlib.suppress(Exception):
+            backup_file.unlink()
+        return None, f"بازسازی فایل پشتیبان ناموفق بود: {exc}", 0
+
+    ok, reason, player_count = await verify_backup_file(backup_file)
+    if ok:
+        return backup_file, reason, player_count
+
+    logger.error("Backup still corrupt after rebuild: %s", reason)
+    with contextlib.suppress(Exception):
+        backup_file.unlink()
+    return None, reason, 0
 
 
 async def send_backup_to_admins(bot: Bot) -> int:
@@ -347,10 +404,15 @@ async def restore_database_from_file(backup_path: Path) -> tuple[bool, str]:
                 with contextlib.suppress(OSError):
                     p.unlink()
 
-    await asyncio.to_thread(_swap_files)
-
-    # ۴. اتصال مجدد دیتابیس و اجرای چک‌پوینت و مایگریشن
-    await db.connect()
+    # CRITICAL: between db.close() and db.connect() the process has no database.
+    # If the swap raises, the bot keeps polling with a closed connection and every
+    # update dies with "database is not connected".  Always reconnect — even on
+    # failure — so a bad restore degrades to "restore failed", never to a dead bot.
+    try:
+        await asyncio.to_thread(_swap_files)
+    finally:
+        if db._closed:
+            await db.connect()
 
     # ۵. پاک‌سازی کش آواتار
     from services import avatar
